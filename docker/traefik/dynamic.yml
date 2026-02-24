@@ -1,0 +1,7 @@
+# Traefik Dynamic Configuration
+# Bu dosyayı /home/cinar/projects/infra/traefik/dynamic.yml olarak kaydedin
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/cert.pem
+      keyFile: /etc/traefik/certs/key.pem

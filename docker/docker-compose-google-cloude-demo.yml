@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    env_file:
+      - .env.prod
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rms_network
+    mem_limit: 200m
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - rms_network
+    mem_limit: 100m
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    env_file:
+      - .env.prod
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - rms_network
+    mem_limit: 200m
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+      target: production
+    restart: always
+    env_file:
+      - .env.prod
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - rms_network
+    mem_limit: 200m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api/v1`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: https://${BACKEND_DOMAIN}
+    restart: always
+    env_file:
+      - .env.prod
+    networks:
+      - rms_network
+    mem_limit: 150m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+
+  traefik:
+    image: traefik:v2.10
+    restart: always
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rms_network
+    mem_limit: 100m
+
+networks:
+  rms_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:

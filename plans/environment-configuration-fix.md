@@ -1,0 +1,1 @@
+{"NEXT_PUBLIC_WS_URL": "wss://${BACKEND_DOMAIN"}

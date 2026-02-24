@@ -1,0 +1,128 @@
+{
+  "UrunListesi": {
+    "Program": "Logo Tiger",
+    "ExportTarihi": "2026-02-16",
+    "Urunler": [
+      {
+        "StokKodu": "LT-001",
+        "StokAdi": "Ofis Masası 120x80",
+        "Barkod": "8690123456701",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 1250.00,
+        "SatisFiyati": 1875.00,
+        "StokMiktari": 45,
+        "GrupKodu": "MOB-001",
+        "Aciklama": "Ahşap ofis masası, beyaz renk"
+      },
+      {
+        "StokKodu": "LT-002",
+        "StokAdi": "Ergonomik Ofis Koltuğu",
+        "Barkod": "8690123456702",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 850.00,
+        "SatisFiyati": 1350.00,
+        "StokMiktari": 32,
+        "GrupKodu": "MOB-001",
+        "Aciklama": "Siyah deri, ayarlanabilir"
+      },
+      {
+        "StokKodu": "LT-003",
+        "StokAdi": "A4 Fotokopi Kağıdı",
+        "Barkod": "8690123456703",
+        "Birim": "Paket",
+        "KDVOrani": 20,
+        "AlisFiyati": 45.00,
+        "SatisFiyati": 72.00,
+        "StokMiktari": 250,
+        "GrupKodu": "KRT-001",
+        "Aciklama": "500 yaprak, 80gr"
+      },
+      {
+        "StokKodu": "LT-004",
+        "StokAdi": "Kablosuz Klavye Mouse Set",
+        "Barkod": "8690123456704",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 185.00,
+        "SatisFiyati": 295.00,
+        "StokMiktari": 67,
+        "GrupKodu": "ELK-001",
+        "Aciklama": "USB alıcılı, siyah"
+      },
+      {
+        "StokKodu": "LT-005",
+        "StokAdi": "LED Monitör 24 inç",
+        "Barkod": "8690123456705",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 1450.00,
+        "SatisFiyati": 2175.00,
+        "StokMiktari": 28,
+        "GrupKodu": "ELK-001",
+        "Aciklama": "Full HD, IPS panel"
+      },
+      {
+        "StokKodu": "LT-006",
+        "StokAdi": "Çok Fonksiyonlu Yazıcı",
+        "Barkod": "8690123456706",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 2350.00,
+        "SatisFiyati": 3525.00,
+        "StokMiktari": 15,
+        "GrupKodu": "ELK-001",
+        "Aciklama": "Tarayıcı, fotokopi, WiFi"
+      },
+      {
+        "StokKodu": "LT-007",
+        "StokAdi": "Dolap Dosya 4 Çekmeceli",
+        "Barkod": "8690123456707",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 975.00,
+        "SatisFiyati": 1462.50,
+        "StokMiktari": 20,
+        "GrupKodu": "MOB-001",
+        "Aciklama": "Metal, gri renk"
+      },
+      {
+        "StokKodu": "LT-008",
+        "StokAdi": "Tükenmez Kalem Mavi",
+        "Barkod": "8690123456708",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 2.50,
+        "SatisFiyati": 5.00,
+        "StokMiktari": 500,
+        "GrupKodu": "KRT-001",
+        "Aciklama": "0.7mm uç"
+      },
+      {
+        "StokKodu": "LT-009",
+        "StokAdi": "Zımba Makinesi Büyük",
+        "Barkod": "8690123456709",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 125.00,
+        "SatisFiyati": 187.50,
+        "StokMiktari": 85,
+        "GrupKodu": "KRT-001",
+        "Aciklama": "100 sayfa kapasiteli"
+      },
+      {
+        "StokKodu": "LT-010",
+        "StokAdi": "Beyaz Tahta 90x120",
+        "Barkod": "8690123456710",
+        "Birim": "Adet",
+        "KDVOrani": 20,
+        "AlisFiyati": 285.00,
+        "SatisFiyati": 427.50,
+        "StokMiktari": 38,
+        "GrupKodu": "KRT-001",
+        "Aciklama": "Manyetik yüzey, kalemlikli"
+      }
+    ]
+  }
+}

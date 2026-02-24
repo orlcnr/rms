@@ -1,0 +1,7 @@
+node_modules
+uploads/*
+dist
+audit.rules.md
+backend.rules.md
+.eslintrc.js
+Dockerfile

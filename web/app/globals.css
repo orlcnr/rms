@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Background Tokens - Light ERP Standard */
+    --bg-app: #f6f7f9;
+    --bg-surface: #ffffff;
+    --bg-muted: #f1f2f4;
+    --bg-hover: #f8f9fa;
+
+    /* Border Tokens */
+    --border-light: #e9e9e9;
+    --border-medium: #dcdcdc;
+
+    /* Text Tokens */
+    --text-primary: #2b2b2b;
+    --text-secondary: #555555;
+    --text-muted: #777777;
+    --text-inverse: #ffffff;
+
+    /* Primary Brand (Flat Orange) */
+    --primary-main: #ec5b13;
+    --primary-hover: #d14d0f;
+    --primary-subtle: #fef0e6;
+
+    /* Semantic Tokens - Success */
+    --success-main: #107c10;
+    --success-bg: #dff6dd;
+    --success-border: #bad80a;
+    --success-text: #107c10;
+
+    /* Semantic Tokens - Danger */
+    --danger-main: #a4262c;
+    --danger-bg: #fed9cc;
+    --danger-border: #f1707b;
+    --danger-text: #a4262c;
+
+    /* Semantic Tokens - Warning */
+    --warning-main: #797775;
+    --warning-bg: #fff4ce;
+    --warning-border: #ffb900;
+    --warning-text: #323130;
+
+    /* Semantic Tokens - Info */
+    --info-main: #0078d4;
+    --info-bg: #eff6fc;
+    --info-border: #deecf9;
+    --info-text: #0078d4;
+  }
+
+  /* Dark theme is restricted to specific container needs if necessary, 
+     default behavior is Light ERP. Tokens stay same. */
+  .dark {
+    --bg-app: #0f1115;
+    --bg-surface: #1a1d23;
+    --bg-muted: #252a31;
+    --bg-hover: #2c333c;
+
+    --border-light: #2d333b;
+    --border-medium: #444c56;
+
+    --text-primary: #f0f6fc;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --text-inverse: #0d1117;
+
+    --primary-main: #f06a25;
+    --primary-hover: #ff7b39;
+    --primary-subtle: rgba(240, 106, 37, 0.1);
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    @apply font-sans min-h-screen antialiased;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+
+  /* Enterprise UI Patterns - Flat & Structured */
+  .erp-container {
+    @apply max-w-full px-4 sm:px-6 lg:px-8 py-5 space-y-5;
+  }
+
+  .erp-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    @apply rounded-sm shadow-sm overflow-hidden;
+  }
+
+  .erp-header-sep {
+    border-bottom: 2px solid var(--border-medium);
+  }
+
+  /* Dense Table Pattern */
+  .erp-table {
+    @apply w-full text-left border-collapse text-sm;
+  }
+
+  .erp-table th {
+    background-color: var(--bg-muted);
+    border-bottom: 1px solid var(--border-medium);
+    @apply px-4 py-3 font-semibold text-text-secondary uppercase tracking-wider;
+  }
+
+  .erp-table td {
+    border-bottom: 1px solid var(--border-light);
+    @apply px-4 py-3 text-text-primary transition-colors;
+  }
+
+  .erp-table tr:hover td {
+    background-color: var(--bg-hover);
+  }
+
+  /* Custom Scrollbar - ERP Style */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Scrollbar refinement */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  @apply rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Minimal thin scrollbar for tables */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  @apply rounded;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Custom scrollbar thumb with border token color */
+.scrollbar-thumb-border-medium::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  @apply rounded;
+}
+
+.scrollbar-thumb-border-medium::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Numeric alignment for ERP */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-right {
+  text-align: right;
+}

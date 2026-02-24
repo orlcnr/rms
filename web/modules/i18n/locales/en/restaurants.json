@@ -1,0 +1,16 @@
+{
+    "title": "Restaurants",
+    "list": {
+        "title": "Restaurant List",
+        "description": "Manage all restaurants in the system",
+        "add_new": "Add New Restaurant"
+    },
+    "form": {
+        "name": "Restaurant Name",
+        "address": "Address",
+        "phone": "Phone",
+        "email": "Email",
+        "status": "Status",
+        "save": "Save Restaurant"
+    }
+}

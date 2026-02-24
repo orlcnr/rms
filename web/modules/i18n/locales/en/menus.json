@@ -1,0 +1,15 @@
+{
+    "title": "Menus",
+    "list": {
+        "title": "Menu List",
+        "description": "Manage all your menus and categories",
+        "add_new": "Add New Menu"
+    },
+    "form": {
+        "name": "Menu Name",
+        "category": "Category",
+        "price": "Price",
+        "description": "Description",
+        "save": "Save Menu"
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "title": "Menüler",
+    "list": {
+        "title": "Menü Listesi",
+        "description": "Tüm menülerinizi ve kategorilerinizi yönetin",
+        "add_new": "Yeni Menü Ekle"
+    },
+    "form": {
+        "name": "Menü Adı",
+        "category": "Kategori",
+        "price": "Fiyat",
+        "description": "Açıklama",
+        "save": "Menüyü Kaydet"
+    }
+}

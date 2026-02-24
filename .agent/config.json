@@ -1,0 +1,12 @@
+{
+  "models": {
+    "providers": {
+      "minimax": {
+        "baseUrl": "http://localhost:3910/v1",
+        "apiKey": "sk-anything",
+        "api": "openai-completions",
+        "models": [{ "id": "minimax-chat", "name": "MiniMax 2.5" }]
+      }
+    }
+  }
+}

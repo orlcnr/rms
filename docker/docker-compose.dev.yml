@@ -1,0 +1,88 @@
+# Docker Compose Development Override
+
+services:
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+      target: development
+    env_file:
+      - ./env/.env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    networks:
+      - rms_network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend-dev.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.backend-dev.entrypoints=web"
+      - "traefik.http.services.backend-dev.loadbalancer.server.port=3000"
+      - "traefik.docker.network=proxy"
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: rms_mailpit
+    env_file:
+      - ./env/.env.dev
+    networks:
+      - rms_network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mail-dev.rule=Host(`mail.localhost`)"
+      - "traefik.http.routers.mail-dev.entrypoints=web"
+      - "traefik.http.services.mail-dev.loadbalancer.server.port=8025"
+      - "traefik.docker.network=proxy"
+
+  elasticsearch:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.es-dev.rule=Host(`es.localhost`)"
+      - "traefik.http.routers.es-dev.entrypoints=web"
+      - "traefik.http.services.es-dev.loadbalancer.server.port=9200"
+      - "traefik.docker.network=proxy"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+      target: development
+    env_file:
+      - ./env/.env.dev
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ../web:/app
+      - web_node_modules:/app/node_modules
+      - /app/.next
+    networks:
+      - rms_network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web-dev.rule=Host(`rms.localhost`)"
+      - "traefik.http.routers.web-dev.entrypoints=web"
+      - "traefik.http.services.web-dev.loadbalancer.server.port=3003"
+      - "traefik.docker.network=proxy"
+
+networks:
+  rms_network:
+    driver: bridge
+  proxy:
+    external: true
+
+volumes:
+  web_node_modules:

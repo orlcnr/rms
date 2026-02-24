@@ -1,0 +1,7 @@
+# Traefik Dynamic Configuration - TLS Certificates
+# This file should be at /home/cinar/projects/infra/traefik/dynamic.yml
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/cert.pem
+      keyFile: /etc/traefik/certs/key.pem

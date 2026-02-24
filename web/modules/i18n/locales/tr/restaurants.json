@@ -1,0 +1,16 @@
+{
+    "title": "Restoranlar",
+    "list": {
+        "title": "Restoran Listesi",
+        "description": "Sistemdeki tüm restoranları yönetin",
+        "add_new": "Yeni Restoran Ekle"
+    },
+    "form": {
+        "name": "Restoran Adı",
+        "address": "Adres",
+        "phone": "Telefon",
+        "email": "E-posta",
+        "status": "Durum",
+        "save": "Restoranı Kaydet"
+    }
+}
