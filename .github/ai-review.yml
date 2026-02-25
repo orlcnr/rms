@@ -1,0 +1,23 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCode
+        run: npm install -g opencode
+
+      - name: Run Security Review
+        run: |
+          git diff origin/master...HEAD | opencode run --agent security-reviewer "Security review this PR"
+
+      - name: Run Code Review
+        run: |
+          git diff origin/master...HEAD | opencode run --agent code-reviewer "Review this PR"
