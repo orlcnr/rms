@@ -155,10 +155,55 @@ export function usePayment({
 
   /**
    * Ödeme tamamlandı mı?
+   * Frontend validation: Tüm ödeme satırları için gerekli kontroller
    */
   const canCompletePayment = useMemo(() => {
-    return isPaymentComplete(finalTotal, payments);
+    // Temel kontrol: toplam ödeme yeterli mi?
+    if (!isPaymentComplete(finalTotal, payments)) {
+      return false;
+    }
+    
+    // Her ödeme satırı için validation
+    for (const payment of payments) {
+      // Ödeme tutarı pozitif olmalı
+      if (payment.amount <= 0) {
+        return false;
+      }
+      
+      // Açık hesap için müşteri seçilmeli
+      if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
+        return false;
+      }
+      
+      // Nakit ödeme için para üstü hesaplanabilir (ama gerekli değil)
+      // Nakit ödeme için minimum alınan tutar kontrolü yapılmıyor
+      // (kullanıcı para üstü alabilir)
+    }
+    
+    return true;
   }, [finalTotal, payments]);
+
+  /**
+   * Ödeme validation hatası - Neden ödeme yapılamayacağını döner
+   */
+  const paymentValidationError = useMemo((): string | null => {
+    // Ödenmemiş tutar var mı?
+    if (remainingBalance > 0) {
+      return `${formatPaymentAmount(remainingBalance)} ödenmemiş`;
+    }
+    
+    for (const payment of payments) {
+      if (payment.amount <= 0) {
+        return 'Ödeme tutarı 0\'dan büyük olmalı';
+      }
+      
+      if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
+        return 'Açık hesap için müşteri seçmelisiniz';
+      }
+    }
+    
+    return null;
+  }, [payments, remainingBalance]);
 
   /**
    * Nakit ödemeleri için toplam para üstü
@@ -324,12 +369,18 @@ export function usePayment({
    * Parçalı ödemeyi tamamla
    */
   const completePayment = useCallback(async () => {
-    if (!canCompletePayment) {
-      setError(`Ödenmemiş tutar: ${formatPaymentAmount(remainingBalance)}`);
+    // Race condition önleme - processing state'ini İLK olarak set et
+    if (isProcessing) return;
+    setIsProcessing(true);
+    
+    // Frontend validation
+    const validationError = paymentValidationError;
+    if (validationError) {
+      setError(validationError);
+      setIsProcessing(false);
       return;
     }
 
-    setIsProcessing(true);
     setError(null);
 
     try {
@@ -339,7 +390,7 @@ export function usePayment({
         payments: payments.map(p => ({
           amount: p.amount,
           payment_method: p.method,
-          customer_id: p.customerId,
+          customer_id: p.customerId || undefined,
           cash_received: p.cashReceived,
         })),
         discount_type: discount?.type,
@@ -380,7 +431,7 @@ export function usePayment({
       removeDiscount();
       
     } catch (err: any) {
-      const errorMessage = err?.message || 'Ödeme işlemi başarısız';
+      const errorMessage = err?.response?.data?.message || err?.message || 'Ödeme işlemi başarısız';
       setError(errorMessage);
       onError?.(err);
       toast.error(errorMessage);
@@ -388,8 +439,8 @@ export function usePayment({
       setIsProcessing(false);
     }
   }, [
-    canCompletePayment,
-    remainingBalance,
+    isProcessing,
+    paymentValidationError,
     orderId,
     payments,
     discount,
@@ -504,6 +555,7 @@ export function usePayment({
     totalPaid,
     remainingBalance,
     canCompletePayment,
+    paymentValidationError,
     totalChange,
     orderTotal,
     

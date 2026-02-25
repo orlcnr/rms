@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Payment, PaymentMethod, PaymentStatus } from './entities/payment.entity';
+import { Payment, PaymentMethod, PaymentStatus, DiscountType } from './entities/payment.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateSplitPaymentDto } from './dto/create-split-payment.dto';
 import { Order } from '../orders/entities/order.entity';
@@ -24,6 +24,51 @@ import {
   Transport,
 } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+
+// Helper function for precise decimal calculations (to avoid floating point errors)
+// Uses integer math: multiply by 100, calculate, then divide by 100
+const calculateDiscount = (
+  amount: number,
+  discountValue: number,
+  discountType: DiscountType | null | undefined
+): number => {
+  const amountCents = Math.round(amount * 100);
+  const discountCents = Math.round(discountValue * 100);
+
+  if (discountCents <= 0) {
+    return amountCents / 100;
+  }
+
+  if (discountType === DiscountType.DISCOUNT) {
+    // Percentage discount (İskonto - yüzdelik indirim)
+    const discountMultiplier = (10000 - discountCents) / 10000; // e.g., for 10% = 0.90
+    const resultCents = Math.round(amountCents * discountMultiplier);
+    return Math.max(0, resultCents / 100);
+  } else {
+    // Fixed discount (İkram - sabit indirim)
+    const resultCents = Math.max(0, amountCents - discountCents);
+    return resultCents / 100;
+  }
+};
+
+/**
+ * Calculates net tip amount after commission deduction.
+ * Uses integer math to avoid floating point errors.
+ * 
+ * @param tipAmount - The gross tip amount
+ * @param commissionRate - The commission rate percentage (e.g., 10 for 10%)
+ * @returns The net tip amount after commission, or the original if no commission
+ */
+const calculateNetTip = (tipAmount: number, commissionRate: number): number | null => {
+  if (!tipAmount || tipAmount <= 0) {
+    return null;
+  }
+  if (commissionRate <= 0) {
+    return tipAmount;
+  }
+  // Integer math: multiply by 100, calculate, divide by 100
+  return Math.round(tipAmount * (1 - commissionRate / 100) * 100) / 100;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -81,8 +126,10 @@ export class PaymentsService {
       payment_method,
       transaction_id,
       discount_amount = 0,
-      discount_type = 'fixed',
+      discount_type = DiscountType.DISCOUNT,
       description,
+      tip_amount,
+      commission_rate,
     } = createPaymentDto;
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -104,31 +151,27 @@ export class PaymentsService {
         throw new BadRequestException('Order is already paid');
       }
 
-      // Calculate Final Amount
-      let final_amount = Number(amount);
-      const discountVal = Number(discount_amount);
-
-      if (discountVal > 0) {
-        if (discount_type === 'percentage') {
-          final_amount = final_amount - (final_amount * discountVal) / 100;
-        } else {
-          final_amount = final_amount - discountVal;
-        }
-      }
-
-      // Ensure no negative amount
-      final_amount = Math.max(0, final_amount);
+      // Calculate Final Amount using precise decimal calculation
+      const final_amount = calculateDiscount(
+        Number(amount),
+        Number(discount_amount),
+        discount_type
+      );
 
       // 2. Create Payment
       const payment = this.paymentRepository.create({
         order_id,
+        restaurant_id: order.restaurantId, // Multi-tenant: link to restaurant
         amount,
-        discount_amount: discountVal,
+        discount_amount: Number(discount_amount) || 0,
         discount_type,
         final_amount,
         payment_method,
         transaction_id,
         description,
+        tip_amount: tip_amount ? Number(tip_amount) : null,
+        commission_rate: commission_rate ? Number(commission_rate) : null,
+        net_tip_amount: calculateNetTip(Number(tip_amount), Number(commission_rate)),
       });
       const savedPayment = await queryRunner.manager.save(payment);
 
@@ -246,21 +289,17 @@ export class PaymentsService {
 
       // 2. Toplam ödenen miktarı hesapla
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      const orderTotal = Number(order.total_amount);
+      const orderTotal = Number(order.totalAmount);
       
       // İndirimi uygula
-      let finalOrderTotal = orderTotal;
       const discountVal = Number(discount_amount || 0);
-      
-      if (discountVal > 0 && discount_type) {
-        if (discount_type === 'discount') {
-          // Percentage indirim - eski frontend uyumluluğu için
-          finalOrderTotal = orderTotal - (orderTotal * discountVal) / 100;
-        } else {
-          // Sabit indirim veya complimentary
-          finalOrderTotal = orderTotal - discountVal;
-        }
-      }
+
+      // Calculate final total using the helper function for precise decimal calculation
+      const finalOrderTotal = calculateDiscount(
+        orderTotal,
+        discountVal,
+        discount_type
+      );
       
       // Kuruş hatalarını önlemek için 100 ile çarp (kuruş bazlı hesaplama)
       const totalPaidCents = Math.round(totalPaid * 100);
@@ -355,21 +394,37 @@ export class PaymentsService {
         
         totalChange += change;
 
+        // Calculate final_amount for this payment (amount after discount)
+        const final_amount = calculateDiscount(
+          amount,
+          discountVal,
+          discount_type
+        );
+
+        // Bahşiş ve Komisyon Hesaplama
+        const tipAmount = payment.tip_amount ? Number(payment.tip_amount) : 0;
+        const commissionRate = payment.commission_rate ? Number(payment.commission_rate) : 0;
+        const netTipAmount = calculateNetTip(tipAmount, commissionRate);
+
         const newPayment = this.paymentRepository.create({
           order_id: order.id,
+          restaurant_id: order.restaurantId, // Multi-tenant: link to restaurant
           amount: amount,
           discount_amount: discountVal,
-          discount_type: discount_type as any,
+          discount_type: discount_type,
           discount_reason,
+          final_amount,
           payment_method: payment.payment_method,
           customer_id: payment.customer_id,
           cash_received: cashReceived,
           change_given: change,
-          notes: payment.notes,
+          tip_amount: tipAmount > 0 ? tipAmount : null,
+          commission_rate: commissionRate > 0 ? commissionRate : null,
+          net_tip_amount: netTipAmount !== null ? netTipAmount : null,
           status: PaymentStatus.COMPLETED,
         });
 
-        const saved = await queryRunner.manager.save(newPayment);
+        const saved = await queryRunner.manager.save(newPayment) as Payment;
         savedPayments.push(saved);
 
         // 5.1. Açık hesap ödemesinde müşteri borcunu güncelle
@@ -488,7 +543,11 @@ export class PaymentsService {
 
       // Ödemeyi iptal et
       payment.status = PaymentStatus.REFUNDED;
-      payment.notes = `${payment.notes || ''} | İADE: ${reason}`;
+      if (payment.description) {
+        payment.description = `${payment.description} | İADE: ${reason}`;
+      } else {
+        payment.description = `İADE: ${reason}`;
+      }
       const refundedPayment = await queryRunner.manager.save(payment);
 
       // Açık hesap ödemesi ise müşteri borcunu azalt

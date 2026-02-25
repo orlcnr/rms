@@ -15,9 +15,15 @@ import {
   Loader2,
 } from 'lucide-react';
 import { usePayment } from '../hooks/usePayment';
+import { usePaymentModal } from '../hooks/usePaymentModal';
 import { PaymentMethod, formatPaymentAmount, PaymentLine } from '../types';
 import { CustomerSelector } from './CustomerSelector';
 import { PaymentSummaryCard } from './PaymentSummaryCard';
+import { PaymentStatusBar } from './PaymentStatusBar';
+import { PaymentMethodsGrid } from './PaymentMethodsGrid';
+import { PaymentMethodDetails } from './PaymentMethodDetails';
+import { NewCustomerModal } from './NewCustomerModal';
+import { Customer } from '@/modules/customers/services/customers.service';
 import { cn } from '@/modules/shared/utils/cn';
 
 // ============================================
@@ -53,8 +59,23 @@ export function PaymentModal({
     },
   });
 
+  // Hook for customer creation logic
+  const customerHook = usePaymentModal({
+    restaurantId,
+    onSuccess: () => {
+      // Customer created successfully - could refresh or show feedback
+    },
+  });
+
+  // Destructure hook values
+  const { handleAddNewCustomer, isCreatingCustomer } = customerHook;
+
   // State for change confirmation
   const [showChangeConfirm, setShowChangeConfirm] = useState(false);
+  
+  // State for new customer modal
+  const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+  const [newCustomerInitialName, setNewCustomerInitialName] = useState<string>('');
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -92,6 +113,21 @@ export function PaymentModal({
     await hook.completePayment();
   };
 
+  // Handle opening new customer modal
+  const handleOpenNewCustomerModal = (initialName?: string) => {
+    setNewCustomerInitialName(initialName || '');
+    setIsNewCustomerModalOpen(true);
+  };
+
+  // Handle new customer created
+  const handleNewCustomerCreated = (customer: Customer) => {
+    // If there's an active payment line, set the customer
+    if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
+      hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, { customerId: customer.id });
+    }
+    setIsNewCustomerModalOpen(false);
+  };
+
   // Nakit üstü var mı?
   const hasChange = hook.totalChange > 0;
 
@@ -99,106 +135,129 @@ export function PaymentModal({
 
   return (
     <>
-      {/* Desktop Modal */}
+      {/* Desktop Modal - Split Layout */}
       {!isMobile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div 
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
           />
           
-          {/* Modal Content */}
-          <div className="relative bg-bg-surface w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-sm shadow-xl flex flex-col">
+          {/* Modal Content - Split Layout */}
+          <div className="relative bg-bg-surface w-full max-w-5xl h-[650px] flex flex-col overflow-hidden rounded-sm shadow-xl">
             {/* Header */}
-            <PaymentModalHeader 
-              title="Ödeme Al" 
-              onClose={onClose}
-              isProcessing={hook.isProcessing}
-            />
+            <div className="flex items-center justify-between px-6 py-3 border-b border-border-light bg-bg-surface flex-shrink-0">
+              <h2 className="text-lg font-black text-text-primary uppercase tracking-wider">
+                Ödeme Al
+              </h2>
+              <button
+                onClick={onClose}
+                disabled={hook.isProcessing}
+                className="p-2 hover:bg-bg-muted rounded-sm transition-colors disabled:opacity-50"
+              >
+                <X className="h-5 w-5 text-text-secondary" />
+              </button>
+            </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <PaymentSummaryCard
-                subtotal={hook.serverOrderTotal || orderTotal}
-                discount={hook.discount?.amount}
-                discountType={hook.discount?.type as 'discount' | 'complimentary'}
-                discountReason={hook.discount?.reason}
+            {/* Status Bar - Header altında */}
+            <div className="flex-shrink-0">
+              <PaymentStatusBar
                 finalTotal={hook.finalTotal}
-                totalPaid={hook.totalPaid}
                 remainingBalance={hook.remainingBalance}
-                totalChange={hook.totalChange}
+                discount={hook.discount?.amount}
                 isComplete={hook.canCompletePayment}
-                isProcessing={hook.isProcessing}
-                onApplyDiscount={() => {}}
               />
+            </div>
 
-              {/* Payment Methods */}
-              <div className="mt-6">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
-                  Ödeme Yöntemi Ekle
-                </h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {Object.values(PaymentMethod).map((method) => {
-                    const Icon = getMethodIcon(method);
-                    return (
-                      <button
-                        key={method}
-                        onClick={() => hook.addPaymentLine(method)}
-                        disabled={hook.isProcessing}
-                        className="flex flex-col items-center gap-2 p-4 bg-bg-muted hover:bg-bg-hover 
-                          border border-border-light hover:border-primary-main rounded-sm transition-colors
-                          disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Icon className="h-6 w-6 text-primary-main" />
-                        <span className="text-xs font-medium text-text-primary">
-                          {method === 'cash' ? 'Nakit' : 
-                           method === 'credit_card' ? 'Kredi Kartı' :
-                           method === 'debit_card' ? 'Banka Kartı' :
-                           method === 'digital_wallet' ? 'Dijital Cüzdan' :
-                           method === 'bank_transfer' ? 'Havale' : 'Açık Hesap'}
-                        </span>
-                      </button>
-                    );
-                  })}
+            {/* Split Layout */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              {/* Sol Panel (40%) - Ödeme Özeti ve Satırlar - bg-slate-50 */}
+              <div className="w-[40%] bg-slate-50 border-r border-border-light overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <PaymentSummaryCard
+                    subtotal={hook.serverOrderTotal || orderTotal}
+                    discount={hook.discount?.amount}
+                    discountType={hook.discount?.type as 'discount' | 'complimentary'}
+                    discountReason={hook.discount?.reason}
+                    finalTotal={hook.finalTotal}
+                    totalPaid={hook.totalPaid}
+                    remainingBalance={hook.remainingBalance}
+                    totalChange={hook.totalChange}
+                    isComplete={hook.canCompletePayment}
+                    isProcessing={hook.isProcessing}
+                    onApplyDiscount={() => {}}
+                  />
+
+                  {/* Payment Lines - Sol panelde */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                      Ödeme Satırları
+                    </h4>
+                    {hook.payments.length === 0 ? (
+                      <div className="text-center py-6 text-text-muted">
+                        <Calculator className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">Henüz ödeme eklenmedi</p>
+                      </div>
+                    ) : (
+                      hook.payments.map((payment, index) => (
+                        <PaymentLineItem
+                          key={payment.id}
+                          payment={payment}
+                          isActive={hook.activePaymentIndex === index}
+                          onActivate={() => hook.setActivePaymentIndex(index)}
+                          onUpdate={(updates) => hook.updatePaymentLine(payment.id, updates)}
+                          onRemove={() => hook.removePaymentLine(payment.id)}
+                          restaurantId={restaurantId}
+                          disabled={hook.isProcessing}
+                          onAddNewCustomer={handleAddNewCustomer}
+                          isCreatingCustomer={isCreatingCustomer}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Payment Lines */}
-              <div className="mt-6 space-y-3">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
-                  Ödeme Satırları
-                </h4>
-                {hook.payments.length === 0 ? (
-                  <div className="text-center py-8 text-text-muted">
-                    <Calculator className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>Henüz ödeme eklenmedi</p>
-                    <p className="text-xs">Yukarıdan bir ödeme yöntemi seçin</p>
-                  </div>
-                ) : (
-                  hook.payments.map((payment, index) => (
-                    <PaymentLineItem
-                      key={payment.id}
-                      payment={payment}
-                      isActive={hook.activePaymentIndex === index}
-                      onActivate={() => hook.setActivePaymentIndex(index)}
-                      onUpdate={(updates) => hook.updatePaymentLine(payment.id, updates)}
-                      onRemove={() => hook.removePaymentLine(payment.id)}
-                      restaurantId={restaurantId}
-                      disabled={hook.isProcessing}
-                    />
-                  ))
-                )}
+              {/* Sağ Panel (60%) - Yöntemler ve Detaylar - bg-white */}
+              <div className="w-[60%] flex flex-col overflow-hidden bg-white">
+                {/* Payment Methods Grid */}
+                <div className="flex-shrink-0">
+                  <PaymentMethodsGrid
+                    selectedMethod={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
+                    onSelectMethod={(method) => hook.addPaymentLine(method)}
+                    disabled={hook.isProcessing}
+                  />
+                </div>
+
+                {/* Payment Method Details */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  <PaymentMethodDetails
+                    activePayment={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex] || null : null}
+                    method={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
+                    onUpdate={(updates) => {
+                      if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
+                        hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, updates);
+                      }
+                    }}
+                    restaurantId={restaurantId}
+                    disabled={hook.isProcessing}
+                    onAddNewCustomer={handleAddNewCustomer}
+                    onOpenNewCustomerModal={handleOpenNewCustomerModal}
+                  />
+                </div>
+
+                {/* Footer - Sabit Alt Kısım */}
+                <div className="flex-shrink-0 p-4 border-t border-border-light bg-bg-surface">
+                  <PaymentModalFooter
+                    canComplete={hook.canCompletePayment}
+                    isProcessing={hook.isProcessing}
+                    onComplete={handleComplete}
+                    error={hook.error}
+                  />
+                </div>
               </div>
             </div>
-
-            {/* Footer */}
-            <PaymentModalFooter
-              canComplete={hook.canCompletePayment}
-              isProcessing={hook.isProcessing}
-              onComplete={handleComplete}
-              error={hook.error}
-            />
           </div>
         </div>
       )}
@@ -212,8 +271,19 @@ export function PaymentModal({
           onClose={onClose}
           getMethodIcon={getMethodIcon}
           handleComplete={handleComplete}
+          onAddNewCustomer={handleAddNewCustomer}
+          isCreatingCustomer={isCreatingCustomer}
         />
       )}
+
+      {/* New Customer Modal */}
+      <NewCustomerModal
+        isOpen={isNewCustomerModalOpen}
+        onClose={() => setIsNewCustomerModalOpen(false)}
+        onSuccess={handleNewCustomerCreated}
+        restaurantId={restaurantId}
+        initialName={newCustomerInitialName}
+      />
     </>
   );
 }
@@ -303,6 +373,8 @@ interface PaymentLineItemProps {
   onRemove: () => void;
   restaurantId: string;
   disabled: boolean;
+  onAddNewCustomer?: (name: string) => Promise<Customer | null>;
+  isCreatingCustomer?: boolean;
 }
 
 function PaymentLineItem({
@@ -313,6 +385,8 @@ function PaymentLineItem({
   onRemove,
   restaurantId,
   disabled,
+  onAddNewCustomer,
+  isCreatingCustomer,
 }: PaymentLineItemProps) {
   const [localAmount, setLocalAmount] = useState(payment.amount.toString());
 
@@ -368,8 +442,11 @@ function PaymentLineItem({
             <CustomerSelector
               restaurantId={restaurantId}
               value={payment.customerId}
-              onChange={(customer) => onUpdate({ customerId: customer?.id })}
-              disabled={disabled}
+              onChange={(customer) => {
+                onUpdate({ customerId: customer?.id });
+              }}
+              onAddNew={onAddNewCustomer}
+              disabled={disabled || isCreatingCustomer}
             />
           </div>
         )}
@@ -428,6 +505,8 @@ interface MobilePaymentSheetProps {
   onClose: () => void;
   getMethodIcon: (method: PaymentMethod) => any;
   handleComplete: () => void;
+  onAddNewCustomer?: (name: string) => Promise<Customer | null>;
+  isCreatingCustomer?: boolean;
 }
 
 function MobilePaymentSheet({
@@ -437,6 +516,8 @@ function MobilePaymentSheet({
   onClose,
   getMethodIcon,
   handleComplete,
+  onAddNewCustomer,
+  isCreatingCustomer,
 }: MobilePaymentSheetProps) {
   const [showNumpad, setShowNumpad] = useState(false);
 
@@ -544,6 +625,8 @@ function MobilePaymentSheet({
                   });
                 }
               }}
+              onAddNew={onAddNewCustomer}
+              disabled={isCreatingCustomer}
             />
           </div>
         )}

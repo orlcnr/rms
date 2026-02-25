@@ -25,11 +25,17 @@ interface TablesClientProps {
 
 export function TablesClient({ restaurantId, initialAreas, initialTables }: TablesClientProps) {
     const router = useRouter()
+    const [mounted, setMounted] = useState(false)
     const [areas, setAreas] = useState<Area[]>(initialAreas)
     const [tables, setTables] = useState<Table[]>(initialTables)
     const [activeAreaId, setActiveAreaId] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isAdminMode, setIsAdminMode] = useState(false) // Admin/Operation mode toggle
+
+    // Hydration fix - wait for mount before rendering client-specific state
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     // Modal States
     const [isAreaModalOpen, setIsAreaModalOpen] = useState(false)
@@ -70,6 +76,9 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     }, [isConnected])
 
     useEffect(() => {
+        // Skip socket connection if not mounted yet
+        if (!mounted) return
+
         // Connect to socket when component mounts
         connect(restaurantId)
 
@@ -106,7 +115,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
             off('new_order')
             disconnect()
         }
-    }, [restaurantId])
+    }, [restaurantId, mounted])
 
     // Filtered Tables - memoized
     const filteredTables = useMemo(() =>
@@ -119,6 +128,15 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     // Statistics
     const availableCount = tables.filter(t => t.status === 'available').length
     const occupiedCount = tables.filter(t => t.status === 'occupied').length
+
+    // Hydration fix - return loading state until mounted
+    if (!mounted) {
+        return (
+            <div className="min-h-screen bg-bg-app flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-main" />
+            </div>
+        )
+    }
 
     // Refresh Data
     const refreshData = async () => {

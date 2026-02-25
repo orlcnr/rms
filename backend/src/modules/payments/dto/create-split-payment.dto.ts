@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { PaymentMethod } from '../entities/payment.entity';
+import { PaymentMethod, DiscountType } from '../entities/payment.entity';
 
 export class PaymentTransactionDto {
   @ApiProperty({ example: 500 })
@@ -38,6 +38,19 @@ export class PaymentTransactionDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  // Bahşiş alanları
+  @ApiPropertyOptional({ example: 50 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  tip_amount?: number;
+
+  @ApiPropertyOptional({ example: 3.0 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  commission_rate?: number;
 }
 
 export class CreateSplitPaymentDto {
@@ -52,10 +65,10 @@ export class CreateSplitPaymentDto {
   @Type(() => PaymentTransactionDto)
   payments: PaymentTransactionDto[];
 
-  @ApiPropertyOptional({ enum: ['discount', 'complimentary'] })
-  @IsString()
+  @ApiPropertyOptional({ enum: DiscountType })
+  @IsEnum(DiscountType)
   @IsOptional()
-  discount_type?: 'discount' | 'complimentary';
+  discount_type?: DiscountType;
 
   @ApiPropertyOptional({ example: 'Doğum günü indirimi' })
   @IsString()

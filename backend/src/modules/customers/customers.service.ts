@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,9 +18,14 @@ export class CustomersService {
     private readonly customerRepository: Repository<Customer>,
   ) {}
 
-  async create(createCustomerDto: CreateCustomerDto): Promise<Customer> {
+  async create(createCustomerDto: CreateCustomerDto, restaurantId: string): Promise<Customer> {
+    // Validate phone is provided
+    if (!createCustomerDto.phone) {
+      throw new BadRequestException('Phone number is required');
+    }
+
     const existing = await this.customerRepository.findOne({
-      where: { phone: createCustomerDto.phone },
+      where: { phone: createCustomerDto.phone, restaurantId },
     });
     if (existing) {
       throw new ConflictException(
@@ -27,17 +33,23 @@ export class CustomersService {
       );
     }
 
-    const customer = this.customerRepository.create(createCustomerDto);
+    const customer = this.customerRepository.create({
+      ...createCustomerDto,
+      restaurantId,
+    });
     return this.customerRepository.save(customer);
   }
 
-  async findAll(queryDto: GetCustomersDto): Promise<Pagination<Customer>> {
+  async findAll(queryDto: GetCustomersDto, restaurantId: string): Promise<Pagination<Customer>> {
     const { page = 1, limit = 10, search } = queryDto;
 
     const queryBuilder = this.customerRepository.createQueryBuilder('customer');
 
+    // Multi-tenant: Always filter by restaurant
+    queryBuilder.where('customer.restaurantId = :restaurantId', { restaurantId });
+
     if (search) {
-      queryBuilder.where(
+      queryBuilder.andWhere(
         '(customer.first_name ILIKE :search OR customer.last_name ILIKE :search OR customer.phone ILIKE :search)',
         { search: `%${search}%` },
       );
@@ -50,20 +62,23 @@ export class CustomersService {
     return paginate<Customer>(queryBuilder, { page, limit });
   }
 
-  async findOne(id: string): Promise<Customer> {
-    const customer = await this.customerRepository.findOne({ where: { id } });
+  async findOne(id: string, restaurantId: string): Promise<Customer> {
+    const customer = await this.customerRepository.findOne({ 
+      where: { id, restaurantId } 
+    });
     if (!customer)
       throw new NotFoundException(`Customer with ID ${id} not found`);
     return customer;
   }
 
-  async search(query: string): Promise<Customer[]> {
+  async search(query: string, restaurantId: string): Promise<Customer[]> {
     if (!query) return [];
 
     // Search by phone (exact or partial) or name (partial case-insensitive)
     return this.customerRepository
       .createQueryBuilder('customer')
-      .where(
+      .where('customer.restaurantId = :restaurantId', { restaurantId })
+      .andWhere(
         'customer.phone LIKE :query OR customer.first_name ILIKE :query OR customer.last_name ILIKE :query',
         { query: `%${query}%` },
       )
@@ -71,21 +86,22 @@ export class CustomersService {
       .getMany();
   }
 
-  async findByPhone(phone: string): Promise<Customer | null> {
-    return this.customerRepository.findOne({ where: { phone } });
+  async findByPhone(phone: string, restaurantId: string): Promise<Customer | null> {
+    return this.customerRepository.findOne({ where: { phone, restaurantId } });
   }
 
   async update(
     id: string,
     updateCustomerDto: Partial<CreateCustomerDto>,
+    restaurantId: string,
   ): Promise<Customer> {
-    const customer = await this.findOne(id);
+    const customer = await this.findOne(id, restaurantId);
     Object.assign(customer, updateCustomerDto);
     return this.customerRepository.save(customer);
   }
 
-  async updateStats(id: string, amountSpent: number): Promise<void> {
-    const customer = await this.findOne(id);
+  async updateStats(id: string, restaurantId: string, amountSpent: number): Promise<void> {
+    const customer = await this.findOne(id, restaurantId);
     customer.visit_count += 1;
     customer.total_spent = Number(customer.total_spent) + Number(amountSpent);
     customer.last_visit = new Date();

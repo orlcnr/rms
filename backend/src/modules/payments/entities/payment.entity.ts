@@ -1,7 +1,8 @@
-import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { Customer } from '../../customers/entities/customer.entity';
+import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 
 export enum PaymentMethod {
   CASH = 'cash',
@@ -27,6 +28,14 @@ export enum DiscountType {
 
 @Entity('payments', { schema: 'operations' })
 export class Payment extends BaseEntity {
+  @Column()
+  @Index()
+  restaurant_id: string;
+
+  @ManyToOne(() => Restaurant)
+  @JoinColumn({ name: 'restaurant_id' })
+  restaurant: Restaurant;
+
   @Column()
   order_id: string;
 
@@ -64,7 +73,7 @@ export class Payment extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   discount_reason: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   final_amount: number;
 
   @Column({
@@ -83,4 +92,14 @@ export class Payment extends BaseEntity {
   // Refund için orijinal ödeme
   @Column({ type: 'uuid', nullable: true })
   original_payment_id: string | null;
+
+  // Bahşiş ve Komisyon
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  tip_amount: number | null;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  commission_rate: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  net_tip_amount: number | null;
 }

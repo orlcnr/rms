@@ -161,7 +161,7 @@ export function PaymentSummaryCard({
           <span className="text-sm font-semibold">Ödeme Tamamlandı</span>
         ) : (
           <span className="text-sm font-semibold">
-            {remainingBalance.toFixed(2)} TL Ödenmemiş
+            {formatPaymentAmount(remainingBalance)} Ödenmemiş
           </span>
         )}
       </div>

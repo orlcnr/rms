@@ -17,6 +17,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { GetCustomersDto } from './dto/get-customers.dto';
+import { GetUser } from '../../common/decorators/get-user.decorator';
+import { User } from '../users/entities/user.entity';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -26,8 +28,8 @@ export class CustomersController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
-  create(@Body() createCustomerDto: CreateCustomerDto) {
-    return this.customersService.create(createCustomerDto);
+  create(@Body() createCustomerDto: CreateCustomerDto, @GetUser() user: User) {
+    return this.customersService.create(createCustomerDto, user.restaurant_id);
   }
 
   @Patch(':id')
@@ -35,14 +37,15 @@ export class CustomersController {
   update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
+    @GetUser() user: User,
   ) {
-    return this.customersService.update(id, updateCustomerDto);
+    return this.customersService.update(id, updateCustomerDto, user.restaurant_id);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all customers (Paginated)' })
-  findAll(@Query() queryDto: GetCustomersDto) {
-    return this.customersService.findAll(queryDto);
+  findAll(@Query() queryDto: GetCustomersDto, @GetUser() user: User) {
+    return this.customersService.findAll(queryDto, user.restaurant_id);
   }
 
   @Get('search')
@@ -52,13 +55,13 @@ export class CustomersController {
     required: true,
     description: 'Search query (phone or name)',
   })
-  search(@Query('q') query: string) {
-    return this.customersService.search(query);
+  search(@Query('q') query: string, @GetUser() user: User) {
+    return this.customersService.search(query, user.restaurant_id);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get customer by ID' })
-  findOne(@Param('id') id: string) {
-    return this.customersService.findOne(id);
+  findOne(@Param('id') id: string, @GetUser() user: User) {
+    return this.customersService.findOne(id, user.restaurant_id);
   }
 }

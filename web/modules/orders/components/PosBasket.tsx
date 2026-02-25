@@ -68,9 +68,9 @@ export function PosBasket({
 
   return (
     <div className={cn('flex flex-col h-full p-4', className)}>
-      {/* Header: ADİZYON + Masa */}
-      <div className="pb-6 border-b-2 border-border-light">
-        <h3 className="text-2xl font-black text-text-primary uppercase tracking-tight">
+      {/* Header */}
+      <div className="shrink-0 pb-4 border-b-2 border-border-light">
+        <h3 className="text-xl font-black text-text-primary uppercase tracking-tight">
           ADİSYON
         </h3>
         {selectedTable && (
@@ -98,46 +98,44 @@ export function PosBasket({
           items.map((item) => (
             <div
               key={item.menuItemId}
-              className="flex items-center justify-between py-2 border-b border-dotted border-border-light gap-2"
+              className="flex items-center justify-between py-2.5 border-b border-border-light/60 gap-3"
             >
-              {/* Left: Name only */}
-              <h4 className="text-xs font-bold text-text-primary uppercase truncate flex-1 mr-2">
-                {item.name}
-              </h4>
+              {/* Product Name - left */}
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-semibold text-text-primary truncate">
+                  {item.name}
+                </h4>
+              </div>
 
-              {/* Right: Price + Controls */}
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] font-bold text-text-muted whitespace-nowrap min-w-[50px] text-right">
-                  {formatCurrency(item.price * item.quantity)}
-                </span>
-                
-                {/* Adet Kontrolü - Primary theme butonlar */}
-                <div className="flex items-center gap-0.5">
-                  <button
-                    onClick={() => onDecrement(item.menuItemId)}
-                    className="w-5 h-5 flex items-center justify-center rounded-sm bg-primary-main hover:bg-primary-hover transition-colors"
-                  >
-                    <Minus size={10} className="text-text-inverse" />
-                  </button>
-                  <span className="w-4 text-center text-[10px] font-bold">
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => onIncrement(item.menuItemId)}
-                    className="w-5 h-5 flex items-center justify-center rounded-sm bg-primary-main hover:bg-primary-hover transition-colors"
-                  >
-                    <Plus size={10} className="text-text-inverse" />
-                  </button>
-                </div>
-
-                {/* Sil - Gri ikon */}
+              {/* Quantity Controls */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
-                  onClick={() => onRemove(item.menuItemId)}
-                  className="p-1 hover:bg-bg-muted rounded-sm transition-colors"
+                  onClick={() => onDecrement(item.menuItemId)}
+                  className="w-6 h-6 flex items-center justify-center rounded bg-bg-muted hover:bg-primary-main hover:text-white transition-colors"
                 >
-                  <Trash2 size={12} className="text-text-muted" />
+                  <Minus size={10} />
+                </button>
+                <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                <button
+                  onClick={() => onIncrement(item.menuItemId)}
+                  className="w-6 h-6 flex items-center justify-center rounded bg-bg-muted hover:bg-primary-main hover:text-white transition-colors"
+                >
+                  <Plus size={10} />
                 </button>
               </div>
+
+              {/* Price - RIGHT ALIGNED with min-w-[80px] */}
+              <span className="text-xs font-bold text-text-primary whitespace-nowrap min-w-[80px] text-right">
+                {formatCurrency(item.price * item.quantity)}
+              </span>
+
+              {/* Delete Button */}
+              <button
+                onClick={() => onRemove(item.menuItemId)}
+                className="p-1 hover:bg-bg-muted rounded transition-colors shrink-0"
+              >
+                <Trash2 size={12} className="text-text-muted" />
+              </button>
             </div>
           ))
         )}
@@ -145,25 +143,34 @@ export function PosBasket({
 
       {/* Özet - Turuncu başlık */}
       {!isEmpty && (
-        <div className="pt-4 border-t-2 border-border-light">
-          <div className="flex flex-col gap-1 mb-3">
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-              Toplam
+        <div className="shrink-0 pt-4 border-t-2 border-border-light">
+          {/* Subtotal Row */}
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-medium text-text-muted">Ara Toplam</span>
+            <span className="text-sm font-semibold text-text-primary">
+              {formatCurrency(summary.subtotal || summary.total)}
             </span>
-            <span className="text-2xl font-bold text-primary-main">
+          </div>
+
+          {/* Total Row - PROMINENT */}
+          <div className="flex justify-between items-center pt-2 border-t border-border-light">
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              GENEL TOPLAM
+            </span>
+            <span className="text-2xl font-black text-primary-main tabular-nums">
               {formatCurrency(summary.total)}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-text-muted">
-              {summary.itemCount} ürün
-            </span>
+
+          {/* Item Count */}
+          <div className="flex justify-between items-center mt-2">
+            <span className="text-xs text-text-muted">{summary.itemCount} ürün</span>
           </div>
         </div>
       )}
 
       {/* Action Bar - Tam genişlik turuncu buton */}
-      <div className="border-t border-border-light pt-3 mt-auto">
+      <div className="shrink-0 border-t border-border-light pt-3 mt-auto">
         {/* Ödenmemiş sipariş varsa hem Siparişi Güncelle hem de Ödeme Al butonu */}
         {needsPayment && onPay ? (
           <div className="flex gap-2">

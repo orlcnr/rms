@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentMethod } from '../entities/payment.entity';
+import { PaymentMethod, DiscountType } from '../entities/payment.entity';
 
 export class CreatePaymentDto {
   @ApiProperty({ example: 'uuid-of-order' })
@@ -36,10 +36,10 @@ export class CreatePaymentDto {
   @Min(0)
   discount_amount?: number;
 
-  @ApiPropertyOptional({ example: 'fixed', enum: ['percentage', 'fixed'] })
-  @IsString()
+  @ApiPropertyOptional({ example: 'discount', enum: DiscountType })
+  @IsEnum(DiscountType)
   @IsOptional()
-  discount_type?: 'percentage' | 'fixed';
+  discount_type?: DiscountType;
 
   @ApiPropertyOptional({ example: 'Payment note' })
   @IsString()
@@ -50,4 +50,17 @@ export class CreatePaymentDto {
   @IsUUID()
   @IsOptional()
   user_id?: string;
+
+  // Bahşiş alanları
+  @ApiPropertyOptional({ example: 50 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  tip_amount?: number;
+
+  @ApiPropertyOptional({ example: 3.0 })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  commission_rate?: number;
 }

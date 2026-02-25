@@ -1,5 +1,6 @@
-import { Entity, Column, OneToMany, Index } from 'typeorm';
+import { Entity, Column, OneToMany, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
+import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 // Will add Reservation relation later to avoid circular dependency issues initially
 // import { Reservation } from '../../reservations/entities/reservation.entity';
 
@@ -11,12 +12,22 @@ export class Customer extends BaseEntity {
   @Column()
   last_name: string;
 
-  @Column({ unique: true })
-  @Index() // Indexed for fast search
+  @Column()
+  @Index('idx_customers_phone_restaurant', ['phone', 'restaurantId'])
   phone: string;
 
   @Column({ nullable: true })
   email: string;
+
+  // ===== Multi-tenant: Restaurant ilişkisi =====
+  
+  @Column({ name: 'restaurant_id' })
+  @Index('idx_customers_restaurant')
+  restaurantId: string;
+
+  @ManyToOne(() => Restaurant)
+  @JoinColumn({ name: 'restaurant_id' })
+  restaurant: Restaurant;
 
   @Column({ type: 'int', default: 0 })
   visit_count: number;

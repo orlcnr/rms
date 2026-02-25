@@ -1,30 +1,20 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
-// Hooks
 import { useOrdersLogic } from '../hooks/useOrdersLogic'
-
-// Components
 import { PosSubHeader } from './PosSubHeader'
 import { PosCategoryTabs } from './PosCategoryTabs'
 import { PosProductGrid } from './PosProductGrid'
 import { PosBasket } from './PosBasket'
 import { MobileBasketDrawer } from './MobileBasketDrawer'
 import { PaymentModal } from './PaymentModal'
-
-// Shared Components
 import { Button } from '@/modules/shared/components/Button'
-
-// Types
 import { MenuItem } from '@/modules/products/types'
 import { Table } from '@/modules/tables/types'
 import { Order } from '../types'
-
-// ============================================
-// PROPS
-// ============================================
 
 interface OrdersClientProps {
   restaurantId: string
@@ -39,10 +29,6 @@ interface OrdersClientProps {
   }
 }
 
-// ============================================
-// COMPONENT - ORCHESTRATOR
-// ============================================
-
 export function OrdersClient({
   restaurantId,
   initialTable,
@@ -51,10 +37,14 @@ export function OrdersClient({
   initialCategories = [],
   paginationMeta,
 }: OrdersClientProps) {
-  // Payment modal state
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const [localExistingOrder, setLocalExistingOrder] = useState<Order | null>(existingOrder || null)
+  const router = useRouter()
 
-  // Use the business logic hook
+  useEffect(() => {
+    if (existingOrder) setLocalExistingOrder(existingOrder)
+  }, [existingOrder])
+
   const hook = useOrdersLogic({
     restaurantId,
     initialTable,
@@ -64,22 +54,27 @@ export function OrdersClient({
     paginationMeta,
   })
 
-  // Hydration guard
   if (!hook.mounted) return null
 
-  return (
-    <div className="h-[calc(100vh-theme(spacing.16)-100px)] flex flex-col bg-bg-app overflow-hidden">
-      {/* Header */}
-      <PosSubHeader selectedTable={hook.selectedTable} />
+    */
+    <div
+      className="flex flex-col bg-bg-surface overflow-hidden"
+      style={{ height: 'calc(100vh - 96px)' }}
+    >
+      {/* SubHeader — Products sayfasıyla aynı yatay padding */}
+      <div className="shrink-0 px-4 sm:px-8 lg:px-12 pt-8">
+        <PosSubHeader selectedTable={hook.selectedTable} />
+      </div>
 
-      {/* Main Content - Two Panel Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* LEFT PANEL - Products */}
-        <div className="flex-1 flex flex-col overflow-hidden p-6">
-          {/* Search & Categories */}
-          <div className="bg-bg-surface border border-border-light rounded-sm p-6 shadow-sm mb-6">
-            {/* Search Input */}
-            <div className="relative group mb-6">
+      {/* İki Kolon İçerik */}
+      <div className="flex-1 flex gap-6 px-4 sm:px-8 lg:px-12 py-6 overflow-hidden min-h-0">
+
+        {/* SOL: Ürün Alanı */}
+        <div className="flex-1 flex flex-col min-w-0 bg-bg-surface border border-border-light rounded-sm overflow-hidden">
+
+          {/* Search + Categories */}
+          <div className="shrink-0 px-6 py-4 border-b border-border-light">
+            <div className="relative mb-4">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input
                 type="text"
@@ -89,8 +84,6 @@ export function OrdersClient({
                 className="w-full bg-bg-app border border-border-light rounded-sm py-3 pl-12 pr-4 text-xs font-black uppercase outline-none focus:border-primary-main"
               />
             </div>
-
-            {/* Category Tabs */}
             <PosCategoryTabs
               categories={hook.categories}
               activeCategoryId={hook.activeCategoryId}
@@ -98,15 +91,13 @@ export function OrdersClient({
             />
           </div>
 
-          {/* Product Grid */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Ürün Grid */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 bg-bg-app">
             <PosProductGrid
               items={hook.filteredItems}
               onAddToBasket={hook.handleAddToBasket}
               basketItems={hook.basket}
             />
-
-            {/* Load More Trigger */}
             <div ref={hook.loadMoreRef} className="h-4" />
             {hook.isLoadingMore && (
               <div className="flex justify-center py-4">
@@ -116,13 +107,13 @@ export function OrdersClient({
           </div>
         </div>
 
-        {/* RIGHT PANEL - Basket (Desktop) */}
-        <div className="hidden lg:flex lg:w-[360px] flex-col bg-bg-surface border-l border-border-light shadow-xl mt-5">
+        {/* SAĞ: Adisyon */}
+        <div className="w-[380px] shrink-0 flex flex-col bg-bg-surface border border-border-light rounded-sm overflow-hidden">
           <PosBasket
             items={hook.basket}
             selectedTable={hook.selectedTable}
             orderType={hook.orderType}
-            existingOrder={hook.existingOrder}
+            existingOrder={localExistingOrder}
             onIncrement={hook.incrementItem}
             onDecrement={hook.decrementItem}
             onRemove={hook.removeFromBasket}
@@ -130,18 +121,18 @@ export function OrdersClient({
             onSubmit={hook.handleSubmitOrder}
             onPay={() => setIsPaymentOpen(true)}
             isLoading={hook.isSubmitting}
+            className="h-full"
           />
         </div>
       </div>
 
-      {/* MOBILE BASKET BUTTON */}
-      <div className="lg:hidden p-4 bg-bg-surface border-t border-border-light">
+      {/* Mobile Basket Button */}
+      <div className="lg:hidden shrink-0 p-4 bg-bg-surface border-t border-border-light">
         <Button variant="primary" className="w-full" onClick={() => hook.setIsBasketOpen(true)}>
           Sepeti Gör ({hook.basketSummary.itemCount})
         </Button>
       </div>
 
-      {/* MOBILE DRAWER */}
       <MobileBasketDrawer
         isOpen={hook.isBasketOpen}
         onClose={() => hook.setIsBasketOpen(false)}
@@ -156,17 +147,15 @@ export function OrdersClient({
         isLoading={hook.isSubmitting}
       />
 
-      {/* PAYMENT MODAL */}
       <PaymentModal
         isOpen={isPaymentOpen}
         onClose={() => setIsPaymentOpen(false)}
-        orderId={hook.existingOrder?.id || ''}
-        orderTotal={hook.existingOrder?.totalAmount || hook.basketSummary.total}
+        orderId={hook.existingOrder?.id || localExistingOrder?.id || ''}
+        orderTotal={hook.existingOrder?.totalAmount || localExistingOrder?.totalAmount || hook.basketSummary.total}
         restaurantId={restaurantId}
         onSuccess={() => {
-          // Sipariş ödendi - sepeti temizle ve masayı yenile
-          hook.clearBasket();
-          // Socket event zaten hook tarafından yönetiliyor
+          hook.clearBasket()
+          setLocalExistingOrder(null)
         }}
       />
     </div>

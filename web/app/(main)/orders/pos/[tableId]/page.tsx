@@ -1,7 +1,6 @@
 // ============================================
 // ORDERS POS PAGE - Server Component
-// /orders/pos/[tableId] - Masa üzerinden sipariş oluşturma/düzenleme
-// Query: ?orderId=xxx (opsiyonel, mevcut sipariş varsa)
+// /orders/pos/[tableId]
 // ============================================
 
 import { notFound } from 'next/navigation'
@@ -23,7 +22,6 @@ interface PageProps {
 }
 
 export default async function PosPage({ params, searchParams }: PageProps) {
-  // Restaurant context'i al
   const context = await getRestaurantContext()
   const restaurantId = context.restaurantId
   const { tableId } = await params
@@ -37,53 +35,37 @@ export default async function PosPage({ params, searchParams }: PageProps) {
     )
   }
 
-  // 1. Masayı getir
   const table = await tablesApi.getTable(tableId).catch(() => null)
+  if (!table) notFound()
 
-  if (!table) {
-    notFound()
-  }
-
-  // Masayı seç
-  const initialTable = table
-
-  // 2. Aktif siparişi kontrol et
-  // Eğer query'de orderId varsa onu kullan, yoksa masadaki aktif siparişi bul
   let existingOrder = null
-
-  // Backend'in kullandığı aktif durumlar: PENDING, PREPARING, READY, SERVED
-  // Backend comma-separated string olarak destekliyor
   const activeStatusQuery = `${OrderStatus.PENDING},${OrderStatus.PREPARING},${OrderStatus.READY},${OrderStatus.SERVED}`
 
   if (orderIdFromQuery) {
-    // Query'den gelen orderId'yi kullan
     existingOrder = await ordersApi.getOrderById(orderIdFromQuery).catch(() => null)
   } else {
-    // Masadaki aktif siparişi bul (tüm aktif durumları kontrol et)
     const activeOrdersResponse = await ordersApi.getOrders({
       restaurantId,
       tableId,
-      status: activeStatusQuery as any, // Backend comma-separated string olarak kabul ediyor
+      status: activeStatusQuery as any,
     }).catch(() => ({ items: [], total: 0 }))
 
-    const activeOrders = 'items' in activeOrdersResponse 
-      ? activeOrdersResponse.items 
+    const activeOrders = 'items' in activeOrdersResponse
+      ? activeOrdersResponse.items
       : activeOrdersResponse
-    
+
     existingOrder = activeOrders?.[0] || null
   }
 
-  // 3. Menu verilerini getir (limit 20, pagination ile)
   const [menuItemsResponse, categories] = await Promise.all([
     productsApi.getProducts(restaurantId, { page: 1, limit: 20 }).catch(() => ({ items: [], total: 0 })),
     productsApi.getCategories(restaurantId).catch(() => []),
   ])
 
-  const initialMenuItems = 'items' in menuItemsResponse 
-    ? menuItemsResponse.items 
+  const initialMenuItems = 'items' in menuItemsResponse
+    ? menuItemsResponse.items
     : menuItemsResponse
 
-  // Extract pagination meta
   const paginationMeta = 'meta' in menuItemsResponse ? {
     totalItems: menuItemsResponse.meta.totalItems,
     totalPages: menuItemsResponse.meta.totalPages,
@@ -91,15 +73,30 @@ export default async function PosPage({ params, searchParams }: PageProps) {
   } : undefined
 
   return (
-    <main className="h-screen overflow-hidden bg-bg-app">
+    /*
+      Layout <main> class'ları:
+        px-4 sm:px-8 lg:px-12  → yandan padding   → -mx ile iptal
+        pb-32                  → alt padding       → -mb ile iptal
+        pt-24 sm:pt-28         → üst padding (gri) → -mt ile iptal, pt ile geri ekle
+        
+      -mt + pt kombinasyonu: layout padding'ini iptal edip kendi rengiyle yeniden uyguluyoruz.
+      Bu sayede üstteki gri band bg-bg-surface ile örtülüyor, header offset korunuyor.
+    */
+    <div className="
+      -mx-4 sm:-mx-8 lg:-mx-12
+      -mt-24 sm:-mt-28
+      -mb-32
+      pt-24 sm:pt-28
+      bg-bg-surface
+    ">
       <OrdersClient
         restaurantId={restaurantId}
-        initialTable={initialTable}
+        initialTable={table}
         existingOrder={existingOrder}
         initialMenuItems={initialMenuItems}
         initialCategories={categories}
         paginationMeta={paginationMeta}
       />
-    </main>
+    </div>
   )
 }

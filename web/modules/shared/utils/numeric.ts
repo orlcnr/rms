@@ -102,3 +102,27 @@ export const parseTurkishNumber = (value: string): number => {
   const normalized = value.replace(/\./g, '').replace(',', '.');
   return parseFloat(normalized);
 };
+
+/**
+ * Safely parses any numeric value (including null/undefined) to a JavaScript number.
+ * Handles both string and number inputs.
+ * 
+ * @param value - Any numeric value
+ * @returns Parsed number or 0
+ * 
+ * @example
+ * parseNumericValue(100)          // returns 100
+ * parseNumericValue("1234.56")    // returns 1234.56
+ * parseNumericValue("1.234,56")   // returns 1234.56
+ * parseNumericValue(null)         // returns 0
+ * parseNumericValue(undefined)    // returns 0
+ */
+export const parseNumericValue = (value: number | string | undefined | null): number => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const normalized = value.replace(',', '.');
+    return parseFloat(normalized) || 0;
+  }
+  return 0;
+};
