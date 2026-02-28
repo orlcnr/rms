@@ -46,7 +46,9 @@ export class CreateStockMovementUseCase {
   async execute(dto: CreateStockMovementDto): Promise<StockMovement> {
     // Validation: unit_price sadece IN hareketlerinde izinli
     if (dto.type === MovementType.IN && !dto.unit_price) {
-      throw new BadRequestException('Giriş hareketleri için birim fiyat zorunludur');
+      throw new BadRequestException(
+        'Giriş hareketleri için birim fiyat zorunludur',
+      );
     }
 
     this.logger.log(
@@ -62,7 +64,10 @@ export class CreateStockMovementUseCase {
         );
 
         // 2. Stock'u kilitli olarak çek
-        const stock = await this.getStockWithLock(queryRunner, dto.ingredient_id);
+        const stock = await this.getStockWithLock(
+          queryRunner,
+          dto.ingredient_id,
+        );
 
         // 3. Yeni stok miktarını hesapla
         const newQuantity = this.calculateNewQuantity(
@@ -78,12 +83,16 @@ export class CreateStockMovementUseCase {
 
         // 4. IN hareketi ise maliyetleri güncelle
         if (dto.type === MovementType.IN && dto.unit_price) {
-          ingredient.updateCosts(dto.quantity, dto.unit_price, Number(stock.quantity));
+          ingredient.updateCosts(
+            dto.quantity,
+            dto.unit_price,
+            Number(stock.quantity),
+          );
           await queryRunner.manager.save(ingredient);
 
           this.logger.log(
             `Costs updated: ingredient=${ingredient.name}, ` +
-            `average_cost=${ingredient.average_cost}, last_price=${ingredient.last_price}`,
+              `average_cost=${ingredient.average_cost}, last_price=${ingredient.last_price}`,
           );
         }
 
@@ -100,7 +109,7 @@ export class CreateStockMovementUseCase {
 
         this.logger.log(
           `Stock movement created: ${savedMovement.id}, type: ${dto.type}, ` +
-          `ingredient: ${ingredient.name}, quantity: ${dto.quantity}`,
+            `ingredient: ${ingredient.name}, quantity: ${dto.quantity}`,
         );
 
         return savedMovement;

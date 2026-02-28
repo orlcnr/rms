@@ -41,7 +41,9 @@ export class CreateUserDto {
   @IsOptional()
   role?: Role;
 
-  @ApiPropertyOptional({ description: 'Restaurant ID (required for super_admin)' })
+  @ApiPropertyOptional({
+    description: 'Restaurant ID (required for super_admin)',
+  })
   @IsUUID()
   @IsOptional()
   restaurant_id?: string;

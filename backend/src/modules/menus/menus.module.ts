@@ -35,4 +35,4 @@ import { PopularityConsumer } from './popularity.consumer';
   providers: [MenusService],
   exports: [MenusService],
 })
-export class MenusModule { }
+export class MenusModule {}

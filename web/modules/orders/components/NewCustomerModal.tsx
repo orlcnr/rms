@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, MapPin, Loader2 } from 'lucide-react';
+import { X, User, Mail, MapPin, Loader2 } from 'lucide-react';
 import { customersApi, Customer } from '@/modules/customers/services/customers.service';
+import { PhoneInput } from '@/modules/shared/components/PhoneInput';
+import { cleanPhoneNumber } from '@/modules/shared/utils/format';
 
 // ============================================
 // NEW CUSTOMER MODAL - Yeni Müşteri Ekleme Modalı
@@ -72,44 +74,26 @@ export function NewCustomerModal({
       const newCustomer = await customersApi.create({
         first_name: formData.first_name,
         last_name: formData.last_name,
-        phone: formData.phone,
+        phone: cleanPhoneNumber(formData.phone),
         email: formData.email || undefined,
         notes: formData.notes || undefined,
-        restaurant_id: restaurantId,
       });
 
       onSuccess(newCustomer);
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create customer:', err);
-      setError('Müşteri oluşturulamadı. Lütfen tekrar deneyin.');
+      const message = err.response?.data?.message || 'Müşteri oluşturulamadı. Lütfen tekrar deneyin.';
+      setError(Array.isArray(message) ? message.join(', ') : message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handlePhoneChange = (value: string) => {
-    // Format phone number as user types (Turkish format)
-    const cleaned = value.replace(/\D/g, '');
-    let formatted = cleaned;
-    
-    if (cleaned.length > 0) {
-      if (cleaned.length <= 3) {
-        formatted = cleaned;
-      } else if (cleaned.length <= 7) {
-        formatted = `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
-      } else {
-        formatted = `${cleaned.slice(0, 3)} ${cleaned.slice(3, 7)} ${cleaned.slice(7, 9)} ${cleaned.slice(9, 11)}`;
-      }
-    }
-    
-    setFormData({ ...formData, phone: formatted });
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -186,29 +170,15 @@ export function NewCustomerModal({
           </div>
 
           {/* Phone */}
-          <div>
-            <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider block mb-2">
-              Telefon <span className="text-danger-main">*</span>
-            </label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" />
-              <input
-                required
-                type="tel"
-                inputMode="tel"
-                value={formData.phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                disabled={isLoading}
-                className="w-full pl-10 pr-4 py-3 bg-bg-surface border border-border-light rounded-sm
-                  focus:outline-none focus:border-primary-main focus:ring-2 focus:ring-primary-main/20
-                  placeholder:text-text-muted/40 transition-all
-                  disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="05xx xxx xx xx"
-                maxLength={16}
-              />
-            </div>
-            <p className="text-xs text-text-muted mt-1">Örnek: 0532 123 45 67</p>
-          </div>
+          <PhoneInput
+            id="phone"
+            name="phone"
+            label="Telefon"
+            required
+            value={formData.phone}
+            onChange={(value) => setFormData({ ...formData, phone: value })}
+            disabled={isLoading}
+          />
 
           {/* Email (Optional) */}
           <div>

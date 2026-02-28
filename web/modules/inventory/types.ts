@@ -139,6 +139,37 @@ export interface CostAnalysisSummary {
 }
 
 // ============================================
+// API REQUEST PAYLOADS (Transport Layer)
+// ============================================
+
+export interface CreateIngredientPayload {
+    name: string
+    unit: string
+    restaurant_id: string
+    critical_level: number
+    transaction_id: string
+}
+
+export interface UpdateIngredientPayload extends Partial<CreateIngredientPayload> {
+    transaction_id: string
+}
+
+export interface CreateStockMovementPayload {
+    type: MovementType
+    quantity: number
+    reason: string
+    ingredient_id: string
+    unit_price?: number
+    supplier_id?: string
+    transaction_id: string
+}
+
+export interface BulkStockUpdatePayload {
+    updates: BulkStockUpdate[]
+    transaction_id: string
+}
+
+// ============================================
 // YARDIMCI FONKSİYONLAR
 // ============================================
 

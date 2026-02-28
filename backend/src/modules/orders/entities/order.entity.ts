@@ -11,7 +11,6 @@ import { OrderType } from '../enums/order-type.enum';
 import { OrderSource } from '../enums/order-source.enum';
 export { OrderStatus, OrderType, OrderSource };
 
-
 @Entity('orders', { schema: 'business' })
 export class Order extends BaseEntity {
   @Column({ name: 'restaurant_id' })

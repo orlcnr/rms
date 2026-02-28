@@ -167,9 +167,10 @@ export class GuestSessionsService {
     const key = `guestSession:${session.id}`;
 
     // Handle both Date object and ISO string format
-    const expiresAtTime = session.expiresAt instanceof Date
-      ? session.expiresAt.getTime()
-      : new Date(session.expiresAt).getTime();
+    const expiresAtTime =
+      session.expiresAt instanceof Date
+        ? session.expiresAt.getTime()
+        : new Date(session.expiresAt).getTime();
     const ttl = Math.floor((expiresAtTime - Date.now()) / 1000);
 
     console.log(`[DEBUG] Saving session to Redis: ${key}, TTL: ${ttl}s`);
@@ -203,7 +204,9 @@ export class GuestSessionsService {
 
     // Auto-heal: If tableName is missing, fetch it from the database
     if (!session.tableName) {
-      console.log(`[DEBUG getSession] Missing tableName for table ${session.tableId}, fetching...`);
+      console.log(
+        `[DEBUG getSession] Missing tableName for table ${session.tableId}, fetching...`,
+      );
       const table = await this.tableRepository.findOne({
         where: { id: session.tableId },
         select: ['id', 'name'],

@@ -4,6 +4,52 @@
 
 export type DateFormat = 'short' | 'long' | 'time' | 'datetime' | 'relative';
 
+let serverOffset = 0;
+
+/**
+ * Set the offset between server and client time in milliseconds
+ * Offset = ServerTime - LocalTime
+ */
+export function setServerOffset(offset: number) {
+  serverOffset = offset;
+}
+
+/**
+ * Get current date adjusted by server offset
+ */
+export function getNow(): Date {
+  // Always use the compensated time
+  return new Date(Date.now() + serverOffset);
+}
+
+/**
+ * Ensures a date string is treated as UTC if it doesn't have a timezone indicator.
+ * Backend stores UTC but sometimes strings are returned without 'Z'.
+ */
+export function ensureISO(date: string | Date | undefined | null): string {
+  if (!date) return '';
+  if (date instanceof Date) return date.toISOString();
+
+  // If it's a string and doesn't contain 'Z' or '+', append 'Z'
+  if (typeof date === 'string' && !date.includes('Z') && !date.includes('+')) {
+    // Replace space with T for valid ISO if needed
+    const isoStr = date.replace(' ', 'T');
+    return isoStr.includes('T') ? `${isoStr}.000Z` : `${isoStr}T00:00:00.000Z`;
+  }
+
+  return date;
+}
+
+/**
+ * Parse a date string safely ensuring it's treated as UTC if requested
+ */
+export function parseISO(date: string | Date | undefined | null): Date {
+  if (!date) return getNow();
+  const iso = ensureISO(date);
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? getNow() : d;
+}
+
 /**
  * Format a date for display
  * @param date - Date string or Date object
@@ -16,8 +62,8 @@ export function formatDate(
 ): string {
   if (!date) return '-';
 
-  const d = typeof date === 'string' ? new Date(date) : date;
-  
+  const d = parseISO(date);
+
   if (isNaN(d.getTime())) return '-';
 
   const options: Intl.DateTimeFormatOptions = {};
@@ -84,7 +130,7 @@ export function formatTime(date: string | Date | undefined | null): string {
  * Format relative time (e.g., "5 dakika önce", "2 saat önce")
  */
 function formatRelativeTime(date: Date): string {
-  const now = new Date();
+  const now = getNow();
   const diffMs = now.getTime() - date.getTime();
   const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffSecs / 60);
@@ -109,10 +155,10 @@ function formatRelativeTime(date: Date): string {
  */
 export function isToday(date: string | Date | undefined | null): boolean {
   if (!date) return false;
-  
+
   const d = typeof date === 'string' ? new Date(date) : date;
-  const today = new Date();
-  
+  const today = getNow();
+
   return (
     d.getDate() === today.getDate() &&
     d.getMonth() === today.getMonth() &&
@@ -125,11 +171,11 @@ export function isToday(date: string | Date | undefined | null): boolean {
  */
 export function isYesterday(date: string | Date | undefined | null): boolean {
   if (!date) return false;
-  
+
   const d = typeof date === 'string' ? new Date(date) : date;
-  const yesterday = new Date();
+  const yesterday = getNow();
   yesterday.setDate(yesterday.getDate() - 1);
-  
+
   return (
     d.getDate() === yesterday.getDate() &&
     d.getMonth() === yesterday.getMonth() &&
@@ -144,9 +190,9 @@ export function getDateRange(period: 'today' | 'week' | 'month' | 'year'): {
   start: Date;
   end: Date;
 } {
-  const now = new Date();
-  const start = new Date();
-  const end = new Date();
+  const now = getNow();
+  const start = getNow();
+  const end = getNow();
 
   switch (period) {
     case 'today':

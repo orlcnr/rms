@@ -15,7 +15,7 @@ export class TablesService {
     private readonly tableRepository: Repository<Table>,
     @InjectRepository(Area)
     private readonly areaRepository: Repository<Area>,
-  ) { }
+  ) {}
 
   // Area Methods
   async createArea(createAreaDto: CreateAreaDto): Promise<Area> {
@@ -79,8 +79,11 @@ export class TablesService {
         AND o.status IN ('pending', 'preparing', 'ready', 'served')
         AND o.table_id IS NOT NULL
     `;
-    
-    const activeOrders = await this.tableRepository.manager.query(activeOrdersQuery, [restaurantId]);
+
+    const activeOrders = await this.tableRepository.manager.query(
+      activeOrdersQuery,
+      [restaurantId],
+    );
 
     // Map orders by table_id for easy lookup
     const ordersByTableId = new Map<string, any>();
@@ -92,7 +95,7 @@ export class TablesService {
 
     return tables.map((table) => {
       const activeOrder = ordersByTableId.get(table.id);
-      
+
       // Eğer masanın aktif bir siparişi VARSA ama durumu 'available' ise, onu 'occupied' göster.
       if (activeOrder) {
         table.status = TableStatus.OCCUPIED;
@@ -158,6 +161,6 @@ export class TablesService {
    */
   async hasOpenTables(restaurantId: string): Promise<boolean> {
     const occupiedTables = await this.findAllTablesByRestaurant(restaurantId);
-    return occupiedTables.some(t => t.status === TableStatus.OCCUPIED);
+    return occupiedTables.some((t) => t.status === TableStatus.OCCUPIED);
   }
 }

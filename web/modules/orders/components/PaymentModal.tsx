@@ -1,35 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  X, 
-  Plus, 
-  Trash2, 
-  CreditCard, 
-  Banknote, 
-  Smartphone, 
-  Building, 
+import { http } from '@/modules/shared/api/http';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  X,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  Building,
   User,
-  Check,
   Calculator,
-  Loader2,
 } from 'lucide-react';
 import { usePayment } from '../hooks/usePayment';
 import { usePaymentModal } from '../hooks/usePaymentModal';
-import { PaymentMethod, formatPaymentAmount, PaymentLine } from '../types';
-import { CustomerSelector } from './CustomerSelector';
+import { PaymentMethod, DiscountType } from '../types';
 import { PaymentSummaryCard } from './PaymentSummaryCard';
 import { PaymentStatusBar } from './PaymentStatusBar';
 import { PaymentMethodsGrid } from './PaymentMethodsGrid';
 import { PaymentMethodDetails } from './PaymentMethodDetails';
 import { NewCustomerModal } from './NewCustomerModal';
+import { PaymentLineItem } from './PaymentLineItem';
+import { MobilePaymentSheet } from './MobilePaymentSheet';
+import { DiscountDialog } from './DiscountDialog';
 import { Customer } from '@/modules/customers/services/customers.service';
-import { cn } from '@/modules/shared/utils/cn';
-
-// ============================================
-// PAYMENT MODAL - Ana Ödeme Ekranı
-// Desktop: Modal | Mobile: Bottom Sheet
-// ============================================
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -38,283 +32,6 @@ interface PaymentModalProps {
   orderTotal: number;
   restaurantId: string;
   onSuccess?: () => void;
-}
-
-export function PaymentModal({
-  isOpen,
-  onClose,
-  orderId,
-  orderTotal,
-  restaurantId,
-  onSuccess,
-}: PaymentModalProps) {
-  // Hook for payment logic
-  const hook = usePayment({
-    orderId,
-    orderTotal,
-    restaurantId,
-    onSuccess: () => {
-      onSuccess?.();
-      onClose();
-    },
-  });
-
-  // Hook for customer creation logic
-  const customerHook = usePaymentModal({
-    restaurantId,
-    onSuccess: () => {
-      // Customer created successfully - could refresh or show feedback
-    },
-  });
-
-  // Destructure hook values
-  const { handleAddNewCustomer, isCreatingCustomer } = customerHook;
-
-  // State for change confirmation
-  const [showChangeConfirm, setShowChangeConfirm] = useState(false);
-  
-  // State for new customer modal
-  const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
-  const [newCustomerInitialName, setNewCustomerInitialName] = useState<string>('');
-
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const check = () => {
-      setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
-    };
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
-  // Payment method icons
-  const getMethodIcon = (method: PaymentMethod) => {
-    switch (method) {
-      case PaymentMethod.CASH: return Banknote;
-      case PaymentMethod.CREDIT_CARD: 
-      case PaymentMethod.DEBIT_CARD: return CreditCard;
-      case PaymentMethod.DIGITAL_WALLET: return Smartphone;
-      case PaymentMethod.BANK_TRANSFER: return Building;
-      case PaymentMethod.OPEN_ACCOUNT: return User;
-      default: return CreditCard;
-    }
-  };
-
-  // Handle successful payment
-  const handleComplete = async () => {
-    // Nakit üstü varsa onay al
-    if (hook.totalChange > 0 && !showChangeConfirm) {
-      setShowChangeConfirm(true);
-      return;
-    }
-    
-    setShowChangeConfirm(false);
-    await hook.completePayment();
-  };
-
-  // Handle opening new customer modal
-  const handleOpenNewCustomerModal = (initialName?: string) => {
-    setNewCustomerInitialName(initialName || '');
-    setIsNewCustomerModalOpen(true);
-  };
-
-  // Handle new customer created
-  const handleNewCustomerCreated = (customer: Customer) => {
-    // If there's an active payment line, set the customer
-    if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
-      hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, { customerId: customer.id });
-    }
-    setIsNewCustomerModalOpen(false);
-  };
-
-  // Nakit üstü var mı?
-  const hasChange = hook.totalChange > 0;
-
-  if (!isOpen) return null;
-
-  return (
-    <>
-      {/* Desktop Modal - Split Layout */}
-      {!isMobile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={onClose}
-          />
-          
-          {/* Modal Content - Split Layout */}
-          <div className="relative bg-bg-surface w-full max-w-5xl h-[650px] flex flex-col overflow-hidden rounded-sm shadow-xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-border-light bg-bg-surface flex-shrink-0">
-              <h2 className="text-lg font-black text-text-primary uppercase tracking-wider">
-                Ödeme Al
-              </h2>
-              <button
-                onClick={onClose}
-                disabled={hook.isProcessing}
-                className="p-2 hover:bg-bg-muted rounded-sm transition-colors disabled:opacity-50"
-              >
-                <X className="h-5 w-5 text-text-secondary" />
-              </button>
-            </div>
-
-            {/* Status Bar - Header altında */}
-            <div className="flex-shrink-0">
-              <PaymentStatusBar
-                finalTotal={hook.finalTotal}
-                remainingBalance={hook.remainingBalance}
-                discount={hook.discount?.amount}
-                isComplete={hook.canCompletePayment}
-              />
-            </div>
-
-            {/* Split Layout */}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-              {/* Sol Panel (40%) - Ödeme Özeti ve Satırlar - bg-slate-50 */}
-              <div className="w-[40%] bg-slate-50 border-r border-border-light overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  <PaymentSummaryCard
-                    subtotal={hook.serverOrderTotal || orderTotal}
-                    discount={hook.discount?.amount}
-                    discountType={hook.discount?.type as 'discount' | 'complimentary'}
-                    discountReason={hook.discount?.reason}
-                    finalTotal={hook.finalTotal}
-                    totalPaid={hook.totalPaid}
-                    remainingBalance={hook.remainingBalance}
-                    totalChange={hook.totalChange}
-                    isComplete={hook.canCompletePayment}
-                    isProcessing={hook.isProcessing}
-                    onApplyDiscount={() => {}}
-                  />
-
-                  {/* Payment Lines - Sol panelde */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                      Ödeme Satırları
-                    </h4>
-                    {hook.payments.length === 0 ? (
-                      <div className="text-center py-6 text-text-muted">
-                        <Calculator className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                        <p className="text-xs">Henüz ödeme eklenmedi</p>
-                      </div>
-                    ) : (
-                      hook.payments.map((payment, index) => (
-                        <PaymentLineItem
-                          key={payment.id}
-                          payment={payment}
-                          isActive={hook.activePaymentIndex === index}
-                          onActivate={() => hook.setActivePaymentIndex(index)}
-                          onUpdate={(updates) => hook.updatePaymentLine(payment.id, updates)}
-                          onRemove={() => hook.removePaymentLine(payment.id)}
-                          restaurantId={restaurantId}
-                          disabled={hook.isProcessing}
-                          onAddNewCustomer={handleAddNewCustomer}
-                          isCreatingCustomer={isCreatingCustomer}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Sağ Panel (60%) - Yöntemler ve Detaylar - bg-white */}
-              <div className="w-[60%] flex flex-col overflow-hidden bg-white">
-                {/* Payment Methods Grid */}
-                <div className="flex-shrink-0">
-                  <PaymentMethodsGrid
-                    selectedMethod={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
-                    onSelectMethod={(method) => hook.addPaymentLine(method)}
-                    disabled={hook.isProcessing}
-                  />
-                </div>
-
-                {/* Payment Method Details */}
-                <div className="flex-1 overflow-y-auto p-4">
-                  <PaymentMethodDetails
-                    activePayment={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex] || null : null}
-                    method={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
-                    onUpdate={(updates) => {
-                      if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
-                        hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, updates);
-                      }
-                    }}
-                    restaurantId={restaurantId}
-                    disabled={hook.isProcessing}
-                    onAddNewCustomer={handleAddNewCustomer}
-                    onOpenNewCustomerModal={handleOpenNewCustomerModal}
-                  />
-                </div>
-
-                {/* Footer - Sabit Alt Kısım */}
-                <div className="flex-shrink-0 p-4 border-t border-border-light bg-bg-surface">
-                  <PaymentModalFooter
-                    canComplete={hook.canCompletePayment}
-                    isProcessing={hook.isProcessing}
-                    onComplete={handleComplete}
-                    error={hook.error}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile Bottom Sheet */}
-      {isMobile && (
-        <MobilePaymentSheet
-          hook={hook}
-          orderTotal={hook.serverOrderTotal || orderTotal}
-          restaurantId={restaurantId}
-          onClose={onClose}
-          getMethodIcon={getMethodIcon}
-          handleComplete={handleComplete}
-          onAddNewCustomer={handleAddNewCustomer}
-          isCreatingCustomer={isCreatingCustomer}
-        />
-      )}
-
-      {/* New Customer Modal */}
-      <NewCustomerModal
-        isOpen={isNewCustomerModalOpen}
-        onClose={() => setIsNewCustomerModalOpen(false)}
-        onSuccess={handleNewCustomerCreated}
-        restaurantId={restaurantId}
-        initialName={newCustomerInitialName}
-      />
-    </>
-  );
-}
-
-// ============================================
-// SUB-COMPONENTS
-// ============================================
-
-function PaymentModalHeader({ 
-  title, 
-  onClose,
-  isProcessing 
-}: { 
-  title: string; 
-  onClose: () => void;
-  isProcessing: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-border-light bg-bg-surface">
-      <h2 className="text-lg font-black text-text-primary uppercase tracking-wider">
-        {title}
-      </h2>
-      <button
-        onClick={onClose}
-        disabled={isProcessing}
-        className="p-2 hover:bg-bg-muted rounded-sm transition-colors disabled:opacity-50"
-      >
-        <X className="h-5 w-5 text-text-secondary" />
-      </button>
-    </div>
-  );
 }
 
 function PaymentModalFooter({
@@ -347,12 +64,12 @@ function PaymentModalFooter({
       >
         {isProcessing ? (
           <>
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="animate-spin">⟳</span>
             İşleniyor...
           </>
         ) : (
           <>
-            <Check className="h-5 w-5" />
+            ✓
             Ödemeyi Tamamla
           </>
         )}
@@ -361,435 +78,285 @@ function PaymentModalFooter({
   );
 }
 
-// ============================================
-// PAYMENT LINE ITEM - Tek Ödeme Satırı
-// ============================================
-
-interface PaymentLineItemProps {
-  payment: PaymentLine;
-  isActive: boolean;
-  onActivate: () => void;
-  onUpdate: (updates: Partial<PaymentLine>) => void;
-  onRemove: () => void;
-  restaurantId: string;
-  disabled: boolean;
-  onAddNewCustomer?: (name: string) => Promise<Customer | null>;
-  isCreatingCustomer?: boolean;
-}
-
-function PaymentLineItem({
-  payment,
-  isActive,
-  onActivate,
-  onUpdate,
-  onRemove,
-  restaurantId,
-  disabled,
-  onAddNewCustomer,
-  isCreatingCustomer,
-}: PaymentLineItemProps) {
-  const [localAmount, setLocalAmount] = useState(payment.amount.toString());
-
-  const handleAmountChange = (value: string) => {
-    setLocalAmount(value);
-    const num = parseFloat(value.replace(',', '.')) || 0;
-    onUpdate({ amount: num });
-  };
-
-  return (
-    <div 
-      onClick={onActivate}
-      className={`
-        p-4 border rounded-sm transition-all cursor-pointer
-        ${isActive 
-          ? 'border-primary-main bg-primary-main/5' 
-          : 'border-border-light bg-bg-surface hover:border-border-medium'
-        }
-      `}
-    >
-      <div className="flex items-start justify-between gap-4">
-        {/* Method & Amount */}
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-semibold text-text-secondary uppercase">
-              {payment.method === 'cash' ? 'Nakit' : 
-               payment.method === 'credit_card' ? 'Kredi Kartı' :
-               payment.method === 'open_account' ? 'Açık Hesap' : payment.method}
-            </span>
-            {isActive && (
-              <span className="text-xs text-primary-main">Düzenleniyor</span>
-            )}
-          </div>
-          
-          {/* Amount Input */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={localAmount}
-              onChange={(e) => handleAmountChange(e.target.value)}
-              disabled={disabled}
-              className="w-32 px-3 py-2 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
-                focus:outline-none focus:border-primary-main"
-              placeholder="0,00"
-            />
-            <span className="text-sm font-semibold text-text-muted">TL</span>
-          </div>
-        </div>
-
-        {/* Customer Selector (for Open Account) */}
-        {payment.method === PaymentMethod.OPEN_ACCOUNT && isActive && (
-          <div className="w-full mt-3">
-            <CustomerSelector
-              restaurantId={restaurantId}
-              value={payment.customerId}
-              onChange={(customer) => {
-                onUpdate({ customerId: customer?.id });
-              }}
-              onAddNew={onAddNewCustomer}
-              disabled={disabled || isCreatingCustomer}
-            />
-          </div>
-        )}
-
-        {/* Cash Received (for Cash) */}
-        {payment.method === PaymentMethod.CASH && isActive && (
-          <div className="w-full mt-3">
-            <label className="text-xs font-semibold text-text-secondary uppercase block mb-1">
-              Alınan Tutar
-            </label>
-            <input
-              type="text"
-              value={(payment.cashReceived || 0).toString()}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value.replace(',', '.')) || 0;
-                onUpdate({ cashReceived: val });
-              }}
-              disabled={disabled}
-              className="w-full px-3 py-2 text-lg font-bold text-right bg-bg-muted border border-border-light rounded-sm
-                focus:outline-none focus:border-primary-main"
-              placeholder="0,00"
-            />
-            {(payment.cashReceived || 0) > payment.amount && (
-              <p className="text-xs text-success-main mt-1">
-                Para üstü: {formatPaymentAmount((payment.cashReceived || 0) - payment.amount)}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Remove Button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          disabled={disabled}
-          className="p-2 text-text-muted hover:text-danger-main hover:bg-danger-main/10 rounded-sm transition-colors
-            disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// MOBILE BOTTOM SHEET - Mobil Ödeme Ekranı
-// ============================================
-
-interface MobilePaymentSheetProps {
-  hook: ReturnType<typeof usePayment>;
-  orderTotal: number;
-  restaurantId: string;
-  onClose: () => void;
-  getMethodIcon: (method: PaymentMethod) => any;
-  handleComplete: () => void;
-  onAddNewCustomer?: (name: string) => Promise<Customer | null>;
-  isCreatingCustomer?: boolean;
-}
-
-function MobilePaymentSheet({
-  hook,
+export function PaymentModal({
+  isOpen,
+  onClose,
+  orderId,
   orderTotal,
   restaurantId,
-  onClose,
-  getMethodIcon,
-  handleComplete,
-  onAddNewCustomer,
-  isCreatingCustomer,
-}: MobilePaymentSheetProps) {
-  const [showNumpad, setShowNumpad] = useState(false);
+  onSuccess,
+}: PaymentModalProps) {
+  const router = useRouter();
+
+  const handlePaymentSuccess = () => {
+    onSuccess?.();
+    onClose();
+    router.push('/tables');
+  };
+
+  const hook = usePayment({
+    orderId,
+    orderTotal,
+    restaurantId,
+    onSuccess: handlePaymentSuccess,
+  });
+
+  const customerHook = usePaymentModal({
+    restaurantId,
+    onSuccess: () => { },
+  });
+
+  const { handleAddNewCustomer, isCreatingCustomer } = customerHook;
+
+  const [showChangeConfirm, setShowChangeConfirm] = useState(false);
+  const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+  const [newCustomerInitialName, setNewCustomerInitialName] = useState<string>('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
+
+  // Bahşiş Ayarları
+  const [tipSettings, setTipSettings] = useState({
+    enabled: false,
+    editable: true,
+    rate: 0.02
+  });
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const settings: any = await http.get(`/settings/${restaurantId}?group=payment`);
+        
+        setTipSettings({
+          rate: parseFloat(settings.tip_commission_rate) || 0.02,
+          enabled: settings.tip_commission_enabled === true || settings.tip_commission_enabled === "true",
+          editable: settings.tip_commission_editable === true || settings.tip_commission_editable === "true"
+        });
+      } catch (error) {
+        console.error("Error fetching tip settings:", error);
+      }
+    };
+
+    if (isOpen && restaurantId) {
+      fetchSettings();
+    }
+  }, [isOpen, restaurantId]);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const getMethodIcon = (method: PaymentMethod) => {
+    switch (method) {
+      case PaymentMethod.CASH: return Banknote;
+      case PaymentMethod.CREDIT_CARD:
+      case PaymentMethod.DEBIT_CARD: return CreditCard;
+      case PaymentMethod.DIGITAL_WALLET: return Smartphone;
+      case PaymentMethod.BANK_TRANSFER: return Building;
+      case PaymentMethod.OPEN_ACCOUNT: return User;
+      default: return CreditCard;
+    }
+  };
+
+  const handleComplete = async () => {
+    if (hook.totalChange > 0 && !showChangeConfirm) {
+      setShowChangeConfirm(true);
+      return;
+    }
+    setShowChangeConfirm(false);
+    await hook.completePayment();
+  };
+
+  const handleOpenNewCustomerModal = (initialName?: string) => {
+    setNewCustomerInitialName(initialName || '');
+    setIsNewCustomerModalOpen(true);
+  };
+
+  const handleApplyDiscount = () => {
+    setIsDiscountDialogOpen(true);
+  };
+
+  const handleDiscountConfirm = (type: 'discount' | 'complimentary', amount: number, reason: string) => {
+    hook.applyDiscount(
+      type === 'discount' ? DiscountType.DISCOUNT : DiscountType.COMPLIMENTARY,
+      amount,
+      reason
+    );
+    setIsDiscountDialogOpen(false);
+  };
+
+  const handleRemoveDiscount = () => {
+    hook.removeDiscount();
+  };
+
+  const handleNewCustomerCreated = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
+      hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, { customerId: customer.id });
+    }
+    setIsNewCustomerModalOpen(false);
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg-app flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-bg-surface border-b border-border-light">
-        <button onClick={onClose} className="p-2 -ml-2">
-          <X className="h-6 w-6 text-text-secondary" />
-        </button>
-        <h2 className="text-base font-bold text-text-primary">Ödeme Al</h2>
-        <div className="w-10" /> {/* Spacer */}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Summary */}
-        <PaymentSummaryCard
-          subtotal={hook.serverOrderTotal || orderTotal}
-          discount={hook.discount?.amount}
-          discountType={hook.discount?.type as 'discount' | 'complimentary'}
-          finalTotal={hook.finalTotal}
-          totalPaid={hook.totalPaid}
-          remainingBalance={hook.remainingBalance}
-          totalChange={hook.totalChange}
-          isComplete={hook.canCompletePayment}
-          isProcessing={hook.isProcessing}
-        />
-
-        {/* Quick Add Buttons */}
-        <div className="grid grid-cols-3 gap-2">
-          {Object.values(PaymentMethod).slice(0, 6).map((method) => {
-            const Icon = getMethodIcon(method);
-            return (
+    <>
+      {!isMobile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+          <div className="relative bg-bg-surface w-full max-w-5xl h-[650px] flex flex-col overflow-hidden rounded-sm shadow-xl">
+            <div className="flex items-center justify-between px-6 py-3 border-b border-border-light bg-bg-surface flex-shrink-0">
+              <h2 className="text-lg font-black text-text-primary uppercase tracking-wider">
+                Ödeme Al
+              </h2>
               <button
-                key={method}
-                onClick={() => {
-                  hook.addPaymentLine(method);
-                  setShowNumpad(true);
-                }}
+                onClick={onClose}
                 disabled={hook.isProcessing}
-                className="flex flex-col items-center gap-1 p-3 bg-bg-surface border border-border-light rounded-sm"
+                className="p-2 hover:bg-bg-muted rounded-sm transition-colors disabled:opacity-50"
               >
-                <Icon className="h-5 w-5 text-primary-main" />
-                <span className="text-xs">
-                  {method === 'cash' ? 'Nakit' : 
-                   method === 'credit_card' ? 'Kart' :
-                   method === 'open_account' ? 'Cari' : method}
-                </span>
+                <X className="h-5 w-5 text-text-secondary" />
               </button>
-            );
-          })}
-        </div>
-
-        {/* Payment Lines */}
-        {hook.payments.map((payment, index) => (
-          <div 
-            key={payment.id}
-            className="flex items-center justify-between p-3 bg-bg-surface border border-border-light rounded-sm"
-          >
-            <div>
-              <span className="text-sm font-medium">{payment.method}</span>
-              <span className="text-lg font-bold ml-2">{formatPaymentAmount(payment.amount)}</span>
             </div>
-            <button
-              onClick={() => hook.removePaymentLine(payment.id)}
-              className="p-2 text-danger-main"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+
+            <div className="flex-shrink-0">
+              <PaymentStatusBar
+                finalTotal={hook.finalTotal}
+                remainingBalance={hook.remainingBalance}
+                discount={hook.discount?.amount}
+                isComplete={hook.canCompletePayment}
+              />
+            </div>
+
+            <div className="flex flex-1 min-h-0 overflow-hidden relative">
+              {/* Syncing Overlay */}
+              {hook.isSyncing && (
+                <div className="absolute inset-0 z-50 bg-white/20 backdrop-blur-[1px] flex items-center justify-center cursor-wait">
+                  <div className="bg-bg-surface px-6 py-3 rounded-sm shadow-xl border border-border-light flex items-center gap-3 animate-pulse">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]" />
+                    <span className="text-sm font-bold text-text-primary uppercase tracking-wider">İşlem Senkronize Ediliyor...</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="w-[40%] bg-slate-50 border-r border-border-light overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <PaymentSummaryCard
+                    subtotal={hook.serverOrderTotal || orderTotal}
+                    discount={hook.discount?.amount}
+                    discountType={hook.discount?.type as 'discount' | 'complimentary'}
+                    discountReason={hook.discount?.reason}
+                    finalTotal={hook.finalTotal}
+                    totalPaid={hook.totalPaid}
+                    remainingBalance={hook.remainingBalance}
+                    totalChange={hook.totalChange}
+                    isComplete={hook.canCompletePayment}
+                    isProcessing={hook.isSyncing}
+                    onApplyDiscount={hook.discount?.amount ? handleRemoveDiscount : handleApplyDiscount}
+                  />
+
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                      Ödeme Satırları
+                    </h4>
+                    {hook.payments.length === 0 ? (
+                      <div className="text-center py-6 text-text-muted">
+                        <Calculator className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">Henüz ödeme eklenmedi</p>
+                      </div>
+                    ) : (
+                      hook.payments.map((payment, index) => (
+                        <PaymentLineItem
+                          key={payment.id}
+                          payment={payment}
+                          isActive={hook.activePaymentIndex === index}
+                          onActivate={() => hook.setActivePaymentIndex(index)}
+                          onUpdate={(updates) => hook.updatePaymentLine(payment.id, updates)}
+                          onRemove={() => hook.removePaymentLine(payment.id)}
+                          restaurantId={restaurantId}
+                          disabled={hook.isSyncing}
+                          onAddNewCustomer={handleAddNewCustomer}
+                          isCreatingCustomer={isCreatingCustomer}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="w-[60%] flex flex-col overflow-hidden bg-white">
+                <div className="flex-shrink-0">
+                  <PaymentMethodsGrid
+                    selectedMethod={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
+                    onSelectMethod={(method) => hook.addPaymentLine(method)}
+                    disabled={hook.isSyncing}
+                  />
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4">
+                  <PaymentMethodDetails
+                    activePayment={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex] || null : null}
+                    method={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
+                    onUpdate={(updates) => {
+                      if (hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]) {
+                        hook.updatePaymentLine(hook.payments[hook.activePaymentIndex].id, updates);
+                      }
+                    }}
+                    disabled={hook.isSyncing}
+                    onAddNewCustomer={handleAddNewCustomer}
+                    onOpenNewCustomerModal={handleOpenNewCustomerModal}
+                    restaurantId={restaurantId}
+                    commissionRate={tipSettings.rate}
+                    isEditable={tipSettings.editable}
+                    tipEnabled={tipSettings.enabled}
+                  />
+                </div>
+
+                <div className="flex-shrink-0 p-4 border-t border-border-light bg-bg-surface">
+                  <PaymentModalFooter
+                    canComplete={hook.canCompletePayment}
+                    isProcessing={hook.isSyncing}
+                    onComplete={handleComplete}
+                    error={hook.error}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        ))}
+        </div>
+      )}
 
-        {/* Active Payment Edit */}
-        {hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex] && (
-          <div className="p-4 bg-primary-main/5 border border-primary-main rounded-sm">
-            <p className="text-xs text-primary-main mb-2">
-              {hook.payments[hook.activePaymentIndex].method} için tutar girin
-            </p>
-            
-            {/* Quick NumPad */}
-            <QuickNumPad
-              value={hook.numericPadValue.display}
-              onDigit={(d) => hook.appendDigit(d)}
-              onDelete={hook.deleteLastDigit}
-              onClear={hook.clearNumericPad}
-              onConfirm={() => {
-                hook.applyNumericPadToActivePayment();
-                setShowNumpad(false);
-              }}
-            />
+      {isMobile && (
+        <MobilePaymentSheet
+          hook={hook}
+          orderTotal={hook.serverOrderTotal || orderTotal}
+          restaurantId={restaurantId}
+          onClose={onClose}
+          getMethodIcon={getMethodIcon}
+          handleComplete={handleComplete}
+          onAddNewCustomer={handleAddNewCustomer}
+          isCreatingCustomer={isCreatingCustomer}
+        />
+      )}
 
-            {/* Customer Selector for Open Account */}
-        {hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex]?.method === PaymentMethod.OPEN_ACCOUNT && (
-          <div className="mt-3">
-            <CustomerSelector
-              restaurantId={restaurantId}
-              value={hook.payments[hook.activePaymentIndex]?.customerId}
-              onChange={(customer) => {
-                const idx = hook.activePaymentIndex;
-                const payment = idx !== null ? hook.payments[idx] : null;
-                if (payment) {
-                  hook.updatePaymentLine(payment.id, { 
-                    customerId: customer?.id 
-                  });
-                }
-              }}
-              onAddNew={onAddNewCustomer}
-              disabled={isCreatingCustomer}
-            />
-          </div>
-        )}
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="px-4 py-4 bg-bg-surface border-t border-border-light">
-        <button
-          onClick={handleComplete}
-          disabled={!hook.canCompletePayment || hook.isProcessing}
-          className={`
-            w-full py-4 text-base font-bold rounded-sm
-            ${hook.canCompletePayment && !hook.isProcessing
-              ? 'bg-success-main text-white'
-              : 'bg-bg-muted text-text-muted'
-            }
-          `}
-        >
-          {hook.isProcessing ? 'İşleniyor...' : 'Ödemeyi Tamamla'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// QUICK NUM PAD - Mobil Nümerik Pad
-// ============================================
-
-interface QuickNumPadProps {
-  value: string;
-  onDigit: (digit: string) => void;
-  onDelete: () => void;
-  onClear: () => void;
-  onConfirm: () => void;
-}
-
-function QuickNumPad({
-  value,
-  onDigit,
-  onDelete,
-  onClear,
-  onConfirm,
-}: QuickNumPadProps) {
-  const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ','];
-
-  return (
-    <div className="space-y-2">
-      {/* Display */}
-      <div className="text-center p-3 bg-bg-surface border border-border-light rounded-sm">
-        <span className="text-2xl font-black text-text-primary">{value}</span>
-        <span className="text-lg font-bold text-text-muted ml-1">TL</span>
-      </div>
-
-      {/* Buttons Grid */}
-      <div className="grid grid-cols-3 gap-2">
-        {digits.map((digit) => (
-          <button
-            key={digit}
-            onClick={() => onDigit(digit)}
-            className="h-14 text-xl font-bold bg-bg-surface border border-border-light 
-              hover:bg-primary-main/10 hover:border-primary-main rounded-sm transition-colors"
-          >
-            {digit}
-          </button>
-        ))}
-
-        {/* Delete */}
-        <button
-          onClick={onDelete}
-          className="h-14 flex items-center justify-center bg-bg-muted border border-border-light 
-            hover:bg-danger-main/10 hover:border-danger-main rounded-sm transition-colors"
-        >
-          <span className="text-lg font-bold text-text-secondary">⌫</span>
-        </button>
-
-        {/* Clear */}
-        <button
-          onClick={onClear}
-          className="h-14 flex items-center justify-center bg-bg-muted border border-border-light 
-            hover:bg-warning-main/10 rounded-sm transition-colors"
-        >
-          <span className="text-xs font-bold text-text-secondary">TEMİZLE</span>
-        </button>
-
-        {/* Confirm */}
-        <button
-          onClick={onConfirm}
-          className="h-14 flex items-center justify-center bg-success-main text-white 
-            hover:bg-success-hover rounded-sm transition-colors"
-        >
-          <Check className="h-6 w-6" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// CHANGE CONFIRMATION DIALOG - Nakit Üstü Onay
-// ============================================
-
-interface ChangeConfirmationDialogProps {
-  changeAmount: number;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ChangeConfirmationDialog({
-  changeAmount,
-  onConfirm,
-  onCancel,
-}: ChangeConfirmationDialogProps) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onCancel}
+      <NewCustomerModal
+        isOpen={isNewCustomerModalOpen}
+        onClose={() => setIsNewCustomerModalOpen(false)}
+        onSuccess={handleNewCustomerCreated}
+        restaurantId={restaurantId}
+        initialName={newCustomerInitialName}
       />
-      
-      {/* Dialog */}
-      <div className="relative bg-bg-surface w-full max-w-sm mx-4 p-6 rounded-sm shadow-xl text-center">
-        {/* Icon */}
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-success-main/10 flex items-center justify-center">
-          <Banknote className="h-8 w-8 text-success-main" />
-        </div>
-        
-        {/* Title */}
-        <h3 className="text-xl font-black text-text-primary mb-2">
-          NAKİT ÜSTÜ
-        </h3>
-        
-        {/* Amount */}
-        <p className="text-4xl font-black text-success-main mb-6">
-          {formatPaymentAmount(changeAmount)}
-        </p>
-        
-        {/* Message */}
-        <p className="text-sm text-text-secondary mb-6">
-          Müşteriye {formatPaymentAmount(changeAmount)} TL para üstü verilecek.
-        </p>
-        
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 px-4 bg-bg-muted text-text-primary font-bold rounded-sm
-              hover:bg-border-light transition-colors"
-          >
-            İPTAL
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-3 px-4 bg-success-main text-white font-bold rounded-sm
-              hover:bg-success-hover transition-colors"
-          >
-            ONAYLA
-          </button>
-        </div>
-      </div>
-    </div>
+
+      <DiscountDialog
+        isOpen={isDiscountDialogOpen}
+        onClose={() => setIsDiscountDialogOpen(false)}
+        onConfirm={handleDiscountConfirm}
+        orderTotal={hook.serverOrderTotal || orderTotal}
+      />
+    </>
   );
 }

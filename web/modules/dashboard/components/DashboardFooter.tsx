@@ -30,7 +30,7 @@ export function DashboardFooter() {
                     </span>
                     <span className="text-xs text-text-muted">•</span>
                     <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                        RESTAU-RMS
+                        POSMENUM - RMS
                     </span>
                 </div>
 

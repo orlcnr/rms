@@ -1,0 +1,22 @@
+Bu commit, güvenlik açısından incelenmesi gereken kod içermiyor. Sadece iki metin dosyası ekleniyor:
+
+1. **`review.txt`** - Boş bir metin dosyası (sadece commit mesajları hakkında bilgi içeriyor)
+2. **`security.txt`** - Boş bir dosya
+
+## Değerlendirme
+
+| Finding | Category | CWE ID | CVSS | Priority | Location |
+|---------|----------|--------|------|----------|----------|
+| Yok | - | - | - | - | - |
+
+### Sonuç
+
+Bu commit güvenlik açısından **risk taşımamaktadır**. İçerdiği tek şey:
+- Bilgilendirici bir metin dosyası
+- Boş bir dosya
+
+Herhangi bir güvenlik açığı bulunmamaktadır.
+
+---
+
+**Not:** Eğer gerçek bir güvenlik incelemesi istiyorsanız, uygulamanın kendi kodunu (REST API, veritabanı işlemleri, kimlik doğrulama, vb.) incelemem gerekir. Bu proje bir "Restaurant Management System" gibi görünüyor. Kod tabanındaki gerçek uygulama kodunu incelememi ister misiniz?

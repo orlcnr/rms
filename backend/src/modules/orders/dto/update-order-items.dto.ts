@@ -51,4 +51,9 @@ export class UpdateOrderItemsDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiProperty({ example: 'uuid-v4-transaction-id', required: false })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }

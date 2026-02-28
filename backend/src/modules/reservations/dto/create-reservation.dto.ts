@@ -42,4 +42,9 @@ export class CreateReservationDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }

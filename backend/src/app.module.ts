@@ -26,6 +26,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { QrGuestModule } from './modules/qr-guest/qr-guest.module';
+import { DebugModule } from './modules/debug/debug.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -33,6 +34,7 @@ import { CashModule } from './modules/cash/cash.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { MailModule } from './modules/mail/mail.module';
 import { RulesModule } from './modules/rules/rules.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -80,7 +82,8 @@ import { RulesModule } from './modules/rules/rules.module';
         schema: 'business', // Default schema
         extra: {
           // Set search path for cross-schema queries
-          options: '-c search_path=business,operations,public_api,infrastructure,public',
+          options:
+            '-c search_path=business,operations,public_api,infrastructure,public',
         },
         namingStrategy: new SnakeNamingStrategy(),
       }),
@@ -109,6 +112,8 @@ import { RulesModule } from './modules/rules/rules.module';
     CashModule,
     SuperAdminModule,
     MailModule,
+    SettingsModule,
+    DebugModule,
   ],
   controllers: [AppController],
   providers: [
@@ -123,4 +128,4 @@ import { RulesModule } from './modules/rules/rules.module';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

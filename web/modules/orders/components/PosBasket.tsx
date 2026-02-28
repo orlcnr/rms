@@ -55,15 +55,15 @@ export function PosBasket({
 }: PosBasketProps) {
   const summary = calculateBasketSummary(items)
   const isEmpty = items.length === 0
-  
+
   // Sipariş ödenmemişse ödeme yapılabilir
-  const needsPayment = existingOrder && 
-    existingOrder.status !== OrderStatus.PAID && 
+  const needsPayment = existingOrder &&
+    existingOrder.status !== OrderStatus.PAID &&
     existingOrder.status !== OrderStatus.CANCELLED
-  
+
   // Ödenmemiş sipariş varsa mevcut topla
-  const hasUnpaidOrder = !!existingOrder && 
-    existingOrder.status !== OrderStatus.PAID && 
+  const hasUnpaidOrder = !!existingOrder &&
+    existingOrder.status !== OrderStatus.PAID &&
     existingOrder.status !== OrderStatus.CANCELLED
 
   return (
@@ -111,14 +111,22 @@ export function PosBasket({
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => onDecrement(item.menuItemId)}
-                  className="w-6 h-6 flex items-center justify-center rounded bg-bg-muted hover:bg-primary-main hover:text-white transition-colors"
+                  disabled={disabled}
+                  className={cn(
+                    "w-6 h-6 flex items-center justify-center rounded bg-bg-muted transition-colors",
+                    !disabled && "hover:bg-primary-main hover:text-white"
+                  )}
                 >
                   <Minus size={10} />
                 </button>
                 <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
                 <button
                   onClick={() => onIncrement(item.menuItemId)}
-                  className="w-6 h-6 flex items-center justify-center rounded bg-bg-muted hover:bg-primary-main hover:text-white transition-colors"
+                  disabled={disabled}
+                  className={cn(
+                    "w-6 h-6 flex items-center justify-center rounded bg-bg-muted transition-colors",
+                    !disabled && "hover:bg-primary-main hover:text-white"
+                  )}
                 >
                   <Plus size={10} />
                 </button>
@@ -132,9 +140,13 @@ export function PosBasket({
               {/* Delete Button */}
               <button
                 onClick={() => onRemove(item.menuItemId)}
-                className="p-1 hover:bg-bg-muted rounded transition-colors shrink-0"
+                disabled={disabled}
+                className={cn(
+                  "p-1 rounded transition-colors shrink-0",
+                  !disabled && "hover:bg-bg-muted"
+                )}
               >
-                <Trash2 size={12} className="text-text-muted" />
+                <Trash2 size={12} className={cn("text-text-muted", disabled && "opacity-50")} />
               </button>
             </div>
           ))

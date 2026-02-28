@@ -26,7 +26,7 @@ export class GuestDebugController {
     private guestSessionsService: GuestSessionsService,
     private guestOrdersService: GuestOrdersService,
     private guestGateway: GuestGateway,
-  ) { }
+  ) {}
 
   /**
    * Generate a test QR token for a table

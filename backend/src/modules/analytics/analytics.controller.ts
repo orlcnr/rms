@@ -11,14 +11,17 @@ import { AnalyticsService } from './analytics.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
-import { AnalyticsSummaryDto, HourlySalesDto } from './dto/analytics-summary.dto';
+import {
+  AnalyticsSummaryDto,
+  HourlySalesDto,
+} from './dto/analytics-summary.dto';
 
 @ApiTags('Analytics')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
 @Controller('analytics')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) { }
+  constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.SUPER_ADMIN)
   @Get('summary')

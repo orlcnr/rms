@@ -5,7 +5,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
-import { Order, OrderStatus, OrderType, OrderSource } from './entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  OrderType,
+  OrderSource,
+} from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
@@ -26,7 +31,7 @@ export class OrdersService {
     private notificationsGateway: NotificationsGateway,
     private readonly moveOrderUseCase: MoveOrderUseCase,
     private readonly rulesService: RulesService,
-  ) { }
+  ) {}
 
   async findAll(
     user: any,
@@ -71,15 +76,30 @@ export class OrdersService {
       where.tableId = tableId;
     }
 
-    return this.ordersRepository.find({
+    const orders = await this.ordersRepository.find({
       where,
       relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
       order: { created_at: 'DESC' } as any,
     });
+
+    return orders;
   }
 
   async create(createOrderDto: CreateOrderDto, user: any): Promise<Order> {
-    const { restaurant_id, table_id, items, notes, type, source, external_id, customer_id, address, delivery_fee, integration_metadata } = createOrderDto;
+    const {
+      restaurant_id,
+      table_id,
+      items,
+      notes,
+      type,
+      source,
+      external_id,
+      customer_id,
+      address,
+      delivery_fee,
+      integration_metadata,
+      transaction_id,
+    } = createOrderDto;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -109,7 +129,7 @@ export class OrdersService {
           restaurant_id,
           RuleKey.ORDER_MANDATORY_TABLE,
           table_id, // Pass table_id as context
-          'Bu sipariş için masa seçilmesi zorunludur.'
+          'Bu sipariş için masa seçilmesi zorunludur.',
         );
       }
 
@@ -176,7 +196,11 @@ export class OrdersService {
       await queryRunner.commitTransaction();
 
       const finalOrder = await this.findOne(savedOrder.id);
-      this.notificationsGateway.notifyNewOrder(restaurant_id, finalOrder);
+      this.notificationsGateway.notifyNewOrder(
+        restaurant_id,
+        finalOrder,
+        transaction_id,
+      );
 
       return finalOrder;
     } catch (err) {
@@ -208,17 +232,35 @@ export class OrdersService {
         order.restaurantId,
         RuleKey.ORDER_PREVENT_VOID,
         order, // Pass order object as context
-        'Hazırlık aşamasına geçmiş siparişler iptal edilemez. Lütfen yöneticiye danışın.'
+        'Hazırlık aşamasına geçmiş siparişler iptal edilemez. Lütfen yöneticiye danışın.',
       );
     }
 
     order.status = status;
 
-    // Update all items to match order status
+    // Update all mutable items to match order status using query builder
     if (order.items && order.items.length > 0) {
-      for (const item of order.items) {
-        item.status = status;
-        await this.orderItemsRepository.save(item);
+      try {
+        const itemIds = order.items
+          .filter(
+            (item) =>
+              item.status !== OrderStatus.SERVED &&
+              item.status !== OrderStatus.DELIVERED &&
+              item.status !== OrderStatus.PAID &&
+              item.status !== OrderStatus.CANCELLED,
+          )
+          .map((item) => item.id);
+        if (itemIds.length > 0) {
+          await this.orderItemsRepository
+            .createQueryBuilder()
+            .update()
+            .set({ status: status })
+            .where('id IN (:...itemIds)', { itemIds })
+            .execute();
+        }
+      } catch (itemError) {
+        // Log but continue - order status update is more important
+        console.error('Failed to update order items:', itemError);
       }
     }
 
@@ -266,6 +308,114 @@ export class OrdersService {
     return updatedOrder;
   }
 
+  async batchUpdateStatus(
+    orderIds: string[],
+    status: OrderStatus,
+  ): Promise<Order[]> {
+    if (!orderIds.length) return [];
+
+    // Fetch all orders in one query
+    const orders = await this.ordersRepository.find({
+      where: { id: In(orderIds) },
+      relations: ['items', 'table', 'user', 'customer'],
+    });
+
+    if (!orders.length) return [];
+
+    // --- Business rule: cancel restriction ---
+    if (status === OrderStatus.CANCELLED) {
+      for (const order of orders) {
+        await this.rulesService.checkRule(
+          order.restaurantId,
+          RuleKey.ORDER_PREVENT_VOID,
+          order,
+          'Hazırlık aşamasına geçmiş siparişler iptal edilemez.',
+        );
+      }
+    }
+
+    // --- Bulk update order statuses ---
+    await this.ordersRepository
+      .createQueryBuilder()
+      .update()
+      .set({ status })
+      .where('id IN (:...orderIds)', { orderIds })
+      .execute();
+
+    // --- Bulk update order item statuses ---
+    const allItemIds = orders.flatMap(
+      (o) =>
+        o.items
+          ?.filter(
+            (i) =>
+              i.status !== OrderStatus.SERVED &&
+              i.status !== OrderStatus.DELIVERED &&
+              i.status !== OrderStatus.PAID &&
+              i.status !== OrderStatus.CANCELLED,
+          )
+          .map((i) => i.id) ?? [],
+    );
+    if (allItemIds.length > 0) {
+      await this.orderItemsRepository
+        .createQueryBuilder()
+        .update()
+        .set({ status })
+        .where('id IN (:...allItemIds)', { allItemIds })
+        .execute();
+    }
+
+    // --- Handle table status for terminal statuses (PAID / CANCELLED) ---
+    if (status === OrderStatus.PAID || status === OrderStatus.CANCELLED) {
+      // Collect unique tableIds
+      const tableIds = [
+        ...new Set(orders.map((o) => o.tableId).filter(Boolean) as string[]),
+      ];
+      const restaurantId = orders[0].restaurantId;
+
+      for (const tableId of tableIds) {
+        const activeCount = await this.ordersRepository.count({
+          where: {
+            tableId,
+            restaurantId,
+            status: In([
+              OrderStatus.PENDING,
+              OrderStatus.PREPARING,
+              OrderStatus.READY,
+              OrderStatus.SERVED,
+            ]),
+          },
+        });
+
+        if (activeCount === 0) {
+          const table = await this.dataSource
+            .getRepository(Table)
+            .findOneBy({ id: tableId });
+          if (table && table.status === TableStatus.OCCUPIED) {
+            table.status = TableStatus.AVAILABLE;
+            await this.dataSource.getRepository(Table).save(table);
+            this.notificationsGateway.notifyOrderStatus(restaurantId, table);
+          }
+        }
+      }
+    }
+
+    // --- Fetch updated orders and emit notifications ---
+    const updatedOrders = await this.ordersRepository.find({
+      where: { id: In(orderIds) },
+      relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
+    });
+
+    const restaurantId = updatedOrders[0]?.restaurantId;
+    if (restaurantId) {
+      // Single notification per update batch (not per order)
+      updatedOrders.forEach((o) =>
+        this.notificationsGateway.notifyOrderStatus(restaurantId, o),
+      );
+    }
+
+    return updatedOrders;
+  }
+
   async updateItems(
     orderId: string,
     items: { menu_item_id: string; quantity: number }[],
@@ -274,6 +424,7 @@ export class OrdersService {
     type?: OrderType,
     customer_id?: string,
     address?: string,
+    transaction_id?: string,
   ): Promise<Order> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -314,10 +465,12 @@ export class OrdersService {
         throw new BadRequestException('No valid items provided');
       }
 
-      const menuItemIds = [...new Set([
-        ...validItems.map((i) => i.menu_item_id),
-        ...order.items?.map(i => i.menuItemId) || []
-      ])];
+      const menuItemIds = [
+        ...new Set([
+          ...validItems.map((i) => i.menu_item_id),
+          ...(order.items?.map((i) => i.menuItemId) || []),
+        ]),
+      ];
 
       const menuItems = await queryRunner.manager.find(MenuItem, {
         where: { id: In(menuItemIds) },
@@ -336,10 +489,12 @@ export class OrdersService {
 
       // 3. Separate items into frozen (SERVED/READY) and mutable (PENDING/PREPARING)
       const frozenItems = existingItems.filter(
-        (i) => i.status === OrderStatus.SERVED || i.status === OrderStatus.READY,
+        (i) =>
+          i.status === OrderStatus.SERVED || i.status === OrderStatus.READY,
       );
       const mutableItems = existingItems.filter(
-        (i) => i.status !== OrderStatus.SERVED && i.status !== OrderStatus.READY,
+        (i) =>
+          i.status !== OrderStatus.SERVED && i.status !== OrderStatus.READY,
       );
 
       // Group requested items by menu_item_id
@@ -361,14 +516,20 @@ export class OrdersService {
         const menuItem = menuItemMap.get(menuItemId);
         const targetQty = requestedItemsMap.get(menuItemId) || 0;
 
-        const currentItemsForProduct = existingItems.filter(i => i.menuItemId === menuItemId);
-        const currentTotalQty = currentItemsForProduct.reduce((sum, i) => sum + i.quantity, 0);
+        const currentItemsForProduct = existingItems.filter(
+          (i) => i.menuItemId === menuItemId,
+        );
+        const currentTotalQty = currentItemsForProduct.reduce(
+          (sum, i) => sum + i.quantity,
+          0,
+        );
 
         const delta = targetQty - currentTotalQty;
 
         if (delta > 0) {
           // ADDITION: Create a new row for the difference
-          if (!menuItem) throw new NotFoundException(`Menu item ${menuItemId} not found`);
+          if (!menuItem)
+            throw new NotFoundException(`Menu item ${menuItemId} not found`);
 
           const newItem = queryRunner.manager.create(OrderItem, {
             orderId,
@@ -384,8 +545,16 @@ export class OrdersService {
           // REDUCTION: Reduce or delete latest mutable rows
           let toRemove = Math.abs(delta);
           const mutableForProduct = currentItemsForProduct
-            .filter(i => i.status !== OrderStatus.SERVED && i.status !== OrderStatus.READY)
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            .filter(
+              (i) =>
+                i.status !== OrderStatus.SERVED &&
+                i.status !== OrderStatus.READY,
+            )
+            .sort(
+              (a, b) =>
+                new Date(b.created_at).getTime() -
+                new Date(a.created_at).getTime(),
+            );
 
           for (const item of mutableForProduct) {
             if (toRemove <= 0) break;
@@ -405,8 +574,13 @@ export class OrdersService {
       }
 
       // Re-calculate total amount from all items currently in DB for this order
-      const finalItems = await queryRunner.manager.find(OrderItem, { where: { orderId } });
-      totalAmount = finalItems.reduce((sum, i) => sum + Number(i.totalPrice), 0);
+      const finalItems = await queryRunner.manager.find(OrderItem, {
+        where: { orderId },
+      });
+      totalAmount = finalItems.reduce(
+        (sum, i) => sum + Number(i.totalPrice),
+        0,
+      );
 
       // 4. Reset order status if new items were added to a completed order
       if (
@@ -415,7 +589,7 @@ export class OrdersService {
           order.status === OrderStatus.READY)
       ) {
         order.status = OrderStatus.PENDING;
-        // Reset item statuses that were READY to PENDING? 
+        // Reset item statuses that were READY to PENDING?
         // Actually the user said "yeni item eklenirse eski siparişe tkrar bekleyen siparişlere çekilsin"
       }
 
@@ -425,12 +599,15 @@ export class OrdersService {
       await queryRunner.commitTransaction();
 
       const finalOrder = await this.findOne(orderId);
-      console.log(`[updateItems] Notifying for order ${finalOrder.id}, tableId: ${finalOrder.tableId}, restaurantId: ${finalOrder.restaurantId}`);
+      console.log(
+        `[updateItems] Notifying for order ${finalOrder.id}, tableId: ${finalOrder.tableId}, restaurantId: ${finalOrder.restaurantId}`,
+      );
       this.notificationsGateway.notifyOrderStatus(
         order.restaurantId,
         finalOrder,
+        transaction_id,
       );
-      
+
       // Sipariş güncellendi (fiyat değişti vb.) - ödeme ekranını bilgilendir
       this.notificationsGateway.notifyOrderUpdated(
         order.restaurantId,

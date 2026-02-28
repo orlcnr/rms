@@ -3,7 +3,10 @@ import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GetCostAnalysisDto {
-  @ApiPropertyOptional({ default: 7, description: 'Fiyat değişimi için son N gün' })
+  @ApiPropertyOptional({
+    default: 7,
+    description: 'Fiyat değişimi için son N gün',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -21,7 +24,9 @@ export class GetCountDifferencesDto {
 }
 
 export class GetIngredientUsageDto {
-  @ApiPropertyOptional({ description: 'Malzeme ID (query param olarak da kullanılabilir)' })
+  @ApiPropertyOptional({
+    description: 'Malzeme ID (query param olarak da kullanılabilir)',
+  })
   @IsOptional()
   ingredientId?: string;
 }

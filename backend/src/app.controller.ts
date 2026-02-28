@@ -15,6 +15,22 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  // Simple health check endpoint for container health probes
+  @Public()
+  @Get('health')
+  health(): object {
+    return { status: 'ok' };
+  }
+
+  @Public()
+  @Get('system/status')
+  getStatus(): object {
+    return {
+      status: 'ok',
+      serverTime: new Date().toISOString(),
+    };
+  }
+
   @Public()
   @Post('seed')
   async seed() {

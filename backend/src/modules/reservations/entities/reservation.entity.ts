@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Customer } from '../../customers/entities/customer.entity';
 import { Table } from '../../tables/entities/table.entity';
@@ -12,7 +12,14 @@ export enum ReservationStatus {
 }
 
 @Entity('reservations', { schema: 'business' })
+@Index('idx_reservations_restaurant_time', [
+  'restaurant_id',
+  'reservation_time',
+])
 export class Reservation extends BaseEntity {
+  @Column({ name: 'restaurant_id' })
+  restaurant_id: string;
+
   @Column()
   customer_id: string;
 

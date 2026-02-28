@@ -1,4 +1,10 @@
-import { IsOptional, IsArray, ValidateNested, IsString, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { DraftOrderItemDto } from './create-draft-order.dto';
 

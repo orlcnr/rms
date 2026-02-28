@@ -18,7 +18,10 @@ export class CustomersService {
     private readonly customerRepository: Repository<Customer>,
   ) {}
 
-  async create(createCustomerDto: CreateCustomerDto, restaurantId: string): Promise<Customer> {
+  async create(
+    createCustomerDto: CreateCustomerDto,
+    restaurantId: string,
+  ): Promise<Customer> {
     // Validate phone is provided
     if (!createCustomerDto.phone) {
       throw new BadRequestException('Phone number is required');
@@ -29,24 +32,39 @@ export class CustomersService {
     });
     if (existing) {
       throw new ConflictException(
-        'Customer with this phone number already exists',
+        'Bu telefon numarası ile kayıtlı bir müşteri zaten var',
       );
     }
 
-    const customer = this.customerRepository.create({
-      ...createCustomerDto,
-      restaurantId,
-    });
-    return this.customerRepository.save(customer);
+    try {
+      const customer = this.customerRepository.create({
+        ...createCustomerDto,
+        restaurantId,
+      });
+      return await this.customerRepository.save(customer);
+    } catch (error) {
+      // Handle unique constraint violation from database
+      if (error.code === '23505') {
+        throw new ConflictException(
+          'Bu telefon numarası başka bir müşteri tarafından kullanılıyor',
+        );
+      }
+      throw error;
+    }
   }
 
-  async findAll(queryDto: GetCustomersDto, restaurantId: string): Promise<Pagination<Customer>> {
+  async findAll(
+    queryDto: GetCustomersDto,
+    restaurantId: string,
+  ): Promise<Pagination<Customer>> {
     const { page = 1, limit = 10, search } = queryDto;
 
     const queryBuilder = this.customerRepository.createQueryBuilder('customer');
 
     // Multi-tenant: Always filter by restaurant
-    queryBuilder.where('customer.restaurantId = :restaurantId', { restaurantId });
+    queryBuilder.where('customer.restaurantId = :restaurantId', {
+      restaurantId,
+    });
 
     if (search) {
       queryBuilder.andWhere(
@@ -63,8 +81,8 @@ export class CustomersService {
   }
 
   async findOne(id: string, restaurantId: string): Promise<Customer> {
-    const customer = await this.customerRepository.findOne({ 
-      where: { id, restaurantId } 
+    const customer = await this.customerRepository.findOne({
+      where: { id, restaurantId },
     });
     if (!customer)
       throw new NotFoundException(`Customer with ID ${id} not found`);
@@ -86,7 +104,10 @@ export class CustomersService {
       .getMany();
   }
 
-  async findByPhone(phone: string, restaurantId: string): Promise<Customer | null> {
+  async findByPhone(
+    phone: string,
+    restaurantId: string,
+  ): Promise<Customer | null> {
     return this.customerRepository.findOne({ where: { phone, restaurantId } });
   }
 
@@ -96,11 +117,38 @@ export class CustomersService {
     restaurantId: string,
   ): Promise<Customer> {
     const customer = await this.findOne(id, restaurantId);
+
+    // If phone is being updated, check for existing
+    if (updateCustomerDto.phone && updateCustomerDto.phone !== customer.phone) {
+      const existing = await this.customerRepository.findOne({
+        where: { phone: updateCustomerDto.phone, restaurantId },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'Bu telefon numarası ile kayıtlı bir müşteri zaten var',
+        );
+      }
+    }
+
     Object.assign(customer, updateCustomerDto);
-    return this.customerRepository.save(customer);
+
+    try {
+      return await this.customerRepository.save(customer);
+    } catch (error) {
+      if (error.code === '23505') {
+        throw new ConflictException(
+          'Bu telefon numarası başka bir müşteri tarafından kullanılıyor',
+        );
+      }
+      throw error;
+    }
   }
 
-  async updateStats(id: string, restaurantId: string, amountSpent: number): Promise<void> {
+  async updateStats(
+    id: string,
+    restaurantId: string,
+    amountSpent: number,
+  ): Promise<void> {
     const customer = await this.findOne(id, restaurantId);
     customer.visit_count += 1;
     customer.total_spent = Number(customer.total_spent) + Number(amountSpent);

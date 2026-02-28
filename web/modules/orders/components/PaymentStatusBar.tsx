@@ -28,7 +28,7 @@ export function PaymentStatusBar({
           Toplam
         </span>
         <span className="text-base font-black text-text-primary">
-          ₺{formatPaymentAmount(finalTotal)}
+          {formatPaymentAmount(finalTotal)}
         </span>
       </div>
 
@@ -45,7 +45,7 @@ export function PaymentStatusBar({
             isComplete ? 'text-success-main' : 'text-danger-main'
           }`}
         >
-          {isComplete ? '0,00' : `₺${formatPaymentAmount(remainingBalance)}`}
+          {isComplete ? '0,00' : `${formatPaymentAmount(remainingBalance)}`}
         </span>
       </div>
 
@@ -59,7 +59,7 @@ export function PaymentStatusBar({
         </span>
         <span className="text-base font-black text-success-main">
           {discount && discount > 0
-            ? `-₺${formatPaymentAmount(discount)}`
+            ? `-${formatPaymentAmount(discount)}`
             : '-'}
         </span>
       </div>

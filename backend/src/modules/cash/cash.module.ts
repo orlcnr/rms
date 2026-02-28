@@ -8,12 +8,12 @@ import { CashMovement } from './entities/cash-movement.entity';
 import { TablesModule } from '../tables/tables.module';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([CashRegister, CashSession, CashMovement]),
-        TablesModule,
-    ],
-    controllers: [CashController],
-    providers: [CashService],
-    exports: [CashService],
+  imports: [
+    TypeOrmModule.forFeature([CashRegister, CashSession, CashMovement]),
+    TablesModule,
+  ],
+  controllers: [CashController],
+  providers: [CashService],
+  exports: [CashService],
 })
-export class CashModule { }
+export class CashModule {}

@@ -12,4 +12,4 @@ import { RulesModule } from '../rules/rules.module';
   providers: [RestaurantsService],
   exports: [RestaurantsService], // Exported for use in other modules (e.g. Orders, Menus)
 })
-export class RestaurantsModule { }
+export class RestaurantsModule {}

@@ -7,6 +7,7 @@ import { StockStatusBadge } from '@/modules/shared/components/StockStatusBadge'
 import { EmptyState } from '@/modules/shared/components/EmptyState'
 import { formatNumericDisplay, handleNumericInput } from '@/modules/shared/utils/numeric'
 import { inventoryApi } from '../services/inventory.service'
+import { cn } from '@/modules/shared/utils/cn'
 
 interface StockTableProps {
     ingredients: Ingredient[]
@@ -15,15 +16,17 @@ interface StockTableProps {
     isBulkEditMode?: boolean
     onBulkSave?: (updates: BulkStockUpdate[]) => void
     onToggleBulkMode?: (enabled: boolean) => void
+    syncingIngredientId?: string | null
 }
 
-export function StockTable({ 
-    ingredients, 
-    onAddMovement, 
+export function StockTable({
+    ingredients,
+    onAddMovement,
     onEdit,
     isBulkEditMode = false,
     onBulkSave,
-    onToggleBulkMode
+    onToggleBulkMode,
+    syncingIngredientId
 }: StockTableProps) {
     const [bulkQuantities, setBulkQuantities] = useState<Record<string, number>>({})
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -40,7 +43,7 @@ export function StockTable({
 
     const handleBulkSave = () => {
         if (!onBulkSave) return
-        
+
         const updates = Object.entries(bulkQuantities)
             .filter(([id, qty]) => {
                 const ingredient = ingredients.find(i => i.id === id)
@@ -65,7 +68,7 @@ export function StockTable({
     // Handle expand/collapse
     const toggleRowExpand = async (ingredientId: string) => {
         const newExpanded = new Set(expandedRows)
-        
+
         if (newExpanded.has(ingredientId)) {
             newExpanded.delete(ingredientId)
         } else {
@@ -87,7 +90,7 @@ export function StockTable({
                 }
             }
         }
-        
+
         setExpandedRows(newExpanded)
     }
 
@@ -113,8 +116,8 @@ export function StockTable({
                             Hızlı Sayım Modu
                         </span>
                         <div className="relative">
-                            <input 
-                                type="checkbox" 
+                            <input
+                                type="checkbox"
                                 className="sr-only peer"
                                 checked={isBulkEditMode}
                                 onChange={(e) => {
@@ -156,33 +159,46 @@ export function StockTable({
                             </tr>
                         ) : ingredients.map((item) => {
                             const currentStock = item.stock?.quantity || 0
-                            const displayQty = bulkQuantities[item.id] !== undefined 
+                            const displayQty = bulkQuantities[item.id] !== undefined
                                 ? String(Number(bulkQuantities[item.id]))
                                 : String(Number(currentStock))
                             const isExpanded = expandedRows.has(item.id)
-                            const isLoading = loadingUsage.has(item.id)
+                            const isLoadingUsage = loadingUsage.has(item.id)
+                            const isSyncing = syncingIngredientId === item.id
                             const usage = ingredientUsage[item.id]
 
                             return (
                                 <React.Fragment key={item.id}>
-                                    <tr className="group hover:bg-bg-hover transition-colors">
+                                    <tr className={cn(
+                                        "group transition-colors",
+                                        isSyncing ? "bg-bg-muted/30 pointer-events-none" : "hover:bg-bg-hover"
+                                    )}>
                                         <td className="px-4 py-4">
                                             <div className="flex items-center gap-3">
-                                                {/* Expand Button */}
-                                                <button
-                                                    onClick={() => toggleRowExpand(item.id)}
-                                                    className="p-1 hover:bg-bg-muted rounded transition-colors"
-                                                    title={isExpanded ? 'Kullanım detaylarını gizle' : 'Kullanım detaylarını göster'}
-                                                >
-                                                    {isExpanded ? (
-                                                        <ChevronDown className="w-4 h-4 text-text-muted" />
-                                                    ) : (
-                                                        <ChevronRight className="w-4 h-4 text-text-muted" />
-                                                    )}
-                                                </button>
-                                                
+                                                {/* Row Sync Indicator */}
+                                                {isSyncing ? (
+                                                    <div className="p-1">
+                                                        <Loader2 className="w-4 h-4 animate-spin text-primary-main" />
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => toggleRowExpand(item.id)}
+                                                        className="p-1 hover:bg-bg-muted rounded transition-colors"
+                                                        title={isExpanded ? 'Kullanım detaylarını gizle' : 'Kullanım detaylarını göster'}
+                                                    >
+                                                        {isExpanded ? (
+                                                            <ChevronDown className="w-4 h-4 text-text-muted" />
+                                                        ) : (
+                                                            <ChevronRight className="w-4 h-4 text-text-muted" />
+                                                        )}
+                                                    </button>
+                                                )}
+
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-bold text-text-primary uppercase tracking-tight truncate leading-none">{item.name}</p>
+                                                    <p className={cn(
+                                                        "text-sm font-bold uppercase tracking-tight truncate leading-none",
+                                                        isSyncing ? "text-text-muted" : "text-text-primary"
+                                                    )}>{item.name}</p>
                                                     <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase mt-2">
                                                         KRİTİK SEVİYE: <span className="text-text-secondary">{formatNumericDisplay(item.critical_level)} {item.unit}</span>
                                                     </p>
@@ -208,12 +224,11 @@ export function StockTable({
                                                         {formatNumericDisplay(currentStock)}
                                                     </span>
                                                     <div className="w-24 h-2 bg-bg-muted rounded-full overflow-hidden">
-                                                        <div 
-                                                            className={`h-full transition-all duration-300 rounded-full ${
-                                                                currentStock <= 0 ? 'bg-danger-main' :
-                                                                currentStock <= item.critical_level ? 'bg-warning-main' : 
-                                                                'bg-success-main'
-                                                            }`}
+                                                        <div
+                                                            className={`h-full transition-all duration-300 rounded-full ${currentStock <= 0 ? 'bg-danger-main' :
+                                                                    currentStock <= item.critical_level ? 'bg-warning-main' :
+                                                                        'bg-success-main'
+                                                                }`}
                                                             style={{ width: `${item.critical_level > 0 ? Math.min((currentStock / item.critical_level) * 100, 100) : 100}%` }}
                                                         />
                                                     </div>
@@ -222,18 +237,18 @@ export function StockTable({
                                         </td>
                                         <td className="px-4 py-4 text-center">
                                             <span className="text-sm font-semibold text-text-secondary">
-                                                {item.average_cost 
-                                                    ? `${formatNumericDisplay(item.average_cost)} ₺` 
+                                                {item.average_cost
+                                                    ? `${formatNumericDisplay(item.average_cost)} ₺`
                                                     : '-'}
                                             </span>
                                         </td>
                                         <td className="px-4 py-4 text-center">
                                             <div className="flex justify-center">
-                                                <StockStatusBadge 
+                                                <StockStatusBadge
                                                     status={
                                                         currentStock <= 0 ? 'out_of_stock' :
-                                                        currentStock <= item.critical_level ? 'critical' :
-                                                        'in_stock'
+                                                            currentStock <= item.critical_level ? 'critical' :
+                                                                'in_stock'
                                                     }
                                                 />
                                             </div>
@@ -244,15 +259,17 @@ export function StockTable({
                                                     <>
                                                         <button
                                                             onClick={() => onAddMovement(item, MovementType.IN)}
+                                                            disabled={isSyncing}
                                                             title="Stok Girişi"
-                                                            className="p-2 text-success-main hover:bg-success-bg rounded-sm transition-all border border-transparent hover:border-success-border"
+                                                            className="p-2 text-success-main hover:bg-success-bg rounded-sm transition-all border border-transparent hover:border-success-border disabled:opacity-30"
                                                         >
                                                             <ArrowUpRight className="w-5 h-5" />
                                                         </button>
                                                         <button
                                                             onClick={() => onAddMovement(item, MovementType.OUT)}
+                                                            disabled={isSyncing}
                                                             title="Stok Çıkışı"
-                                                            className="p-2 text-danger-main hover:bg-danger-bg rounded-sm transition-all border border-transparent hover:border-danger-border"
+                                                            className="p-2 text-danger-main hover:bg-danger-bg rounded-sm transition-all border border-transparent hover:border-danger-border disabled:opacity-30"
                                                         >
                                                             <ArrowDownRight className="w-5 h-5" />
                                                         </button>
@@ -261,20 +278,21 @@ export function StockTable({
                                                 )}
                                                 <button
                                                     onClick={() => onEdit(item)}
+                                                    disabled={isSyncing}
                                                     title="Düzenle"
-                                                    className="p-2 text-text-muted hover:bg-bg-hover hover:text-text-primary rounded-sm transition-all border border-transparent hover:border-border-light"
+                                                    className="p-2 text-text-muted hover:bg-bg-hover hover:text-text-primary rounded-sm transition-all border border-transparent hover:border-border-light disabled:opacity-30"
                                                 >
                                                     <MoreVertical className="w-5 h-5" />
                                                 </button>
                                             </div>
                                         </td>
                                     </tr>
-                                    
+
                                     {/* Expandable Row - Product Usage */}
                                     {isExpanded && (
                                         <tr className="bg-bg-muted/20">
                                             <td colSpan={6} className="px-4 py-4">
-                                                {isLoading ? (
+                                                {isLoadingUsage ? (
                                                     <div className="flex items-center gap-2 text-text-muted">
                                                         <Loader2 className="w-4 h-4 animate-spin" />
                                                         <span className="text-xs">Kullanım bilgileri yükleniyor...</span>
@@ -287,7 +305,7 @@ export function StockTable({
                                                         {usage.products.length > 0 ? (
                                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                                                 {usage.products.map((product) => (
-                                                                    <div 
+                                                                    <div
                                                                         key={product.product_id}
                                                                         className="flex items-center justify-between px-3 py-2 bg-bg-surface border border-border-light rounded-sm"
                                                                     >

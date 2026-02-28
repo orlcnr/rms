@@ -12,10 +12,20 @@ import { TransactionalHelper } from '../../common/databases/transactional.helper
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Ingredient, Stock, Recipe, StockMovement, MenuItem]),
+    TypeOrmModule.forFeature([
+      Ingredient,
+      Stock,
+      Recipe,
+      StockMovement,
+      MenuItem,
+    ]),
   ],
   controllers: [InventoryController],
-  providers: [InventoryService, CreateStockMovementUseCase, TransactionalHelper],
+  providers: [
+    InventoryService,
+    CreateStockMovementUseCase,
+    TransactionalHelper,
+  ],
   exports: [InventoryService, CreateStockMovementUseCase],
 })
 export class InventoryModule {}

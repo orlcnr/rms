@@ -33,7 +33,7 @@ export class GuestRequestsService {
     private notificationsService: NotificationsService,
     @InjectRepository(Table)
     private tableRepository: Repository<Table>,
-  ) { }
+  ) {}
 
   /**
    * Handle waiter call request from guest
@@ -55,7 +55,9 @@ export class GuestRequestsService {
     this.guestGateway.notifyWaiterCall(request);
 
     // Create persistent notification for staff
-    const table = await this.tableRepository.findOne({ where: { id: session.tableId } });
+    const table = await this.tableRepository.findOne({
+      where: { id: session.tableId },
+    });
     await this.notificationsService.create({
       restaurantId: session.restaurantId,
       title: 'Garson Çağrısı',
@@ -91,7 +93,9 @@ export class GuestRequestsService {
     this.guestGateway.notifyBillRequest(request);
 
     // Create persistent notification for staff
-    const table = await this.tableRepository.findOne({ where: { id: session.tableId } });
+    const table = await this.tableRepository.findOne({
+      where: { id: session.tableId },
+    });
     await this.notificationsService.create({
       restaurantId: session.restaurantId,
       title: 'Hesap İsteği',

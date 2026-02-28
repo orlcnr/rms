@@ -45,7 +45,7 @@ export class InventoryService {
     private menuItemRepository: Repository<MenuItem>,
     private rulesService: RulesService,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   // Ingredients
   async createIngredient(
@@ -98,13 +98,17 @@ export class InventoryService {
     if (filters.status === StockStatus.CRITICAL) {
       // Kritik Seviye: 0 < quantity <= critical_level
       queryBuilder.andWhere('COALESCE(stock.quantity, 0) > 0');
-      queryBuilder.andWhere('COALESCE(stock.quantity, 0) <= ingredient.critical_level');
+      queryBuilder.andWhere(
+        'COALESCE(stock.quantity, 0) <= ingredient.critical_level',
+      );
     } else if (filters.status === StockStatus.OUT_OF_STOCK) {
       // Stok Tükendi: quantity <= 0
       queryBuilder.andWhere('COALESCE(stock.quantity, 0) <= 0');
     } else if (filters.status === StockStatus.HEALTHY) {
       // Yeterli Stok: quantity > critical_level
-      queryBuilder.andWhere('COALESCE(stock.quantity, 0) > ingredient.critical_level');
+      queryBuilder.andWhere(
+        'COALESCE(stock.quantity, 0) > ingredient.critical_level',
+      );
     }
 
     queryBuilder.orderBy('ingredient.name', 'ASC');
@@ -156,15 +160,15 @@ export class InventoryService {
       let newQuantity = Number(stock.quantity);
       if (dto.type === MovementType.IN) {
         newQuantity += dto.quantity;
-        
+
         // Maliyet güncelleme - STOK Girişi yapıldığında birim fiyat varsa güncelle
         if (dto.unit_price) {
           const currentStockQty = Number(stock.quantity);
           const newUnitPrice = Number(dto.unit_price);
-          
+
           // ingredient entity'sindeki updateCosts metodunu kullan
           ingredient.updateCosts(dto.quantity, newUnitPrice, currentStockQty);
-          
+
           // Ingredient'i güncelle
           await queryRunner.manager.save(ingredient);
         }
@@ -221,7 +225,7 @@ export class InventoryService {
       ingredient.restaurant_id,
       RuleKey.INVENTORY_PREVENT_DELETE,
       id,
-      'Bu malzeme silemezsiniz: Geçmiş işlem kayıtları (stok hareketi) bulunmaktadır.'
+      'Bu malzeme silemezsiniz: Geçmiş işlem kayıtları (stok hareketi) bulunmaktadır.',
     );
 
     const stock = await this.stockRepository.findOne({
@@ -364,7 +368,9 @@ export class InventoryService {
   }
 
   // Toplu stok güncelleme (Hızlı Sayım Modu)
-  async bulkUpdateStock(updates: { ingredientId: string; newQuantity: number }[]): Promise<{ success: boolean }> {
+  async bulkUpdateStock(
+    updates: { ingredientId: string; newQuantity: number }[],
+  ): Promise<{ success: boolean }> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -438,7 +444,7 @@ export class InventoryService {
       .getMany();
 
     // Her ürün için detayları topla
-    const products = recipes.map(recipe => ({
+    const products = recipes.map((recipe) => ({
       product_id: recipe.product.id,
       product_name: recipe.product.name,
       quantity: Number(recipe.quantity),
@@ -484,7 +490,9 @@ export class InventoryService {
         const monthlyConsumption = await this.movementRepository
           .createQueryBuilder('movement')
           .select('SUM(movement.quantity)', 'total')
-          .where('movement.ingredient_id = :ingredientId', { ingredientId: ingredient.id })
+          .where('movement.ingredient_id = :ingredientId', {
+            ingredientId: ingredient.id,
+          })
           .andWhere('movement.type = :type', { type: MovementType.OUT })
           .andWhere('movement.created_at >= :startDate', {
             startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
@@ -501,7 +509,8 @@ export class InventoryService {
           previous_price: previousPrice,
           current_price: currentPrice,
           price_change: priceChange,
-          price_change_percent: previousPrice > 0 ? (priceChange / previousPrice) * 100 : 0,
+          price_change_percent:
+            previousPrice > 0 ? (priceChange / previousPrice) * 100 : 0,
           monthly_consumption: monthlyQty,
           cost_impact: costImpact,
         };
@@ -529,13 +538,13 @@ export class InventoryService {
       .orderBy('movement.created_at', 'DESC')
       .getMany();
 
-    return movements.map(movement => {
+    return movements.map((movement) => {
       const systemQty = Number(movement.quantity);
       // Sayılan miktar tersi - IN ise artış, OUT ise azalış
-      const countedQty = movement.type === MovementType.IN
-        ? systemQty
-        : -systemQty;
-      const difference = movement.type === MovementType.IN ? systemQty : -systemQty;
+      const countedQty =
+        movement.type === MovementType.IN ? systemQty : -systemQty;
+      const difference =
+        movement.type === MovementType.IN ? systemQty : -systemQty;
       const avgCost = Number(movement.ingredient?.average_cost) || 0;
 
       return {
@@ -592,7 +601,8 @@ export class InventoryService {
       }
 
       const productPrice = Number(menuItem.price);
-      const foodCostPercent = productPrice > 0 ? (recipeCost / productPrice) * 100 : 0;
+      const foodCostPercent =
+        productPrice > 0 ? (recipeCost / productPrice) * 100 : 0;
 
       // Eğer food cost %35'i aşıyorsa uyarı ekle
       if (foodCostPercent > FOOD_COST_THRESHOLD) {

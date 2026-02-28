@@ -5,75 +5,79 @@ import { CashSessionStatus } from '../enums/cash.enum';
 
 @Entity('cash_sessions', { schema: 'operations' })
 export class CashSession extends BaseEntity {
-    @Column({ name: 'cash_register_id' })
-    cashRegisterId: string;
+  @Column({ name: 'cash_register_id' })
+  cashRegisterId: string;
 
-    @ManyToOne('CashRegister', 'sessions')
-    @JoinColumn({ name: 'cash_register_id' })
-    cashRegister: any;
+  @ManyToOne('CashRegister', 'sessions')
+  @JoinColumn({ name: 'cash_register_id' })
+  cashRegister: any;
 
-    @Column({ name: 'opened_by_id' })
-    openedById: string;
+  @Column({ name: 'opened_by_id' })
+  openedById: string;
 
-    @ManyToOne(() => User)
-    @JoinColumn({ name: 'opened_by_id' })
-    openedBy: User;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'opened_by_id' })
+  openedBy: User;
 
-    @Column({ name: 'opened_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-    openedAt: Date;
+  @Column({
+    name: 'opened_at',
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  openedAt: Date;
 
-    @Column({
-        name: 'opening_balance',
-        type: 'decimal',
-        precision: 10,
-        scale: 2,
-        default: 0,
-    })
-    openingBalance: number;
+  @Column({
+    name: 'opening_balance',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  openingBalance: number;
 
-    @Column({ name: 'closed_by_id', nullable: true })
-    closedById: string;
+  @Column({ name: 'closed_by_id', nullable: true })
+  closedById: string;
 
-    @ManyToOne(() => User)
-    @JoinColumn({ name: 'closed_by_id' })
-    closedBy: User;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'closed_by_id' })
+  closedBy: User;
 
-    @Column({ name: 'closed_at', type: 'timestamp', nullable: true })
-    closedAt: Date;
+  @Column({ name: 'closed_at', type: 'timestamp', nullable: true })
+  closedAt: Date;
 
-    @Column({
-        name: 'closing_balance',
-        type: 'decimal',
-        precision: 10,
-        scale: 2,
-        nullable: true,
-    })
-    closingBalance: number;
+  @Column({
+    name: 'closing_balance',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  closingBalance: number;
 
-    @Column({
-        name: 'counted_balance',
-        type: 'decimal',
-        precision: 10,
-        scale: 2,
-        nullable: true,
-    })
-    countedBalance: number;
+  @Column({
+    name: 'counted_balance',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  countedBalance: number;
 
-    @Column({
-        type: 'decimal',
-        precision: 10,
-        scale: 2,
-        nullable: true,
-    })
-    difference: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  difference: number;
 
-    @Column({
-        type: 'enum',
-        enum: CashSessionStatus,
-        default: CashSessionStatus.OPEN,
-    })
-    status: CashSessionStatus;
+  @Column({
+    type: 'enum',
+    enum: CashSessionStatus,
+    default: CashSessionStatus.OPEN,
+  })
+  status: CashSessionStatus;
 
-    @OneToMany('CashMovement', 'session')
-    movements: any[];
+  @OneToMany('CashMovement', 'session')
+  movements: any[];
 }

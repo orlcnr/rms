@@ -228,6 +228,7 @@ export interface BasketSummary {
 
 export interface CreateOrderInput {
   restaurant_id: string
+  transaction_id?: string
   table_id?: string
   customer_id?: string
   type: OrderType
@@ -241,9 +242,11 @@ export interface CreateOrderInput {
 
 export interface UpdateOrderStatusInput {
   status: OrderStatus
+  transaction_id?: string
 }
 
 export interface UpdateOrderItemsInput {
+  transaction_id?: string
   items: Array<{
     menu_item_id: string  // Backend snake_case bekliyor
     quantity: number
@@ -323,9 +326,11 @@ export const DISCOUNT_TYPE_OPTIONS = [
 export interface PaymentLine {
   id: string // Frontend generated unique ID
   method: PaymentMethod
-  amount: number // In cents for precision (stored as number, backend converts)
-  cashReceived?: number // For CASH payments - amount given by customer
-  customerId?: string // For OPEN_ACCOUNT - customer who owes
+  amount: number // In cents for precision
+  cashReceived?: number // For CASH payments
+  customerId?: string // For OPEN_ACCOUNT
+  tipAmount?: number // Gross tip (brüt bahşiş)
+  commissionRate?: number // Commission percentage (e.g. 0.02)
 }
 
 /**
@@ -343,11 +348,14 @@ export interface Discount {
  */
 export interface SplitPaymentRequest {
   order_id: string
+  transaction_id?: string // UUID v4 for idempotency
   payments: Array<{
     amount: number
     payment_method: PaymentMethod
     customer_id?: string
     cash_received?: number
+    tip_amount?: number
+    commission_rate?: number
     notes?: string
   }>
   discount_type?: DiscountType
@@ -368,6 +376,9 @@ export interface Payment extends BaseEntity {
   discount_type: DiscountType | null
   discount_amount: number
   discount_reason: string | null
+  tip_amount: number | null
+  commission_rate: number | null
+  net_tip_amount: number | null
   status: PaymentStatus
   transaction_id: string | null
   description: string | null
@@ -379,6 +390,7 @@ export interface Payment extends BaseEntity {
  */
 export interface RevertPaymentRequest {
   payment_id: string
+  transaction_id?: string // UUID v4 for idempotency
   reason: string
   approved_by?: string
 }
@@ -393,7 +405,7 @@ export interface RevertPaymentRequest {
 export function calculateBasketSummary(items: BasketItem[]): BasketSummary {
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  
+
   return {
     itemCount,
     subtotal,
@@ -406,7 +418,7 @@ export function calculateBasketSummary(items: BasketItem[]): BasketSummary {
  */
 export function addToBasket(items: BasketItem[], newItem: Omit<BasketItem, 'quantity'>): BasketItem[] {
   const existing = items.find(item => item.menuItemId === newItem.menuItemId)
-  
+
   if (existing) {
     return items.map(item =>
       item.menuItemId === newItem.menuItemId
@@ -414,7 +426,7 @@ export function addToBasket(items: BasketItem[], newItem: Omit<BasketItem, 'quan
         : item
     )
   }
-  
+
   return [...items, { ...newItem, quantity: 1 }]
 }
 
@@ -423,13 +435,13 @@ export function addToBasket(items: BasketItem[], newItem: Omit<BasketItem, 'quan
  */
 export function decrementBasketItem(items: BasketItem[], menuItemId: string): BasketItem[] {
   const existing = items.find(item => item.menuItemId === menuItemId)
-  
+
   if (!existing) return items
-  
+
   if (existing.quantity <= 1) {
     return items.filter(item => item.menuItemId !== menuItemId)
   }
-  
+
   return items.map(item =>
     item.menuItemId === menuItemId
       ? { ...item, quantity: item.quantity - 1 }
@@ -530,8 +542,145 @@ export function getPaymentMethodIcon(method: PaymentMethod): string {
 }
 
 // ============================================
-// LAYOUT CONSTANTS
+// KANBAN BOARD TYPES
 // ============================================
+
+/**
+ * OrderRequest - Sipariş içindeki farklı istek/komut
+ * Aynı masa grubunda farklı zamanlarda verilen siparişleri temsil eder
+ */
+export interface OrderRequest {
+  id: string
+  orderId: string
+  note?: string
+  requestedAt: string
+  status: OrderStatus
+  items: OrderItem[]
+}
+
+/**
+ * OrderGroup - Bir masa/adresteki tüm siparişleri gruplar
+ * Kanban board'da her kart bir OrderGroup'tur
+ */
+export interface OrderGroup {
+  tableId: string
+  tableName: string
+  orders: Order[]
+  requests?: OrderRequest[] // Farklı istekler dizisi
+  totalItems: number
+  totalAmount: number
+  firstOrderTime: string
+  lastOrderTime: string
+  activeWaveTime: string // En son eklenen ürünün veya siparişin zamanı (sayaç için)
+  customerName?: string
+  orderType?: OrderType
+  status: OrderStatus
+  activeItems: OrderItem[] // Tüm aktif ürünler (eski+yeni birleşik - geriye dönük uyumluluk için)
+  activeWaveItems: OrderItem[] // SADECE en son verilen siparişe (dalga) ait ürünler
+  previousItems: OrderItem[] // En son siparişten önceki, henüz servis aşamasındaki ürünler
+  servedItems: OrderItem[] // 30 dakikadan önce servis edilmiş olan ürünler (arşiv)
+}
+
+/**
+ * OrdersByStatus - Status bazlı gruplanmış siparişler
+ * Kanban board'daki her sütun için kullanılır
+ */
+export interface OrdersByStatus {
+  pending: OrderGroup[]
+  preparing: OrderGroup[]
+  ready: OrderGroup[]
+  served: OrderGroup[]
+  on_way: OrderGroup[]
+  delivered: OrderGroup[]
+  paid: OrderGroup[]
+  cancelled: OrderGroup[]
+}
+
+/**
+ * Kanban Board Filters
+ */
+export interface BoardFilters {
+  dateRange?: {
+    start: string
+    end: string
+  }
+  orderType?: OrderType
+  tableId?: string
+  search?: string
+}
+
+/**
+ * Kanban sütun yapılandırması
+ */
+export interface KanbanColumnConfig {
+  status: OrderStatus
+  label: string
+  color: string
+  icon: string
+}
+
+/**
+ * Dine-In Kanban columns
+ */
+export const KANBAN_COLUMNS_DINE_IN: KanbanColumnConfig[] = [
+  { status: OrderStatus.PENDING, label: 'Yeni Siparişler', color: 'yellow', icon: 'Clock' },
+  { status: OrderStatus.PREPARING, label: 'Hazırlanıyor', color: 'blue', icon: 'ChefHat' },
+  { status: OrderStatus.READY, label: 'Hazır', color: 'green', icon: 'Check' },
+  { status: OrderStatus.SERVED, label: 'Servis Edildi', color: 'purple', icon: 'Utensils' },
+]
+
+/**
+ * Takeaway/Delivery Kanban columns
+ */
+export const KANBAN_COLUMNS_TAKEAWAY: KanbanColumnConfig[] = [
+  { status: OrderStatus.PENDING, label: 'Beklemede', color: 'yellow', icon: 'Clock' },
+  { status: OrderStatus.PREPARING, label: 'Hazırlanıyor', color: 'blue', icon: 'ChefHat' },
+  { status: OrderStatus.READY, label: 'Hazır', color: 'green', icon: 'Check' },
+  { status: OrderStatus.ON_WAY, label: 'Yolda', color: 'orange', icon: 'Truck' },
+  { status: OrderStatus.DELIVERED, label: 'Teslim Edildi', color: 'green', icon: 'CheckCircle' },
+]
+
+/**
+ * Completed columns
+ */
+export const KANBAN_COLUMNS_COMPLETED: KanbanColumnConfig[] = [
+  { status: OrderStatus.PAID, label: 'Ödenmiş', color: 'green', icon: 'CreditCard' },
+  { status: OrderStatus.CANCELLED, label: 'İptal', color: 'red', icon: 'XCircle' },
+]
+
+// ============================================
+// STATUS HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Get next possible status options for a given status
+ */
+export function getNextStatusOptions(currentStatus: OrderStatus): OrderStatus[] {
+  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+    [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+    [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
+    [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
+    [OrderStatus.SERVED]: [OrderStatus.PAID],
+    [OrderStatus.PAID]: [],
+    [OrderStatus.ON_WAY]: [OrderStatus.DELIVERED],
+    [OrderStatus.DELIVERED]: [],
+    [OrderStatus.CANCELLED]: [],
+  }
+
+  return validTransitions[currentStatus] || []
+}
+
+/**
+ * Is order cancellable
+ */
+export function isOrderCancellable(status: OrderStatus): boolean {
+  return [
+    OrderStatus.PENDING,
+    OrderStatus.PREPARING,
+    OrderStatus.READY,
+  ].includes(status)
+}
+
 
 /**
  * Layout constants for consistent spacing across POS components

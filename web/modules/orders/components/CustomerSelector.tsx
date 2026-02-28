@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, User, AlertCircle, Loader2, Plus } from 'lucide-react';
 import { customersApi, Customer } from '@/modules/customers/services/customers.service';
 import { parseNumericValue, formatCurrency } from '@/modules/shared/utils/numeric';
+import { formatPhoneNumber } from '@/modules/shared/utils/format';
 
 // ============================================
 // CUSTOMER SELECTOR - Müşteri Arama Bileşeni
@@ -75,10 +76,22 @@ export function CustomerSelector({
     };
   }, [searchQuery]);
 
+  // Update searchQuery when selectedCustomer changes (for showing selected customer in input)
+  useEffect(() => {
+    if (selectedCustomer) {
+      setSearchQuery(`${selectedCustomer.first_name} ${selectedCustomer.last_name} (${formatPhoneNumber(selectedCustomer.phone)})`);
+    }
+  }, [selectedCustomer]);
+
   // Load customer by ID if value provided
   useEffect(() => {
     if (value && value !== selectedCustomer?.id) {
       loadCustomerById(value);
+    }
+    // Reset selectedCustomer when value is cleared
+    if (!value) {
+      setSelectedCustomer(null);
+      setSearchQuery('');
     }
   }, [value]);
 
@@ -114,7 +127,7 @@ export function CustomerSelector({
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
-    setSearchQuery(`${customer.first_name} ${customer.last_name} (${customer.phone})`);
+    setSearchQuery(`${customer.first_name} ${customer.last_name} (${formatPhoneNumber(customer.phone)})`);
     setIsOpen(false);
     onChange(customer);
   };
@@ -206,7 +219,7 @@ export function CustomerSelector({
 
       {/* Dropdown - Her zaman açılır, sonuç yoksa boş state göster */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-bg-surface border border-border-light rounded-sm shadow-lg max-h-72 overflow-hidden flex flex-col">
+        <div className="absolute z-[110] w-full mt-1 bg-bg-surface border border-border-light rounded-sm shadow-lg max-h-72 overflow-hidden flex flex-col">
           {/* Sonuçlar veya Boş State */}
           <div className="flex-1 overflow-y-auto">
             {customers.length > 0 ? (
@@ -230,7 +243,7 @@ export function CustomerSelector({
                           <div className="font-semibold text-text-primary">
                             {customer.first_name} {customer.last_name}
                           </div>
-                          <div className="text-xs text-text-muted">{customer.phone}</div>
+                          <div className="text-xs text-text-muted">{formatPhoneNumber(customer.phone)}</div>
                         </div>
                       </div>
                       

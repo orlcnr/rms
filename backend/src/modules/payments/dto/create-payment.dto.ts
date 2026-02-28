@@ -6,6 +6,7 @@ import {
   IsString,
   IsUUID,
   Min,
+  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod, DiscountType } from '../entities/payment.entity';
@@ -56,11 +57,13 @@ export class CreatePaymentDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(10000) // Makul bir üst limit
   tip_amount?: number;
 
   @ApiPropertyOptional({ example: 3.0 })
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(1) // %100'den fazla komisyon olamaz
   commission_rate?: number;
 }

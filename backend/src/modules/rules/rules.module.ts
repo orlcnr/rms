@@ -13,18 +13,18 @@ import { OrderItem } from '../orders/entities/order-item.entity';
 
 @Global()
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([BusinessRule, StockMovement, OrderItem]),
-        TablesModule, // Required by CashRuleEvaluator
-    ],
-    controllers: [RulesController],
-    providers: [
-        RulesService,
-        CashRuleEvaluator,
-        OrderRuleEvaluator,
-        InventoryRuleEvaluator,
-        MenuRuleEvaluator,
-    ],
-    exports: [RulesService],
+  imports: [
+    TypeOrmModule.forFeature([BusinessRule, StockMovement, OrderItem]),
+    TablesModule, // Required by CashRuleEvaluator
+  ],
+  controllers: [RulesController],
+  providers: [
+    RulesService,
+    CashRuleEvaluator,
+    OrderRuleEvaluator,
+    InventoryRuleEvaluator,
+    MenuRuleEvaluator,
+  ],
+  exports: [RulesService],
 })
-export class RulesModule { }
+export class RulesModule {}

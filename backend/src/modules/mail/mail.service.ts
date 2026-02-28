@@ -1,56 +1,70 @@
-import { Injectable, Logger } from '@nestjs/common'
-import { MailerService } from '@nestjs-modules/mailer'
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices'
-import { ConfigService } from '@nestjs/config'
+import { Injectable, Logger } from '@nestjs/common';
+import { MailerService } from '@nestjs-modules/mailer';
+import {
+  ClientProxy,
+  ClientProxyFactory,
+  Transport,
+} from '@nestjs/microservices';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class MailService {
-    private client: ClientProxy
-    private readonly logger = new Logger(MailService.name)
+  private client: ClientProxy;
+  private readonly logger = new Logger(MailService.name);
 
-    constructor(
-        private readonly mailerService: MailerService,
-        private readonly configService: ConfigService
-    ) {
-        this.client = ClientProxyFactory.create({
-            transport: Transport.RMQ,
-            options: {
-                urls: [
-                    this.configService.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672',
-                ],
-                queue: this.configService.get<string>('RABBITMQ_MAIL_QUEUE') || 'mail_queue',
-                queueOptions: {
-                    durable: true,
-                },
-            },
-        } as any)
-    }
+  constructor(
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
+  ) {
+    this.client = ClientProxyFactory.create({
+      transport: Transport.RMQ,
+      options: {
+        urls: [
+          this.configService.get<string>('RABBITMQ_URL') ||
+            'amqp://localhost:5672',
+        ],
+        queue:
+          this.configService.get<string>('RABBITMQ_MAIL_QUEUE') || 'mail_queue',
+        queueOptions: {
+          durable: true,
+        },
+      },
+    } as any);
+  }
 
-    /**
-     * Emits an email sending task to the queue
-     */
-    async sendWelcomeEmail(to: string, firstName: string, tempPassword: string) {
-        this.logger.log(`[MAIL SERVICE] Queuing welcome email for: ${to}`)
-        this.client.emit('send_welcome_email', { to, firstName, tempPassword })
-    }
+  /**
+   * Emits an email sending task to the queue
+   */
+  async sendWelcomeEmail(to: string, firstName: string, tempPassword: string) {
+    this.logger.log(`[MAIL SERVICE] Queuing welcome email for: ${to}`);
+    this.client.emit('send_welcome_email', { to, firstName, tempPassword });
+  }
 
-    /**
-     * Emits a password update email sending task to the queue
-     */
-    async sendPasswordUpdateEmail(to: string, firstName: string, newPassword: string) {
-        this.logger.log(`[MAIL SERVICE] Queuing password update email for: ${to}`)
-        this.client.emit('send_password_update_email', { to, firstName, newPassword })
-    }
+  /**
+   * Emits a password update email sending task to the queue
+   */
+  async sendPasswordUpdateEmail(
+    to: string,
+    firstName: string,
+    newPassword: string,
+  ) {
+    this.logger.log(`[MAIL SERVICE] Queuing password update email for: ${to}`);
+    this.client.emit('send_password_update_email', {
+      to,
+      firstName,
+      newPassword,
+    });
+  }
 
-    /**
-     * Performs the actual email sending logic (consumed by MailConsumer)
-     */
-    async sendActualEmail(to: string, firstName: string, tempPassword: string) {
-        try {
-            await this.mailerService.sendMail({
-                to,
-                subject: 'Welcome to RMS - Your Account Credentials',
-                html: `
+  /**
+   * Performs the actual email sending logic (consumed by MailConsumer)
+   */
+  async sendActualEmail(to: string, firstName: string, tempPassword: string) {
+    try {
+      await this.mailerService.sendMail({
+        to,
+        subject: 'Welcome to RMS - Your Account Credentials',
+        html: `
                     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #050505; color: #ffffff; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
                         <h1 style="color: #a855f7; font-weight: 900; letter-spacing: -0.025em; margin-bottom: 24px;">Welcome to RMS, ${firstName}!</h1>
                         <p style="color: #9ca3af; font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
@@ -79,22 +93,29 @@ export class MailService {
                         </div>
                     </div>
                 `,
-            })
-        } catch (error) {
-            this.logger.error(`[MAIL SERVICE] Failed to send actual email to ${to}:`, error)
-            throw error // Consumer will handle the retry/log
-        }
+      });
+    } catch (error) {
+      this.logger.error(
+        `[MAIL SERVICE] Failed to send actual email to ${to}:`,
+        error,
+      );
+      throw error; // Consumer will handle the retry/log
     }
+  }
 
-    /**
-     * Performs the actual password update email sending logic
-     */
-    async sendActualPasswordUpdateEmail(to: string, firstName: string, newPassword: string) {
-        try {
-            await this.mailerService.sendMail({
-                to,
-                subject: 'RMS - Password Updated',
-                html: `
+  /**
+   * Performs the actual password update email sending logic
+   */
+  async sendActualPasswordUpdateEmail(
+    to: string,
+    firstName: string,
+    newPassword: string,
+  ) {
+    try {
+      await this.mailerService.sendMail({
+        to,
+        subject: 'RMS - Password Updated',
+        html: `
                     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #050505; color: #ffffff; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
                         <h1 style="color: #a855f7; font-weight: 900; letter-spacing: -0.025em; margin-bottom: 24px;">Password Updated, ${firstName}</h1>
                         <p style="color: #9ca3af; font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
@@ -123,10 +144,13 @@ export class MailService {
                         </div>
                     </div>
                 `,
-            })
-        } catch (error) {
-            this.logger.error(`[MAIL SERVICE] Failed to send actual password update email to ${to}:`, error)
-            throw error
-        }
+      });
+    } catch (error) {
+      this.logger.error(
+        `[MAIL SERVICE] Failed to send actual password update email to ${to}:`,
+        error,
+      );
+      throw error;
     }
+  }
 }

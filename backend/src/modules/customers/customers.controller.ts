@@ -39,7 +39,11 @@ export class CustomersController {
     @Body() updateCustomerDto: UpdateCustomerDto,
     @GetUser() user: User,
   ) {
-    return this.customersService.update(id, updateCustomerDto, user.restaurant_id);
+    return this.customersService.update(
+      id,
+      updateCustomerDto,
+      user.restaurant_id,
+    );
   }
 
   @Get()

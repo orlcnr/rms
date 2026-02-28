@@ -26,7 +26,7 @@ import { User } from './entities/user.entity';
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Post()
   @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
@@ -36,7 +36,10 @@ export class UsersController {
     description: 'The user has been successfully created.',
   })
   @ApiResponse({ status: 409, description: 'Email already exists.' })
-  @ApiResponse({ status: 403, description: 'Not allowed to create users with this role.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not allowed to create users with this role.',
+  })
   create(
     @Body(ValidationPipe) createUserDto: CreateUserDto,
     @GetUser() user: User,
@@ -60,7 +63,12 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('includeDeleted') includeDeleted?: boolean,
   ) {
-    return this.usersService.findAll(user, { page, limit, search, includeDeleted });
+    return this.usersService.findAll(user, {
+      page,
+      limit,
+      search,
+      includeDeleted,
+    });
   }
 
   @Get(':id')
@@ -78,7 +86,10 @@ export class UsersController {
     description: 'The user has been successfully updated.',
   })
   @ApiResponse({ status: 404, description: 'User not found.' })
-  @ApiResponse({ status: 403, description: 'Not allowed to update user with this role.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not allowed to update user with this role.',
+  })
   update(
     @Param('id') id: string,
     @Body(ValidationPipe) updateUserDto: UpdateUserDto,
@@ -95,7 +106,10 @@ export class UsersController {
     description: 'The user has been successfully activated/deactivated.',
   })
   @ApiResponse({ status: 404, description: 'User not found.' })
-  @ApiResponse({ status: 403, description: 'Not allowed to deactivate this user.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not allowed to deactivate this user.',
+  })
   setActive(
     @Param('id') id: string,
     @Body(ValidationPipe) activateDeactivateDto: ActivateDeactivateUserDto,
@@ -125,7 +139,10 @@ export class UsersController {
     description: 'The user has been successfully restored.',
   })
   @ApiResponse({ status: 404, description: 'User not found.' })
-  @ApiResponse({ status: 403, description: 'Only super_admin can restore users.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only super_admin can restore users.',
+  })
   restore(@Param('id') id: string, @GetUser() user: User) {
     return this.usersService.restore(id, user);
   }

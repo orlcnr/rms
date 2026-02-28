@@ -9,6 +9,9 @@ services:
       target: development
     env_file:
       - ./env/.env.dev
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,6 +64,10 @@ services:
       target: development
     env_file:
       - ./env/.env.dev
+    environment:
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
     depends_on:
       backend:
         condition: service_started
@@ -78,6 +85,42 @@ services:
       - "traefik.http.services.web-dev.loadbalancer.server.port=3003"
       - "traefik.docker.network=proxy"
 
+  glitchtip:
+    image: glitchtip/glitchtip:latest
+    container_name: rms_glitchtip
+    env_file:
+      - ./env/.env.glitchtip
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@docker-postgres-1:5432/glitchtip
+      - REDIS_URL=redis://docker-redis-1:6379/1
+    networks:
+      - rms_network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glitchtip.rule=Host(`glitchtip.localhost`)"
+      - "traefik.http.routers.glitchtip.entrypoints=web"
+      - "traefik.http.services.glitchtip.loadbalancer.server.port=8000"
+      - "traefik.docker.network=proxy"
+    volumes:
+      - glitchtip_data:/code/uploads
+    restart: unless-stopped
+
+  glitchtip_worker:
+    image: glitchtip/glitchtip:latest
+    container_name: rms_glitchtip_worker
+    command: ./bin/run-celery-with-beat.sh
+    env_file:
+      - ./env/.env.glitchtip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - rms_network
+    restart: unless-stopped
+
 networks:
   rms_network:
     driver: bridge
@@ -86,3 +129,4 @@ networks:
 
 volumes:
   web_node_modules:
+  glitchtip_data:

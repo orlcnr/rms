@@ -25,7 +25,7 @@ interface SocketState {
   disconnect: () => void
   emit: (event: string, data: unknown) => void
   on: (event: string, callback: (data: unknown) => void) => void
-  off: (event: string) => void
+  off: (event: string, callback?: (data: any) => void) => void
 }
 
 export const useSocketStore = create<SocketState>((set, get) => ({
@@ -35,12 +35,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   connect: (restaurantId: string) => {
     const { socket: existingSocket } = get()
-    
+
     // Already connected to the same restaurant
     if (existingSocket?.connected && get().restaurantId === restaurantId) {
       return
     }
-    
+
     // Disconnect from previous if different restaurant
     if (existingSocket?.connected) {
       existingSocket.disconnect()
@@ -107,10 +107,14 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     }
   },
 
-  off: (event: string) => {
+  off: (event: string, callback?: (data: any) => void) => {
     const { socket } = get()
     if (socket) {
-      socket.off(event)
+      if (callback) {
+        socket.off(event, callback)
+      } else {
+        socket.off(event)
+      }
     }
   },
 }))
@@ -136,6 +140,22 @@ export function useTablesSocket(restaurantId: string) {
 // ============================================
 
 export function usePosSocket(restaurantId: string) {
+  const { connect, disconnect, on, off, isConnected } = useSocketStore()
+
+  return {
+    isConnected,
+    connect,
+    disconnect,
+    on,
+    off,
+  }
+}
+
+// ============================================
+// HOOK: Kasa sayfası için
+// ============================================
+
+export function useCashSocket(restaurantId: string) {
   const { connect, disconnect, on, off, isConnected } = useSocketStore()
 
   return {

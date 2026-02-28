@@ -17,6 +17,7 @@ interface PosProductGridProps {
   items: MenuItem[]
   onAddToBasket: (product: MenuItem) => void
   basketItems?: BasketItem[]  // Sepetteki ürünler için sayaç
+  disabled?: boolean
   className?: string
 }
 
@@ -30,6 +31,7 @@ export function PosProductGrid({
   items,
   onAddToBasket,
   basketItems = [],
+  disabled = false,
   className,
 }: PosProductGridProps) {
   // Sepetteki ürün adetlerini hesapla
@@ -66,6 +68,7 @@ export function PosProductGrid({
             product={item}
             onAddToBasket={onAddToBasket}
             quantityInBasket={basketCounts[item.id] || 0}
+            disabled={disabled}
           />
         ))}
       </div>
@@ -77,17 +80,19 @@ interface ProductCardProps {
   product: MenuItem
   onAddToBasket: (product: MenuItem) => void
   quantityInBasket: number
+  disabled?: boolean
 }
 
-function ProductCard({ product, onAddToBasket, quantityInBasket }: ProductCardProps) {
-  const isAvailable = product.is_available
+function ProductCard({ product, onAddToBasket, quantityInBasket, disabled = false }: ProductCardProps) {
+  const isAvailable = product.is_available && !disabled
 
   return (
     <button
       onClick={() => isAvailable && onAddToBasket(product)}
       disabled={!isAvailable}
       className={cn(
-        'bg-bg-surface border border-border-light rounded-sm p-2 group hover:border-border-medium hover:shadow-md transition-all flex flex-col h-full min-h-[200px] relative',
+        'bg-bg-surface border border-border-light rounded-sm p-2 group transition-all flex flex-col h-full min-h-[200px] relative',
+        isAvailable && 'hover:border-border-medium hover:shadow-md cursor-pointer',
         !isAvailable && 'opacity-50 cursor-not-allowed',
         'focus:outline-none focus:ring-2 focus:ring-primary-main focus:ring-offset-1'
       )}

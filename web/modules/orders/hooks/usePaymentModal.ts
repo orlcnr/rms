@@ -38,7 +38,7 @@ export function usePaymentModal({
         first_name: firstName,
         last_name: lastName,
         phone: tempPhone,
-        restaurant_id: restaurantId, // Required for multi-tenant support
+        restaurant_id: restaurantId,
       });
 
       toast.success('Müşteri başarıyla oluşturuldu');

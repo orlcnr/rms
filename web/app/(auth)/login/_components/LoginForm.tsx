@@ -39,7 +39,7 @@ export function LoginForm({ locale }: LoginFormProps) {
     try {
       await authService.login(data);
       toast.success(t(dict, 'auth.login.loginSuccess'));
-      router.push('/');
+      router.push('/dashboard');
     } catch {
       toast.error(t(dict, 'auth.login.loginError'));
     }

@@ -125,7 +125,7 @@ export function PaymentSummaryCard({
         {isComplete ? (
           <div className="flex items-center gap-1 text-success-main">
             <CheckCircle2 className="h-4 w-4" />
-            <span className="text-base font-bold">0,00 TL</span>
+            <span className="text-base font-bold">{formatPaymentAmount(0)}</span>
           </div>
         ) : (
           <div className="flex items-center gap-1 text-danger-main">

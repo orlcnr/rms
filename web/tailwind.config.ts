@@ -57,6 +57,7 @@ const config: Config = {
 
         warning: {
           main: 'var(--warning-main)',
+          hover: 'var(--warning-hover)',
           bg: 'var(--warning-bg)',
           border: 'var(--warning-border)',
           text: 'var(--warning-text)',
@@ -82,6 +83,7 @@ const config: Config = {
       spacing: {
         '4.5': '1.125rem',
         '18': '4.5rem',
+        'layout': '3rem',
       },
     },
   },

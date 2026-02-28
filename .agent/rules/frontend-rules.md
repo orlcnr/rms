@@ -102,6 +102,37 @@ web/modules/[module]/enums/
 
 ---
 
+### 2.2 Tarih ve Zaman Yönetimi (Date & Time)
+
+**CRITICAL:** Uygulama genelinde saat dilimi (timezone) ve senkronizasyon hatalarını önlemek için şu kurallara uyulmalıdır:
+
+**1. Veri Kayıt Stratejisi (Submission):**
+Frontend üzerinden sunucuya gönderilen tüm tarih/saat verileri **ISO 8601 (UTC)** formatında olmalıdır.
+```typescript
+// DOĞRU
+const payload = {
+  reservation_time: new Date(formValue).toISOString() // 2026-02-27T00:00:00.000Z
+};
+```
+
+**2. Sunucu Saati Senkronizasyonu (Server Offset):**
+Kullanıcının bilgisayar saati yanlış olabilir. Bu nedenle uygulama ayağa kalkarken sunucudan `serverTime` alınmalı ve bir `serverOffset` hesaplanmalıdır.
+- **getNow():** Yerel `new Date()` kullanımı yerine her zaman merkezi `getNow()` utility fonksiyonu kullanılmalıdır. Bu fonksiyon `serverOffset` değerini hesaba katar.
+- **serverOffset:** `$Offset = ServerTime - LocalTime$` formülüyle hesaplanır.
+
+**3. Görüntüleme ve Formatlama:**
+- Veritabanından gelen UTC verileri kullanıcıya gösterilirken tarayıcının yerel saatine (GMT+3) otomatik çevrilmesi için `new Date(utcString)` kullanılmalı ve ardından merkezi `formatDate` yardımcıları ile formatlanmalıdır.
+- Gün bazlı operasyonel işlemlerde (Today filtresi vb.) `toLocaleDateString('sv-SE')` İsveç hilesi yerel günü hatasız almak için kullanılabilir.
+
+```typescript
+// DOĞRU - Yerel saati baz alan ve YYYY-MM-DD formatı veren İsveç hilesi
+const today = new Date().toLocaleDateString('sv-SE'); 
+```
+
+---
+
+---
+
 ### 2.2 Component Boyut Kuralı (MAX 200 SATIR)
 
 **CRITICAL:** Her component dosyası maksimum 200 satır olmalıdır!

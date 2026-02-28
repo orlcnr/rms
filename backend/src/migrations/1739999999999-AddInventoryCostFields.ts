@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddInventoryCostFields1739999999999 implements MigrationInterface {
-  name = 'AddInventoryCostFields1739999999999'
+  name = 'AddInventoryCostFields1739999999999';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Add columns to ingredients table
@@ -9,7 +9,7 @@ export class AddInventoryCostFields1739999999999 implements MigrationInterface {
       ALTER TABLE operations.ingredients 
       ADD COLUMN IF NOT EXISTS average_cost DECIMAL(10, 2) NULL
     `);
-    
+
     await queryRunner.query(`
       ALTER TABLE operations.ingredients 
       ADD COLUMN IF NOT EXISTS last_price DECIMAL(10, 2) NULL
@@ -30,7 +30,7 @@ export class AddInventoryCostFields1739999999999 implements MigrationInterface {
       ALTER TABLE operations.stock_movements 
       ADD COLUMN IF NOT EXISTS unit_price DECIMAL(10, 2) NULL
     `);
-    
+
     await queryRunner.query(`
       ALTER TABLE operations.stock_movements 
       ADD COLUMN IF NOT EXISTS supplier_id UUID NULL
@@ -43,7 +43,7 @@ export class AddInventoryCostFields1739999999999 implements MigrationInterface {
       ALTER TABLE operations.stock_movements 
       DROP COLUMN IF EXISTS supplier_id
     `);
-    
+
     await queryRunner.query(`
       ALTER TABLE operations.stock_movements 
       DROP COLUMN IF EXISTS unit_price
@@ -64,7 +64,7 @@ export class AddInventoryCostFields1739999999999 implements MigrationInterface {
       ALTER TABLE operations.ingredients 
       DROP COLUMN IF EXISTS last_price
     `);
-    
+
     await queryRunner.query(`
       ALTER TABLE operations.ingredients 
       DROP COLUMN IF EXISTS average_cost

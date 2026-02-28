@@ -1,3 +1,5 @@
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, BadRequestException, Logger } from '@nestjs/common';
@@ -7,6 +9,8 @@ import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { RedisIoAdapter } from './common/adapters/redis-io.adaptor';
+import { SentryExceptionFilter } from './common/filters/sentry-exception.filter';
+import { SentryRabbitMQInterceptor } from './common/interceptors/sentry-rabbitmq.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -41,7 +45,8 @@ async function bootstrap() {
         configService.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672',
       ],
       queue:
-        configService.get<string>('RABBITMQ_POPULARITY_QUEUE') || 'popularity_update_queue',
+        configService.get<string>('RABBITMQ_POPULARITY_QUEUE') ||
+        'popularity_update_queue',
       queueOptions: {
         durable: true,
       },
@@ -55,8 +60,7 @@ async function bootstrap() {
       urls: [
         configService.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672',
       ],
-      queue:
-        configService.get<string>('RABBITMQ_MAIL_QUEUE') || 'mail_queue',
+      queue: configService.get<string>('RABBITMQ_MAIL_QUEUE') || 'mail_queue',
       queueOptions: {
         durable: true,
       },
@@ -83,13 +87,13 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
 
       const isDev = configService.get<string>('NODE_ENV') === 'development';
-      const isLocalhost = origin === 'https://localhost' || origin === 'http://localhost' || origin.endsWith('.localhost');
+      const isLocalhost =
+        origin === 'https://localhost' ||
+        origin === 'http://localhost' ||
+        origin.endsWith('.localhost');
 
       // Check if origin is in allowed list or is a localhost/subdomain in dev
-      if (
-        allowedOrigins.includes(origin) ||
-        (isDev && isLocalhost)
-      ) {
+      if (allowedOrigins.includes(origin) || (isDev && isLocalhost)) {
         callback(null, true);
       } else {
         console.error(`CORS Error: Origin ${origin} not allowed`);
@@ -116,6 +120,8 @@ async function bootstrap() {
     }),
   );
   app.useGlobalInterceptors(new TransformInterceptor());
+  app.useGlobalInterceptors(new SentryRabbitMQInterceptor());
+  app.useGlobalFilters(new SentryExceptionFilter());
 
   // Swagger Documentation
   const config = new DocumentBuilder()

@@ -89,4 +89,4 @@ import { TableEventsListener } from './listeners';
     ConvertGuestOrderUseCase,
   ],
 })
-export class QrGuestModule { }
+export class QrGuestModule {}

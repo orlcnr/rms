@@ -30,7 +30,7 @@ export class TableQrService {
     private jwtService: JwtService,
     @InjectRepository(Table)
     private tableRepository: Repository<Table>,
-  ) { }
+  ) {}
 
   /**
    * Generate QR token for a table

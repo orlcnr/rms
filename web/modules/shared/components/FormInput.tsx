@@ -249,9 +249,9 @@ export function FormInput({
 
   // ==================== STANDARD INPUT ====================
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn('relative w-full', className)}>
       {label && (
-        <label className="text-[10px] font-semibold text-text-primary uppercase tracking-widest ml-0.5">
+        <label className="text-[10px] font-semibold text-text-primary uppercase tracking-widest ml-0.5 block mb-2">
           {label}
           {required && <span className="text-danger-main ml-0.5">*</span>}
         </label>

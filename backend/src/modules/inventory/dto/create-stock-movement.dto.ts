@@ -16,7 +16,10 @@ export class CreateStockMovementDto {
   @IsNotEmpty()
   ingredient_id: string;
 
-  @ApiProperty({ enum: MovementType, description: 'Hareket tipi (IN, OUT, ADJUST)' })
+  @ApiProperty({
+    enum: MovementType,
+    description: 'Hareket tipi (IN, OUT, ADJUST)',
+  })
   @IsEnum(MovementType)
   @IsNotEmpty()
   type: MovementType;
@@ -27,18 +30,24 @@ export class CreateStockMovementDto {
   @IsNotEmpty()
   quantity: number;
 
-  @ApiPropertyOptional({ description: 'Hareket nedeni (SALE, PURCHASE, WASTE, COUNT, ADJUSTMENT)' })
+  @ApiPropertyOptional({
+    description: 'Hareket nedeni (SALE, PURCHASE, WASTE, COUNT, ADJUSTMENT)',
+  })
   @IsString()
   @IsOptional()
   reason?: string;
 
-  @ApiPropertyOptional({ description: 'Referans ID (order_id, purchase_id vb.)' })
+  @ApiPropertyOptional({
+    description: 'Referans ID (order_id, purchase_id vb.)',
+  })
   @IsString()
   @IsOptional()
   reference_id?: string;
 
   // unit_price sadece IN hareketlerinde izinli
-  @ApiPropertyOptional({ description: 'Birim fiyat (sadece GİRİŞ hareketlerinde zorunlu)' })
+  @ApiPropertyOptional({
+    description: 'Birim fiyat (sadece GİRİŞ hareketlerinde zorunlu)',
+  })
   @ValidateIf((o) => o.type === MovementType.IN)
   @IsNumber()
   @Min(0)
@@ -49,4 +58,9 @@ export class CreateStockMovementDto {
   @IsString()
   @IsOptional()
   supplier_id?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }

@@ -44,7 +44,7 @@ export class GuestOrdersService {
     private dataSource: DataSource,
     private notificationsService: NotificationsService,
     private notificationsGateway: NotificationsGateway,
-  ) { }
+  ) {}
 
   /**
    * Create a new draft order
@@ -282,7 +282,12 @@ export class GuestOrdersService {
     });
 
     // Unify items for the guest view
-    const items: { name: string; quantity: number; subtotal: number; status: string }[] = [];
+    const items: {
+      name: string;
+      quantity: number;
+      subtotal: number;
+      status: string;
+    }[] = [];
     let totalAmount = 0;
 
     // Items from official orders (staff or converted guest orders)
@@ -382,7 +387,10 @@ export class GuestOrdersService {
             : `[Misafir]: ${guestOrder.notes}`;
         }
         // Reset status to pending if it was already served/ready
-        if (order.status === OrderStatus.SERVED || order.status === OrderStatus.READY) {
+        if (
+          order.status === OrderStatus.SERVED ||
+          order.status === OrderStatus.READY
+        ) {
           order.status = OrderStatus.PENDING;
         }
       }
@@ -464,18 +472,26 @@ export class GuestOrdersService {
       if (fullOrder) {
         // Emit real-time notification to staff
         if (isNewOrder) {
-          this.notificationsGateway.notifyNewOrder(guestOrder.restaurantId, fullOrder);
+          this.notificationsGateway.notifyNewOrder(
+            guestOrder.restaurantId,
+            fullOrder,
+          );
         } else {
-          this.notificationsGateway.notifyOrderStatus(guestOrder.restaurantId, fullOrder);
+          this.notificationsGateway.notifyOrderStatus(
+            guestOrder.restaurantId,
+            fullOrder,
+          );
         }
       }
 
       // Also notify that this guest order is no longer pending
-      this.notificationsGateway.server.to(guestOrder.restaurantId).emit('guest_order_processed', {
-        id: guestOrder.id,
-        status: GuestOrderStatus.CONVERTED,
-        orderId: savedOrder.id
-      });
+      this.notificationsGateway.server
+        .to(guestOrder.restaurantId)
+        .emit('guest_order_processed', {
+          id: guestOrder.id,
+          status: GuestOrderStatus.CONVERTED,
+          orderId: savedOrder.id,
+        });
 
       return { guestOrder: savedGuestOrder, order: savedOrder };
     } catch (error) {
@@ -526,11 +542,13 @@ export class GuestOrdersService {
     );
 
     // Also notify that this guest order is no longer pending
-    this.notificationsGateway.server.to(order.restaurantId).emit('guest_order_processed', {
-      id: order.id,
-      status: GuestOrderStatus.REJECTED,
-      reason: dto.reason,
-    });
+    this.notificationsGateway.server
+      .to(order.restaurantId)
+      .emit('guest_order_processed', {
+        id: order.id,
+        status: GuestOrderStatus.REJECTED,
+        reason: dto.reason,
+      });
 
     return savedOrder;
   }

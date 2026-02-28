@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
 // Store & Hooks
 import { usePosStore } from './usePosStore'
@@ -14,8 +15,10 @@ import { usePosStore } from './usePosStore'
 import { ordersApi } from '../services'
 import { productsApi } from '@/modules/products/services/products.service'
 
-// Socket
+// Socket & Hybrid
 import { useSocketStore } from '@/modules/shared/api/socket'
+import { usePendingQueue } from '@/modules/shared/hooks/usePendingQueue'
+import { useSocketRevalidation } from '@/modules/shared/hooks/useSocketRevalidation'
 
 // Types
 import { MenuItem } from '@/modules/products/types'
@@ -71,12 +74,19 @@ export function useOrdersLogic({
   const [allItems, setAllItems] = useState<MenuItem[]>(initialMenuItems)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
+  // Router for refreshing server components
+  const router = useRouter()
+
+  // Track previous initialMenuItems to prevent unnecessary resets
+  const prevInitialMenuItemsRef = useRef<MenuItem[]>(initialMenuItems)
+
   // ============ STORE ============
   const {
     getCurrentBasket,
     selectedTable,
     setSelectedTable,
     orderType,
+    setOrderType,
     orders,
     setOrders,
     addToBasket,
@@ -96,6 +106,10 @@ export function useOrdersLogic({
   const categories = initialCategories
   const hasMore = paginationMeta ? hasMorePages(page, paginationMeta.totalPages) : false
 
+  // ============ HYBRID REFS ============
+  const suppressedTransactionIds = useRef<Set<string>>(new Set())
+  const pendingQueue = usePendingQueue()
+
   // ============ FILTERED ITEMS (MEMOIZED) ============
   const filteredItems = useMemo(() => {
     return filterMenuItems({
@@ -112,11 +126,29 @@ export function useOrdersLogic({
     setMounted(true)
     if (initialTable) {
       setSelectedTable(initialTable)
+      // Masadan geliniyorsa sipariş tipi daima DINE_IN olmalı
+      setOrderType(OrderType.DINE_IN)
     }
-    // Reset items when initialMenuItems changes
-    setAllItems(initialMenuItems)
-    setPage(1)
-  }, [initialTable, setSelectedTable, initialMenuItems])
+  }, [initialTable, setSelectedTable, setOrderType])
+
+  // Reset items when initialMenuItems actually changes (different content)
+  useEffect(() => {
+    // Compare items by checking if any item exists in both arrays
+    const prevItems = prevInitialMenuItemsRef.current
+    const hasNewItems = initialMenuItems.some(
+      (item) => !prevItems.some((prev) => prev.id === item.id)
+    )
+    const hasRemovedItems = prevItems.some(
+      (prev) => !initialMenuItems.some((item) => item.id === prev.id)
+    )
+
+    // Only reset if items actually changed
+    if (hasNewItems || hasRemovedItems || initialMenuItems.length !== prevItems.length) {
+      setAllItems(initialMenuItems)
+      setPage(1)
+      prevInitialMenuItemsRef.current = initialMenuItems
+    }
+  }, [initialMenuItems])
 
   // Load existing order items into basket
   useEffect(() => {
@@ -128,22 +160,44 @@ export function useOrdersLogic({
   }, [existingOrder, selectedTable, setBasketForTable])
 
   // Socket connection
-  const { connect, disconnect, on, off } = useSocketStore()
+  const { connect, disconnect, on, off, isConnected } = useSocketStore()
+
+  // Silent revalidation on reconnect
+  useSocketRevalidation({
+    isConnected,
+    onRevalidate: () => {
+      console.log('[OrdersLogic] Revalidating products on reconnect')
+      setPage(1)
+      productsApi.getProducts(restaurantId, { page: 1, limit: 20 }).then((response) => {
+        if ('items' in response) {
+          setAllItems(response.items)
+        }
+      })
+    },
+  })
 
   useEffect(() => {
     if (!restaurantId) return
 
     connect(restaurantId)
 
-    const handleOrderUpdate = (updatedOrder: any) => {
-      console.log('[OrdersClient] Order update received:', updatedOrder)
+    const handleOrderUpdate = (event: any) => {
+      console.log('[OrdersClient] Order update received:', event)
+
+      // 1. Suppression Check
+      if (event.transaction_id && suppressedTransactionIds.current.has(event.transaction_id)) {
+        console.log('[OrdersClient] Suppressing event matching local transaction:', event.transaction_id)
+        suppressedTransactionIds.current.delete(event.transaction_id)
+        return
+      }
+
+      const updatedOrder = event.data || event
 
       // Only handle updates for the current table
       if (
         !selectedTable ||
         (updatedOrder.table_id !== selectedTable.id && updatedOrder.tableId !== selectedTable.id)
       ) {
-        console.log('[OrdersClient] Skipping - order is for different table')
         return
       }
 
@@ -153,8 +207,6 @@ export function useOrdersLogic({
         const basketItems = groupedItemsToArray(itemsMap)
         setBasketForTable(selectedTable.id, basketItems)
       } else {
-        // Items not in socket event - fetch the order directly to get items
-        console.log('[OrdersClient] Fetching order to get items')
         ordersApi.getOrderById(updatedOrder.id).then((order) => {
           if (order.items && order.items.length > 0) {
             const itemsMap = groupOrderItemsByMenuItem(order.items)
@@ -169,11 +221,12 @@ export function useOrdersLogic({
     on('new_order', handleOrderUpdate)
 
     return () => {
-      off('order_status_updated')
-      off('new_order')
+      off('order_status_updated', handleOrderUpdate as any)
+      off('new_order', handleOrderUpdate as any)
       disconnect()
     }
   }, [restaurantId, selectedTable?.id, connect, disconnect, on, off, setBasketForTable])
+
 
   // ============ LOAD MORE (PAGINATION) ============
   const loadMoreRef = useRef<HTMLDivElement>(null)
@@ -235,10 +288,12 @@ export function useOrdersLogic({
   )
 
   const handleSubmitOrder = useCallback(async () => {
-    if (!selectedTable || basket.length === 0) return
-    setIsSubmitting(true)
+    if (!selectedTable || basket.length === 0) return null
 
-    // Find current order for this table - prefer existingOrder prop if passed
+    setIsSubmitting(true)
+    const transactionId = crypto.randomUUID()
+    suppressedTransactionIds.current.add(transactionId)
+
     const currentOrder = existingOrder ||
       (orders as any[]).find(
         (o) =>
@@ -246,35 +301,76 @@ export function useOrdersLogic({
           ['pending', 'preparing', 'ready', 'served'].includes(o.status)
       )
 
+    const payload = {
+      transaction_id: transactionId,
+      items: basket.map((i) => ({ menu_item_id: i.menuItemId, quantity: i.quantity })),
+    }
+
     try {
       if (currentOrder) {
-        // Update existing order
-        await ordersApi.updateOrderItems(currentOrder.id, {
-          items: basket.map((i) => ({ menu_item_id: i.menuItemId, quantity: i.quantity })),
-        })
+        const updatedOrder = await ordersApi.updateOrderItems(currentOrder.id, payload)
         toast.success('Sipariş güncellendi')
+
+        // Sync Basket with server state
+        const itemsMap = groupOrderItemsByMenuItem(updatedOrder.items)
+        const basketItems = groupedItemsToArray(itemsMap)
+        setBasketForTable(selectedTable.id, basketItems)
+        return updatedOrder
       } else {
-        // Create new order
         const newOrder = await ordersApi.createOrder({
+          ...payload,
           restaurant_id: restaurantId,
           table_id: selectedTable.id,
           type: orderType,
-          items: basket.map((i) => ({ menu_item_id: i.menuItemId, quantity: i.quantity })),
         })
 
-        // Add new order to list
         setOrders([newOrder, ...orders])
+        toast.success('Sipariş oluşturuldu')
 
-        toast.success('Sipariş oluşturuldu - ürün eklemeye devam edebilirsiniz')
+        // Sync Basket with server state
+        const itemsMap = groupOrderItemsByMenuItem(newOrder.items)
+        const basketItems = groupedItemsToArray(itemsMap)
+        setBasketForTable(selectedTable.id, basketItems)
+        return newOrder
       }
     } catch (e: any) {
-      // Show error from backend
-      const errorMessage = e?.response?.data?.message || 'Sipariş işlemi başarısız'
-      toast.error(errorMessage)
+      suppressedTransactionIds.current.delete(transactionId)
+
+      const isNetworkError = !e.response && e.message === 'Network Error'
+
+      // Handle NestJS validation error format or simple message
+      let errorMessage = 'Sipariş işlemi başarısız'
+      const errorData = e?.response?.data
+
+      if (errorData?.message) {
+        if (Array.isArray(errorData.message)) {
+          errorMessage = errorData.message
+            .map((m: any) => typeof m === 'object' ? Object.values(m.constraints || {}).join(', ') : m)
+            .join(' | ')
+        } else if (typeof errorData.message === 'object') {
+          errorMessage = Object.values((errorData.message as any).constraints || {}).join(', ') || 'Doğrulama hatası'
+        } else {
+          errorMessage = errorData.message
+        }
+      }
+
+      if (isNetworkError) {
+        pendingQueue.add({
+          id: transactionId,
+          module: 'orders',
+          endpoint: currentOrder ? `/orders/${currentOrder.id}/items` : '/orders',
+          method: currentOrder ? 'PATCH' : 'POST',
+          payload: { ...payload, restaurant_id: restaurantId, table_id: selectedTable.id, type: orderType },
+        })
+        toast.error('Bağlantı hatası. İşlem kuyruğa alındı.')
+      } else {
+        toast.error(errorMessage)
+      }
+      return null
     } finally {
       setIsSubmitting(false)
     }
-  }, [selectedTable, basket, orders, restaurantId, orderType, existingOrder, setIsSubmitting, setOrders])
+  }, [selectedTable, basket, orders, restaurantId, orderType, existingOrder, setIsSubmitting, setOrders, clearBasket, pendingQueue])
 
   // ============ RETURN ============
   return {
@@ -297,6 +393,7 @@ export function useOrdersLogic({
     orderType,
     existingOrder,
     isSubmitting,
+    isConnected,
 
     // Setters
     setActiveCategoryId,

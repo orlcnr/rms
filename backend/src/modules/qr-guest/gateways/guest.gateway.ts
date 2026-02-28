@@ -29,7 +29,9 @@ interface GuestSocketData {
     origin: '*',
   },
 })
-export class GuestGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class GuestGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -46,7 +48,9 @@ export class GuestGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     this.logger.log('GuestGateway afterInit - Server initialized');
     // @ts-ignore - accessing internal Socket.IO property for debugging
     const namespaces = Array.from((server as any).io?.nspaces?.keys() || []);
-    this.logger.log(`Registered namespaces: ${namespaces.join(', ') || 'root only'}`);
+    this.logger.log(
+      `Registered namespaces: ${namespaces.join(', ') || 'root only'}`,
+    );
   }
 
   handleConnection(client: Socket, ...args: any[]) {

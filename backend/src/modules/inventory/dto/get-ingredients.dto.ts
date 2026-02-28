@@ -11,4 +11,3 @@ export class GetIngredientsDto extends PaginationDto {
   @IsEnum(StockStatus)
   status?: StockStatus;
 }
-

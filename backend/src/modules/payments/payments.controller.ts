@@ -1,7 +1,19 @@
-import { Controller, Post, Body, Get, Param, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { CreateSplitPaymentDto, RevertPaymentDto } from './dto/create-split-payment.dto';
+import {
+  CreateSplitPaymentDto,
+  RevertPaymentDto,
+} from './dto/create-split-payment.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { GetPaymentsDto } from './dto/get-payments.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -12,7 +24,7 @@ import { Request } from 'express';
 @ApiBearerAuth()
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) { }
+  constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -23,28 +35,27 @@ export class PaymentsController {
 
   @Post('split')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Process split payment (multiple payment methods)',
-    description: 'Bir sipariş için birden fazla ödeme yöntemi kullanarak ödeme yapılmasını sağlar. Örn: 500 TL Nakit + 500 TL Açık Hesap'
+    description:
+      'Bir sipariş için birden fazla ödeme yöntemi kullanarak ödeme yapılmasını sağlar. Örn: 500 TL Nakit + 500 TL Açık Hesap',
   })
-  createSplitPayment(
-    @GetUser() user: any, 
-    @Body() dto: CreateSplitPaymentDto
-  ) {
+  createSplitPayment(@GetUser() user: any, @Body() dto: CreateSplitPaymentDto) {
     return this.paymentsService.createSplitPayment(dto, user.id);
   }
 
   @Post('revert')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Revert/refund a payment',
-    description: 'Bir ödemeyi iptal eder ve gerekirse müşteri borcunu düzeltir'
+    description: 'Bir ödemeyi iptal eder ve gerekirse müşteri borcunu düzeltir',
   })
-  revertPayment(
-    @GetUser() user: any,
-    @Body() dto: RevertPaymentDto
-  ) {
-    return this.paymentsService.revertPayment(dto.payment_id, dto.reason, user.id);
+  revertPayment(@GetUser() user: any, @Body() dto: RevertPaymentDto) {
+    return this.paymentsService.revertPayment(
+      dto.payment_id,
+      dto.reason,
+      user.id,
+    );
   }
 
   @Get('orders/:orderId')

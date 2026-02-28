@@ -12,6 +12,11 @@ import { tablesApi } from '../services/tables.service'
 import { Modal } from '@/modules/shared/components/Modal'
 import { Button } from '@/modules/shared/components/Button'
 import { RmsSwitch } from '@/modules/shared/components/RmsSwitch'
+import { SubHeaderSection, BodySection } from '@/modules/shared/components/layout'
+import { TableBoardToolbar } from './TableBoardToolbar'
+import { format } from 'date-fns'
+import { tr } from 'date-fns/locale'
+import { getNow } from '@/modules/shared/utils/date'
 import { toast } from 'sonner'
 import { cn } from '@/modules/shared/utils/cn'
 import { TableStatus } from '../types'
@@ -29,6 +34,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     const [areas, setAreas] = useState<Area[]>(initialAreas)
     const [tables, setTables] = useState<Table[]>(initialTables)
     const [activeAreaId, setActiveAreaId] = useState<string | null>(null)
+    const [searchQuery, setSearchQuery] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isAdminMode, setIsAdminMode] = useState(false) // Admin/Operation mode toggle
 
@@ -50,7 +56,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     // Polling for operation mode - refresh data every 30 seconds
     useEffect(() => {
         if (isAdminMode) return // No polling in admin mode
-        
+
         const interval = setInterval(async () => {
             try {
                 const [newAreas, newTables] = await Promise.all([
@@ -63,7 +69,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                 console.error('Polling error:', error)
             }
         }, 30000) // 30 seconds
-        
+
         return () => clearInterval(interval)
     }, [isAdminMode, restaurantId])
 
@@ -85,7 +91,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
         // Handle order status updates
         const handleOrderUpdate = (data: any) => {
             console.log('[TablesClient] Order update received:', data)
-            
+
             // Check if it's an order update (has table_id)
             if (data.table_id) {
                 console.log('[TablesClient] Refreshing tables due to order update')
@@ -118,16 +124,28 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     }, [restaurantId, mounted])
 
     // Filtered Tables - memoized
-    const filteredTables = useMemo(() =>
-        activeAreaId
-            ? tables.filter(t => t.area_id === activeAreaId)
-            : tables,
-        [tables, activeAreaId]
-    )
+    const filteredTables = useMemo(() => {
+        let result = tables
+
+        if (activeAreaId) {
+            result = result.filter(t => t.area_id === activeAreaId)
+        }
+
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim()
+            result = result.filter(t =>
+                t.name.toLowerCase().includes(query) ||
+                (t.area?.name && t.area.name.toLowerCase().includes(query))
+            )
+        }
+
+        return result
+    }, [tables, activeAreaId, searchQuery])
 
     // Statistics
     const availableCount = tables.filter(t => t.status === 'available').length
     const occupiedCount = tables.filter(t => t.status === 'occupied').length
+    const summaryDate = mounted ? format(getNow(), 'dd MMMM yyyy EEEE', { locale: tr }) : ''
 
     // Hydration fix - return loading state until mounted
     if (!mounted) {
@@ -296,107 +314,75 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     }
 
     return (
-        <div className="space-y-6 pb-32 animate-in fade-in duration-500 px-8">
-            {/* Header Area - ProductsClient style */}
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border-light py-6">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-6 bg-primary-main rounded-full" />
-                        <h1 className="text-2xl font-black text-text-primary uppercase tracking-tight">Masa Yönetimi</h1>
+        <div className="flex flex-col min-h-screen bg-bg-app">
+            <SubHeaderSection
+                title="MASA YÖNETİMİ"
+                description="Salon ve masa düzeni yönetimi"
+                moduleColor="bg-cyan-500"
+                isConnected={isConnected}
+                onRefresh={refreshData}
+                actions={
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 mr-4 border-r border-border-light pr-4">
+                            <span className={cn(
+                                "text-[10px] font-bold uppercase tracking-wider",
+                                !isAdminMode ? "text-primary-main" : "text-text-muted"
+                            )}>
+                                Operasyon
+                            </span>
+                            <RmsSwitch
+                                checked={isAdminMode}
+                                onChange={setIsAdminMode}
+                                size="sm"
+                            />
+                            <span className={cn(
+                                "text-[10px] font-bold uppercase tracking-wider",
+                                isAdminMode ? "text-primary-main" : "text-text-muted"
+                            )}>
+                                Yönetici
+                            </span>
+                        </div>
+                        <div className={cn("flex items-center gap-3", !isAdminMode && "hidden")}>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDownloadAllQrs}
+                            >
+                                <Download size={14} className="mr-2" />
+                                QR İNDİR
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleAddArea}
+                            >
+                                <Plus size={14} className="mr-2" />
+                                ALAN EKLE
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={handleAddTable}
+                            >
+                                <Plus size={18} className="mr-2" />
+                                YENİ MASA EKLE
+                            </Button>
+                        </div>
                     </div>
-                    <p className="text-text-muted text-xs font-bold uppercase tracking-widest opacity-70 mt-1">Salon ve masa düzeni yönetimi</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {/* Admin/Operation Mode Toggle */}
-                    <div className="flex items-center gap-2">
-                        {/* Socket connection status indicator */}
-                        <div className={cn(
-                            "w-2 h-2 rounded-full",
-                            isConnected ? "bg-success-main" : "bg-danger-main"
-                        )} title={isConnected ? 'Socket connected' : 'Socket disconnected'} />
-                        {/* Admin/Operation Mode Toggle */}
-                        <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-wider",
-                            !isAdminMode ? "text-primary-main" : "text-text-muted"
-                        )}>
-                            Operasyon
-                        </span>
-                        <RmsSwitch
-                            checked={isAdminMode}
-                            onChange={setIsAdminMode}
-                            size="sm"
-                        />
-                        <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-wider",
-                            isAdminMode ? "text-primary-main" : "text-text-muted"
-                        )}>
-                            Yönetici
-                        </span>
-                    </div>
-                    {/* Admin-only buttons - only visible in admin mode */}
-                    <div className={cn("flex items-center gap-3", !isAdminMode && "hidden")}>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDownloadAllQrs}
-                        >
-                            <Download size={14} className="mr-2" />
-                            QR İNDİR
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleAddArea}
-                        >
-                            <Plus size={14} className="mr-2" />
-                            ALAN EKLE
-                        </Button>
-                        <Button
-                            variant="primary"
-                            onClick={handleAddTable}
-                        >
-                            <Plus size={18} className="mr-2" />
-                            YENİ MASA EKLE
-                        </Button>
-                    </div>
-                </div>
-            </div>
+                }
+            />
 
-            {/* Stats Cards - Horizontal row */}
-            <div className="grid grid-cols-3 gap-4">
-                <div className="bg-bg-surface border border-border-light rounded-sm p-4 flex items-center justify-between">
-                    <div>
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Toplam Masa</span>
-                        <div className="text-2xl font-black text-text-primary mt-1">{tables.length}</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-sm bg-primary-subtle flex items-center justify-center">
-                        <LayoutGrid className="w-5 h-5 text-primary-main" />
-                    </div>
-                </div>
-                <div className="bg-bg-surface border border-border-light rounded-sm p-4 flex items-center justify-between">
-                    <div>
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Boş Masa</span>
-                        <div className="text-2xl font-black text-success-main mt-1">{availableCount}</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-sm bg-success-subtle flex items-center justify-center">
-                        <span className="text-success-main text-lg">✓</span>
-                    </div>
-                </div>
-                <div className="bg-bg-surface border border-border-light rounded-sm p-4 flex items-center justify-between">
-                    <div>
-                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Dolu Masa</span>
-                        <div className="text-2xl font-black text-danger-main mt-1">{occupiedCount}</div>
-                    </div>
-                    <div className="w-10 h-10 rounded-sm bg-danger-subtle flex items-center justify-center">
-                        <span className="text-danger-main text-lg">✕</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Search and Categories Panel - bg-bg-surface - Only visible in admin mode */}
-            {isAdminMode && (
-                <div className="bg-bg-surface border border-border-light rounded-sm p-6 shadow-sm space-y-6">
-                    {/* Area Tabs */}
+            <main className="flex flex-col flex-1 pb-6 min-h-0">
+                <TableBoardToolbar
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    stats={{
+                        total: tables.length,
+                        available: availableCount,
+                        occupied: occupiedCount
+                    }}
+                    summaryDate={summaryDate}
+                    socketConnected={isConnected}
+                >
                     <AreaTabs
                         areas={areas}
                         activeAreaId={activeAreaId}
@@ -404,21 +390,21 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                         onAddArea={handleAddArea}
                         onEditArea={handleEditArea}
                         onDeleteArea={handleDeleteArea}
+                        isAdminMode={isAdminMode}
                     />
-                </div>
-            )}
+                </TableBoardToolbar>
 
-            {/* Main Grid Area - bg-bg-app with padding */}
-            <div className="bg-bg-app">
-                <TableGrid
-                    tables={filteredTables}
-                    isAdminMode={isAdminMode}
-                    onEdit={handleEditTable}
-                    onDelete={handleDeleteTable}
-                    onShowQr={handleShowQr}
-                    onTableClick={handleTableClick}
-                />
-            </div>
+                <BodySection>
+                    <TableGrid
+                        tables={filteredTables}
+                        isAdminMode={isAdminMode}
+                        onEdit={handleEditTable}
+                        onDelete={handleDeleteTable}
+                        onShowQr={handleShowQr}
+                        onTableClick={handleTableClick}
+                    />
+                </BodySection>
+            </main>
 
             {/* QR Modal */}
             <Modal

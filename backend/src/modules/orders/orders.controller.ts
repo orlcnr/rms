@@ -21,15 +21,16 @@ import { Role } from '../../common/enums/role.enum';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 // import { User } from '../users/entities/user.entity'; // Removed
-import { Throttle } from '@nestjs/throttler';
-import { MoveOrderDto } from './dto/move-order.dto'; // Added
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { MoveOrderDto } from './dto/move-order.dto';
+import { BatchUpdateStatusDto } from './dto/batch-update-status.dto';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) { }
+  constructor(private readonly ordersService: OrdersService) {}
 
   @Roles(Role.WAITER, Role.MANAGER, Role.RESTAURANT_OWNER, Role.SUPER_ADMIN) // Updated roles
   @Get()
@@ -40,8 +41,15 @@ export class OrdersController {
     @Query('waiterId') waiterId?: string,
     @Query('type') type?: string,
     @Query('tableId') tableId?: string,
+    @Query('restaurantId') restaurantId?: string,
   ) {
-    return this.ordersService.findAll(req.user, status, waiterId, type, tableId);
+    return this.ordersService.findAll(
+      req.user,
+      status,
+      waiterId,
+      type,
+      tableId,
+    );
   }
 
   @Roles(Role.WAITER, Role.MANAGER, Role.RESTAURANT_OWNER, Role.SUPER_ADMIN)
@@ -81,6 +89,7 @@ export class OrdersController {
     Role.SUPER_ADMIN,
     Role.CHEF,
   )
+  @SkipThrottle() // Real-time kitchen operation — no rate limit
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update order status' })
   @ApiBody({
@@ -93,6 +102,22 @@ export class OrdersController {
   })
   updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus) {
     return this.ordersService.updateStatus(id, status);
+  }
+
+  @Roles(
+    Role.WAITER,
+    Role.MANAGER,
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.CHEF,
+  )
+  @SkipThrottle() // Batch real-time op — replaces N individual status updates
+  @Patch('batch-status')
+  @ApiOperation({
+    summary: 'Batch update order statuses (single request for multiple orders)',
+  })
+  batchUpdateStatus(@Body() dto: BatchUpdateStatusDto) {
+    return this.ordersService.batchUpdateStatus(dto.order_ids, dto.status);
   }
 
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER, Role.SUPER_ADMIN) // Updated roles
@@ -116,6 +141,15 @@ export class OrdersController {
     @GetUser() user: any,
     @Body() dto: UpdateOrderItemsDto,
   ) {
-    return this.ordersService.updateItems(id, dto.items, user, dto.notes, dto.type, dto.customer_id, dto.address);
+    return this.ordersService.updateItems(
+      id,
+      dto.items,
+      user,
+      dto.notes,
+      dto.type,
+      dto.customer_id,
+      dto.address,
+      dto.transaction_id,
+    );
   }
 }

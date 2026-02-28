@@ -33,7 +33,7 @@ declare module 'express' {
 @ApiTags('Guest Sessions')
 @Controller('guest/sessions')
 export class GuestSessionsController {
-  constructor(private guestSessionsService: GuestSessionsService) { }
+  constructor(private guestSessionsService: GuestSessionsService) {}
 
   @Public()
   @Post()
@@ -62,8 +62,9 @@ export class GuestSessionsController {
     }
 
     // Refresh access token
-    const newToken =
-      await this.guestSessionsService.refreshAccessToken(params.id);
+    const newToken = await this.guestSessionsService.refreshAccessToken(
+      params.id,
+    );
 
     return {
       isActive: true,

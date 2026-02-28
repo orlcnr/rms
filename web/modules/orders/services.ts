@@ -19,18 +19,34 @@ export interface GetOrdersQueryParams extends GetOrdersParams {
   restaurantId: string
 }
 
+export interface GetOrdersOptions {
+  cache?: RequestCache
+  next?: NextFetchRequestConfig
+}
+
+export const ORDERS_CACHE_TAGS = {
+  ALL: 'orders',
+  BOARD: 'orders-board',
+  BY_STATUS: (status: string) => `orders-${status}`,
+  BY_TABLE: (tableId: string) => `orders-table-${tableId}`,
+} as const
+
 export const ordersApi = {
   /**
    * Get all orders with optional filters
    * GET /orders
    */
-  getOrders: async (params: GetOrdersQueryParams) => {
+  getOrders: async (
+    params: GetOrdersQueryParams,
+    options?: GetOrdersOptions,
+  ) => {
     const { restaurantId, ...queryParams } = params
     return http.get<PaginatedOrdersResponse>(`/orders`, {
       params: {
         restaurantId,
         ...queryParams,
       },
+      ...options,
     })
   },
 
@@ -57,6 +73,19 @@ export const ordersApi = {
   updateOrderStatus: async (id: string, data: UpdateOrderStatusInput) => {
     return http.patch<Order>(`/orders/${id}/status`, data)
   },
+
+  /**
+   * Batch update order statuses — single request for multiple orders (avoids N requests)
+   * PATCH /orders/batch-status
+   */
+  batchUpdateOrderStatus: async (orderIds: string[], status: string, transactionId?: string) => {
+    return http.patch<Order[]>('/orders/batch-status', {
+      order_ids: orderIds,
+      status,
+      transaction_id: transactionId
+    })
+  },
+
 
   /**
    * Update order items

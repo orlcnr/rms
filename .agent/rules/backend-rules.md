@@ -273,6 +273,41 @@ export class Entity extends BaseEntity {
 
 ---
 
+### 8. Tarih ve Zaman Yönetimi (Date & Time)
+
+**CRITICAL:** Veritabanında gün bazlı filtreleme yaparken saat dilimi (timezone) sapmalarını önlemek için şu kurallara uyulmalıdır:
+
+**1. Veritabanı Filtrelemesi (PostgreSQL):**
+Gün bazlı karşılaştırmalarda (tek gün veya aralık), TypeORM QueryBuilder içinde PostgreSQL'in `AT TIME ZONE` dönüşümü kullanılmalıdır. Bu, UTC olarak saklanan zamanı İstanbul saatine çevirip öyle karşılaştırır.
+
+```typescript
+// DOĞRU - UTC vaktini İstanbul'a çevirip gün bazlı kesin eşleşme
+qb.andWhere("CAST(entity.reservation_time AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' AS DATE) = :date", { 
+  date: "2026-02-27" 
+});
+```
+
+**2. Alan Ayrımı (created_at vs Business Time):**
+- `created_at`: Kaydın oluşturulma anıdır, her zaman UTC olarak saklanır ve nadiren filtrelemede (sadece log/audit için) kullanılır.
+- `reservation_time` / `order_time`: İş mantığıyla ilgili zamandır. Filtreleme ve görüntüleme her zaman bu alan üzerinden, İstanbul saat dilimi dikkate alınarak yapılmalıdır.
+
+**3. "Today" (Bugün) Hesaplaması:**
+Backend tarafında "Bugün" (Today) sorgusu yapıldığında, sunucu saati (genellikle UTC) yerine her zaman Türkiye yerel saati (`Europe/Istanbul`) baz alınmalıdır.
+
+```typescript
+// DOĞRU - Sunucu saati ne olursa olsun İstanbul'un gününü hesaplar
+const todayIstanbul = new Intl.DateTimeFormat('en-CA', { 
+  timeZone: 'Europe/Istanbul' 
+}).format(new Date());
+
+// Kullanım
+qb.andWhere("CAST(entity.reservation_time AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' AS DATE) = :today", { 
+  today: todayIstanbul 
+});
+```
+
+---
+
 ## Validation Kurallari
 
 ### 1. class-validator Decorator'lari

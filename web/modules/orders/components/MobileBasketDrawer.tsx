@@ -8,6 +8,7 @@ import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { BasketItem } from '../types'
 import { Table } from '@/modules/tables/types'
 import { OrderType } from '../types'
+import { cn } from '@/modules/shared/utils/cn'
 
 interface MobileBasketDrawerProps {
     isOpen: boolean
@@ -99,18 +100,26 @@ export function MobileBasketDrawer({
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onDecrement(item.menuItemId)}
-                                        className="w-8 h-8 flex items-center justify-center rounded-sm bg-bg-surface border border-border-light hover:border-danger-main transition-colors"
+                                        disabled={isLoading}
+                                        className={cn(
+                                            "w-8 h-8 flex items-center justify-center rounded-sm bg-bg-surface border border-border-light transition-colors",
+                                            !isLoading && "hover:border-danger-main"
+                                        )}
                                     >
                                         <Minus className="w-3 h-3 text-text-primary" />
                                     </button>
-                                    
+
                                     <span className="w-8 text-center font-bold text-text-primary">
                                         {item.quantity}
                                     </span>
-                                    
+
                                     <button
                                         onClick={() => onIncrement(item.menuItemId)}
-                                        className="w-8 h-8 flex items-center justify-center rounded-sm bg-bg-surface border border-border-light hover:border-success-main transition-colors"
+                                        disabled={isLoading}
+                                        className={cn(
+                                            "w-8 h-8 flex items-center justify-center rounded-sm bg-bg-surface border border-border-light transition-colors",
+                                            !isLoading && "hover:border-success-main"
+                                        )}
                                     >
                                         <Plus className="w-3 h-3 text-text-primary" />
                                     </button>

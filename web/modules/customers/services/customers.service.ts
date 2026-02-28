@@ -18,7 +18,7 @@ export interface CreateCustomerDto {
   phone: string;
   email?: string;
   notes?: string;
-  restaurant_id: string; // Required for multi-tenant support
+  restaurant_id?: string; // Optional - backend gets from authenticated user
 }
 
 export interface PaginatedResponse<T> {

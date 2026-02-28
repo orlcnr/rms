@@ -21,7 +21,10 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { GetStockMovementsDto } from './dto/get-stock-movements.dto';
 import { GetIngredientsDto } from './dto/get-ingredients.dto'; // Import GetIngredientsDto
-import { GetCostAnalysisDto, GetCountDifferencesDto } from './dto/get-cost-analysis.dto';
+import {
+  GetCostAnalysisDto,
+  GetCountDifferencesDto,
+} from './dto/get-cost-analysis.dto';
 import { BulkStockUpdateDto } from './dto/bulk-stock-update.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -38,7 +41,7 @@ export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
     private readonly createStockMovementUseCase: CreateStockMovementUseCase,
-  ) { }
+  ) {}
 
   @Get('movements')
   findAllMovements(
@@ -112,7 +115,8 @@ export class InventoryController {
   @ApiOperation({ summary: 'Restorana ait malzemeleri sayfalı olarak getir' })
   findAllIngredients(
     @Request() req,
-    @Query(new ValidationPipe({ transform: true, whitelist: true })) filters: GetIngredientsDto,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    filters: GetIngredientsDto,
   ) {
     return this.inventoryService.findAllIngredients(req, filters);
   }
@@ -134,10 +138,7 @@ export class InventoryController {
 
   @Get('ingredients/:id/usage')
   @ApiOperation({ summary: 'Malzemenin kullanıldığı ürünleri getir' })
-  getIngredientUsage(
-    @Param('id') id: string,
-    @Request() req,
-  ) {
+  getIngredientUsage(@Param('id') id: string, @Request() req) {
     const restaurantId = req.user.restaurantId;
     return this.inventoryService.getIngredientUsage(id, restaurantId);
   }

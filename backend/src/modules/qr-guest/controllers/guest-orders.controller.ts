@@ -38,7 +38,7 @@ import { GetUser } from '../../../common/decorators/get-user.decorator';
 @ApiTags('Guest Orders')
 @Controller('guest/orders')
 export class GuestOrdersController {
-  constructor(private guestOrdersService: GuestOrdersService) { }
+  constructor(private guestOrdersService: GuestOrdersService) {}
 
   // ===== Guest Endpoints =====
 
@@ -51,7 +51,10 @@ export class GuestOrdersController {
     @Body() dto: CreateDraftOrderDto,
     @Req() req: Request,
   ) {
-    console.log('[DEBUG Controller] createDraftOrder called, session:', req.guestSession?.id);
+    console.log(
+      '[DEBUG Controller] createDraftOrder called, session:',
+      req.guestSession?.id,
+    );
     return await this.guestOrdersService.createDraftOrder(
       req.guestSession!,
       dto,

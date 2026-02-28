@@ -16,7 +16,7 @@ export class GuestAuthGuard implements CanActivate {
     private jwtService: JwtService,
     private configService: ConfigService,
     private guestSessionsService: GuestSessionsService,
-  ) { 
+  ) {
     console.log('[DEBUG Guard] Constructor called');
   }
 
@@ -96,7 +96,12 @@ export class GuestAuthGuard implements CanActivate {
     const authHeader = request.headers.authorization;
     console.log('[DEBUG Guard] Authorization header:', authHeader);
     const [type, token] = authHeader?.split(' ') ?? [];
-    console.log('[DEBUG Guard] Extracted type:', type, 'token present:', !!token);
+    console.log(
+      '[DEBUG Guard] Extracted type:',
+      type,
+      'token present:',
+      !!token,
+    );
     return type === 'Bearer' ? token : undefined;
   }
 }

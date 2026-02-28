@@ -20,6 +20,9 @@ interface PaymentMethodDetailsProps {
   disabled: boolean;
   onAddNewCustomer?: (name: string) => Promise<Customer | null>;
   onOpenNewCustomerModal?: (initialName?: string) => void;
+  commissionRate?: number;
+  isEditable?: boolean;
+  tipEnabled?: boolean;
 }
 
 // Boş durum (Empty State)
@@ -241,17 +244,33 @@ function CardPaymentForm({
   onUpdate,
   disabled,
   methodLabel,
+  commissionRate = 0.02,
+  isEditable = true,
+  tipEnabled = false,
 }: {
   payment: PaymentLine;
   onUpdate: (updates: Partial<PaymentLine>) => void;
   disabled: boolean;
   methodLabel: string;
+  commissionRate?: number;
+  isEditable?: boolean;
+  tipEnabled?: boolean;
 }) {
   const [localAmount, setLocalAmount] = useState(payment.amount.toString());
+  const [localTip, setLocalTip] = useState((payment.tipAmount || 0).toString());
+  const [localCommission, setLocalCommission] = useState((payment.commissionRate || commissionRate).toString());
 
   useEffect(() => {
     setLocalAmount(payment.amount.toString());
   }, [payment.amount]);
+
+  useEffect(() => {
+    setLocalTip((payment.tipAmount || 0).toString());
+  }, [payment.tipAmount]);
+
+  useEffect(() => {
+    setLocalCommission((payment.commissionRate || commissionRate).toString());
+  }, [payment.commissionRate, commissionRate]);
 
   const handleAmountChange = (value: string) => {
     setLocalAmount(value);
@@ -259,23 +278,91 @@ function CardPaymentForm({
     onUpdate({ amount: num });
   };
 
+  const handleTipChange = (value: string) => {
+    setLocalTip(value);
+    const num = parseFloat(value.replace(',', '.')) || 0;
+    onUpdate({ tipAmount: num });
+  };
+
+  const handleCommissionChange = (value: string) => {
+    setLocalCommission(value);
+    const num = parseFloat(value.replace(',', '.')) || 0;
+    onUpdate({ commissionRate: num });
+  };
+
+  const tip = parseFloat(localTip.replace(',', '.')) || 0;
+  const comm = parseFloat(localCommission.replace(',', '.')) || 0;
+  const netTip = tip * (1 - comm);
+
   return (
-    <div>
-      <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
-        {methodLabel} Tutarı
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={localAmount}
-          onChange={(e) => handleAmountChange(e.target.value)}
-          disabled={disabled}
-          className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
-            focus:outline-none focus:border-primary-main"
-          placeholder="0,00"
-        />
-        <span className="text-lg font-semibold text-text-muted">TL</span>
+    <div className="space-y-4">
+      {/* Tutar Girişi */}
+      <div>
+        <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
+          {methodLabel} Tutarı
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={localAmount}
+            onChange={(e) => handleAmountChange(e.target.value)}
+            disabled={disabled}
+            className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
+              focus:outline-none focus:border-primary-main"
+            placeholder="0,00"
+          />
+          <span className="text-lg font-semibold text-text-muted">TL</span>
+        </div>
       </div>
+
+      {tipEnabled && (
+        <>
+          {/* Bahşiş Bölümü */}
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border-light">
+            <div>
+              <label className="text-[10px] font-semibold text-text-secondary uppercase block mb-1">
+                Bahşiş (Tip)
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={localTip}
+                  onChange={(e) => handleTipChange(e.target.value)}
+                  disabled={disabled}
+                  className="flex-1 px-3 py-2 text-base font-bold text-right bg-bg-muted border border-border-light rounded-sm
+                    focus:outline-none focus:border-primary-main"
+                  placeholder="0,00"
+                />
+                <span className="text-sm font-semibold text-text-muted">TL</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-semibold text-text-secondary uppercase block mb-1">
+                Komisyon Oranı
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={localCommission}
+                  onChange={(e) => handleCommissionChange(e.target.value)}
+                  disabled={disabled || !isEditable}
+                  className="flex-1 px-3 py-2 text-base font-bold text-right bg-bg-muted border border-border-light rounded-sm
+                    focus:outline-none focus:border-primary-main disabled:opacity-50"
+                  placeholder="0,02"
+                />
+              </div>
+            </div>
+          </div>
+
+          {tip > 0 && (
+            <div className="p-3 bg-bg-muted border border-border-light rounded-sm flex justify-between items-center">
+              <span className="text-xs font-semibold text-text-secondary uppercase">Net Bahşiş:</span>
+              <span className="text-sm font-bold text-success-main">₺{netTip.toFixed(2)}</span>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -285,10 +372,13 @@ export function PaymentMethodDetails({
   activePayment,
   method,
   onUpdate,
-  restaurantId,
+  restaurantId, // If needed in future
   disabled,
   onAddNewCustomer,
   onOpenNewCustomerModal,
+  commissionRate,
+  isEditable,
+  tipEnabled,
 }: PaymentMethodDetailsProps) {
   // Boş durum
   if (!method || !activePayment) {
@@ -310,7 +400,7 @@ export function PaymentMethodDetails({
         <OpenAccountForm
           payment={activePayment}
           onUpdate={onUpdate}
-          restaurantId={restaurantId}
+          restaurantId={restaurantId || ''}
           disabled={disabled}
           onAddNewCustomer={onAddNewCustomer}
           onOpenNewCustomerModal={onOpenNewCustomerModal}
@@ -319,13 +409,16 @@ export function PaymentMethodDetails({
 
       {(method === PaymentMethod.CREDIT_CARD ||
         method === PaymentMethod.DEBIT_CARD) && (
-        <CardPaymentForm
-          payment={activePayment}
-          onUpdate={onUpdate}
-          disabled={disabled}
-          methodLabel={method === PaymentMethod.CREDIT_CARD ? 'Kredi Kartı' : 'Banka Kartı'}
-        />
-      )}
+          <CardPaymentForm
+            payment={activePayment}
+            onUpdate={onUpdate}
+            disabled={disabled}
+            methodLabel={method === PaymentMethod.CREDIT_CARD ? 'Kredi Kartı' : 'Banka Kartı'}
+            commissionRate={commissionRate}
+            isEditable={isEditable}
+            tipEnabled={tipEnabled}
+          />
+        )}
 
       {method === PaymentMethod.DIGITAL_WALLET && (
         <CardPaymentForm
@@ -333,6 +426,9 @@ export function PaymentMethodDetails({
           onUpdate={onUpdate}
           disabled={disabled}
           methodLabel="Dijital Cüzdan"
+          commissionRate={commissionRate}
+          isEditable={isEditable}
+          tipEnabled={tipEnabled}
         />
       )}
 
@@ -342,6 +438,9 @@ export function PaymentMethodDetails({
           onUpdate={onUpdate}
           disabled={disabled}
           methodLabel="Havale"
+          commissionRate={commissionRate}
+          isEditable={isEditable}
+          tipEnabled={tipEnabled}
         />
       )}
     </div>

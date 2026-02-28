@@ -31,7 +31,7 @@ export class TableEventsListener {
   constructor(
     private guestSessionsService: GuestSessionsService,
     private guestGateway: GuestGateway,
-  ) { }
+  ) {}
 
   /**
    * Handle table status changes
@@ -96,9 +96,8 @@ export class TableEventsListener {
     );
 
     // Get all sessions for this table
-    const sessionIds = await this.guestSessionsService.getTableSessions(
-      tableId,
-    );
+    const sessionIds =
+      await this.guestSessionsService.getTableSessions(tableId);
 
     // Notify all guests that bill is paid
     for (const sessionId of sessionIds) {
@@ -111,16 +110,13 @@ export class TableEventsListener {
 
     // Revoke sessions after a short delay
     // This gives guests time to see the confirmation
-    setTimeout(
-      async () => {
-        await this.revokeTableSessions(
-          tableId,
-          restaurantId,
-          'Payment completed - session ended',
-        );
-      },
-      5000,
-    ); // 5 seconds
+    setTimeout(async () => {
+      await this.revokeTableSessions(
+        tableId,
+        restaurantId,
+        'Payment completed - session ended',
+      );
+    }, 5000); // 5 seconds
   }
 
   /**

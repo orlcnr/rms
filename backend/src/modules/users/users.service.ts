@@ -47,7 +47,7 @@ export class UsersService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private restaurantsService: RestaurantsService,
-  ) { }
+  ) {}
 
   /**
    * Check if the requester can create users with the specified role
@@ -136,7 +136,9 @@ export class UsersService {
     if (requesterUser.role !== Role.SUPER_ADMIN) {
       userRestaurantId = requesterUser.restaurant_id;
     } else if (!restaurant_id) {
-      throw new BadRequestException('Restaurant ID is required for super_admin users');
+      throw new BadRequestException(
+        'Restaurant ID is required for super_admin users',
+      );
     }
 
     // Generate a random password for the user
@@ -186,7 +188,12 @@ export class UsersService {
 
   async findAll(
     requestingUser: User,
-    options: { page?: number; limit?: number; search?: string; includeDeleted?: boolean } = {},
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      includeDeleted?: boolean;
+    } = {},
   ): Promise<PaginatedUsers<User>> {
     const { page = 1, limit = 10, search, includeDeleted = false } = options;
 
@@ -216,7 +223,9 @@ export class UsersService {
 
     const result = await paginate<User>(queryBuilder, { page, limit });
     // Remove password_hash from items
-    const sanitizedItems = result.items.map(({ password_hash: _, ...user }) => user as User);
+    const sanitizedItems = result.items.map(
+      ({ password_hash: _, ...user }) => user as User,
+    );
     return {
       items: sanitizedItems,
       meta: result.meta,
@@ -257,8 +266,13 @@ export class UsersService {
     const user = await this.validateUserAccess(id, requesterUser);
 
     // Check if trying to update to owner role (only super_admin can do this)
-    if (updateUserDto.role === Role.RESTAURANT_OWNER && requesterUser.role !== Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super_admin can assign restaurant_owner role');
+    if (
+      updateUserDto.role === Role.RESTAURANT_OWNER &&
+      requesterUser.role !== Role.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only super_admin can assign restaurant_owner role',
+      );
     }
 
     // Validate role update permissions
@@ -287,7 +301,9 @@ export class UsersService {
       });
 
       if (otherOwners === 0) {
-        throw new BadRequestException('Cannot demote the only restaurant owner');
+        throw new BadRequestException(
+          'Cannot demote the only restaurant owner',
+        );
       }
     }
 
@@ -326,7 +342,9 @@ export class UsersService {
       });
 
       if (otherOwners === 0) {
-        throw new BadRequestException('Cannot deactivate the only restaurant owner');
+        throw new BadRequestException(
+          'Cannot deactivate the only restaurant owner',
+        );
       }
     }
 
@@ -347,7 +365,9 @@ export class UsersService {
 
     // Cannot soft delete owner
     if (user.role === Role.RESTAURANT_OWNER) {
-      throw new ForbiddenException('Cannot delete restaurant_owner users. Transfer ownership first.');
+      throw new ForbiddenException(
+        'Cannot delete restaurant_owner users. Transfer ownership first.',
+      );
     }
 
     // Cannot soft delete yourself

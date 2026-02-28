@@ -20,7 +20,7 @@ export class RestaurantsService {
     @InjectRepository(Restaurant)
     private readonly restaurantRepository: Repository<Restaurant>,
     private readonly rulesService: RulesService,
-  ) { }
+  ) {}
 
   async create(
     createRestaurantDto: CreateRestaurantDto,

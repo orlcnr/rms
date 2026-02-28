@@ -64,8 +64,8 @@ export class Payment extends BaseEntity {
   change_given: number | null;
 
   // İndirim/İkram
-  @Column({ type: 'enum', enum: DiscountType, nullable: true })
-  discount_type: DiscountType | null;
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  discount_type: string | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   discount_amount: number;

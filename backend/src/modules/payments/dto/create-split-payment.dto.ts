@@ -8,6 +8,8 @@ import {
   Min,
   IsArray,
   ValidateNested,
+  ArrayMinSize,
+  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -44,13 +46,28 @@ export class PaymentTransactionDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(10000) // Makul bir üst limit
   tip_amount?: number;
 
   @ApiPropertyOptional({ example: 3.0 })
   @IsNumber()
   @IsOptional()
+  @ApiPropertyOptional({ example: 3.0 })
+  @IsNumber()
+  @IsOptional()
   @Min(0)
+  @Max(1) // %100'den fazla komisyon olamaz
   commission_rate?: number;
+
+  @ApiPropertyOptional({ example: 'Payment note' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({ example: 'TX123456' })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }
 
 export class CreateSplitPaymentDto {
@@ -61,14 +78,14 @@ export class CreateSplitPaymentDto {
 
   @ApiProperty({ type: [PaymentTransactionDto] })
   @IsArray()
+  @ArrayMinSize(1, { message: 'En az bir ödeme yöntemi belirtilmelidir' })
   @ValidateNested({ each: true })
   @Type(() => PaymentTransactionDto)
   payments: PaymentTransactionDto[];
 
   @ApiPropertyOptional({ enum: DiscountType })
-  @IsEnum(DiscountType)
   @IsOptional()
-  discount_type?: DiscountType;
+  discount_type?: string;
 
   @ApiPropertyOptional({ example: 'Doğum günü indirimi' })
   @IsString()
@@ -80,6 +97,11 @@ export class CreateSplitPaymentDto {
   @IsOptional()
   @Min(0)
   discount_amount?: number;
+
+  @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }
 
 export class RevertPaymentDto {

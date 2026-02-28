@@ -9,13 +9,14 @@ import { toast } from 'sonner';
 import { paymentsApi, SplitPaymentResponse } from '../services/payments.service';
 import { ordersApi } from '../services';
 import { useSocketStore } from '@/modules/shared/api/socket';
-import { 
-  PaymentMethod, 
-  PaymentLine, 
-  Discount, 
+import { usePendingQueue } from '@/modules/shared/hooks/usePendingQueue';
+import {
+  PaymentMethod,
+  PaymentLine,
+  Discount,
   DiscountType,
-  calculateTotalPaid, 
-  calculateRemaining, 
+  calculateTotalPaid,
+  calculateRemaining,
   calculateChange,
   isPaymentComplete,
   formatPaymentAmount
@@ -35,30 +36,34 @@ export interface NumericPadValue {
   cents: number;       // Value in cents for precision
 }
 
-export function usePayment({ 
-  orderId, 
-  orderTotal, 
+export function usePayment({
+  orderId,
+  orderTotal,
   restaurantId,
   onSuccess,
-  onError 
+  onError
 }: UsePaymentProps) {
   const router = useRouter();
   const { emit, on, off, isConnected } = useSocketStore();
+  const pendingQueue = usePendingQueue();
+
+  // Socket suppression list to avoid double-updates
+  const suppressedTransactionIds = useRef<Set<string>>(new Set());
 
   // ============ STATE ============
 
   // Ödeme satırları (parçalı ödeme)
   const [payments, setPayments] = useState<PaymentLine[]>([]);
-  
+
   // İndirim bilgisi
   const [discount, setDiscount] = useState<Discount | null>(null);
-  
+
   // Aktif ödeme satırı (düzenlenmekte olan)
   const [activePaymentIndex, setActivePaymentIndex] = useState<number | null>(null);
-  
+
   // API loading state
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Error state
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +73,7 @@ export function usePayment({
   const [orderStatus, setOrderStatus] = useState<string>('');
 
   // ============ NUMERIC PAD STATE (Mobil Uyumluluk) ============
-  
+
   const [numericPadValue, setNumericPadValue] = useState<NumericPadValue>({
     value: '',
     display: '0',
@@ -81,26 +86,26 @@ export function usePayment({
   useEffect(() => {
     // Client-side only check
     const checkMobile = () => {
-      setIsMobile(typeof window !== 'undefined' && 
+      setIsMobile(typeof window !== 'undefined' &&
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
       );
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   // ============ SİPARİŞ VERİLERİNİ SOCKET ÜZERİNDEN GÜNCELLE ============
-  
+
   // orderId değiştiğinde en güncel sipariş verilerini sunucudan çek
   useEffect(() => {
     if (!orderId) return;
-    
+
     // Önce mevcut değeri resetle (orderId değiştiğinde)
     setServerOrderTotal(orderTotal);
     setOrderStatus('');
-    
+
     const fetchLatestOrder = async () => {
       setIsLoadingOrder(true);
       try {
@@ -116,7 +121,7 @@ export function usePayment({
         setIsLoadingOrder(false);
       }
     };
-    
+
     fetchLatestOrder();
   }, [orderId]);
 
@@ -127,7 +132,7 @@ export function usePayment({
    */
   const finalTotal = useMemo(() => {
     if (!discount) return serverOrderTotal || orderTotal;
-    
+
     let total = serverOrderTotal || orderTotal;
     if (discount.type === DiscountType.DISCOUNT) {
       // İskonto: doğrudan tutardan düş
@@ -135,7 +140,7 @@ export function usePayment({
     }
     // İkram (complimentary) de aynı şekilde hesaplanır, 
     // ama raporlamada ayrı gösterilir
-    
+
     return Math.max(0, total);
   }, [orderTotal, discount, serverOrderTotal]);
 
@@ -162,24 +167,24 @@ export function usePayment({
     if (!isPaymentComplete(finalTotal, payments)) {
       return false;
     }
-    
+
     // Her ödeme satırı için validation
     for (const payment of payments) {
       // Ödeme tutarı pozitif olmalı
       if (payment.amount <= 0) {
         return false;
       }
-      
+
       // Açık hesap için müşteri seçilmeli
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
         return false;
       }
-      
+
       // Nakit ödeme için para üstü hesaplanabilir (ama gerekli değil)
       // Nakit ödeme için minimum alınan tutar kontrolü yapılmıyor
       // (kullanıcı para üstü alabilir)
     }
-    
+
     return true;
   }, [finalTotal, payments]);
 
@@ -191,17 +196,17 @@ export function usePayment({
     if (remainingBalance > 0) {
       return `${formatPaymentAmount(remainingBalance)} ödenmemiş`;
     }
-    
+
     for (const payment of payments) {
       if (payment.amount <= 0) {
         return 'Ödeme tutarı 0\'dan büyük olmalı';
       }
-      
+
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
         return 'Açık hesap için müşteri seçmelisiniz';
       }
     }
-    
+
     return null;
   }, [payments, remainingBalance]);
 
@@ -227,7 +232,7 @@ export function usePayment({
       ...(method === PaymentMethod.CASH ? { cashReceived: 0 } : {}),
       ...(method === PaymentMethod.OPEN_ACCOUNT ? { customerId: undefined } : {}),
     };
-    
+
     setPayments(prev => [...prev, newLine]);
     setActivePaymentIndex(payments.length);
   }, [payments.length]);
@@ -236,7 +241,7 @@ export function usePayment({
    * Ödeme satırını güncelle
    */
   const updatePaymentLine = useCallback((id: string, updates: Partial<PaymentLine>) => {
-    setPayments(prev => 
+    setPayments(prev =>
       prev.map(p => p.id === id ? { ...p, ...updates } : p)
     );
   }, []);
@@ -285,9 +290,9 @@ export function usePayment({
     setNumericPadValue(prev => {
       // Sadece rakam ve virgül/nokta kabul et
       if (!/[\d,]/.test(digit)) return prev;
-      
+
       let newValue = prev.value;
-      
+
       // Virgül geldiyse ondalık separator olarak işle
       if (digit === ',' || digit === '.') {
         if (prev.value.includes(',') || prev.value.includes('.')) {
@@ -302,11 +307,11 @@ export function usePayment({
           newValue = prev.value + digit;
         }
       }
-      
+
       // Türk formatı: 1.234,56
       const numericPart = newValue.replace(',', '.');
       const cents = Math.round(parseFloat(numericPart || '0') * 100);
-      
+
       return {
         value: newValue,
         display: formatNumericDisplay(newValue),
@@ -344,12 +349,12 @@ export function usePayment({
    */
   const applyNumericPadToActivePayment = useCallback(() => {
     if (activePaymentIndex === null || activePaymentIndex >= payments.length) return;
-    
+
     const activePayment = payments[activePaymentIndex];
     if (!activePayment) return;
-    
+
     const amount = numericPadValue.cents / 100;
-    
+
     if (activePayment.method === PaymentMethod.CASH) {
       // Nakit için: hem amount hem cashReceived aynı (veya fazla olabilir)
       updatePaymentLine(activePayment.id, {
@@ -359,7 +364,7 @@ export function usePayment({
     } else {
       updatePaymentLine(activePayment.id, { amount });
     }
-    
+
     clearNumericPad();
   }, [activePaymentIndex, payments, numericPadValue, updatePaymentLine, clearNumericPad]);
 
@@ -372,7 +377,7 @@ export function usePayment({
     // Race condition önleme - processing state'ini İLK olarak set et
     if (isProcessing) return;
     setIsProcessing(true);
-    
+
     // Frontend validation
     const validationError = paymentValidationError;
     if (validationError) {
@@ -383,57 +388,62 @@ export function usePayment({
 
     setError(null);
 
+    const txId = crypto.randomUUID();
+
     try {
       // API isteği için formatla
       const requestData = {
         order_id: orderId,
+        transaction_id: txId,
         payments: payments.map(p => ({
           amount: p.amount,
           payment_method: p.method,
           customer_id: p.customerId || undefined,
           cash_received: p.cashReceived,
+          tip_amount: p.tipAmount,
+          commission_rate: p.commissionRate,
         })),
-        discount_type: discount?.type,
-        discount_amount: discount?.amount,
-        discount_reason: discount?.reason,
+        ...(discount && discount.type && { discount_type: discount.type }),
+        ...(discount && discount.amount && { discount_amount: discount.amount }),
+        ...(discount && discount.reason && { discount_reason: discount.reason }),
       };
+
+      // Suppression listesine ekle
+      suppressedTransactionIds.current.add(txId);
 
       const response = await paymentsApi.createSplitPayment(requestData);
 
-      // Başarılı - Socket broadcast
-      if (isConnected) {
-        // Masa durumu güncelleme event'i
-        emit('table:available', { 
-          restaurantId,
-          orderId,
-        });
-        
-        // Sipariş ödendi event'i
-        emit('order:paid', {
-          orderId,
-          restaurantId,
-          totalAmount: finalTotal,
-          payments: payments.map(p => ({
-            method: p.method,
-            amount: p.amount,
-          })),
-        });
-      }
+      // Başarılı - NOT: Soket broadcast artık client-side'da YAPILMIYOR (v2 kuralı)
 
       // Callback'leri çağır
       onSuccess?.(response);
-      
+
       // Başarılı mesaj
       toast.success('Ödeme başarıyla tamamlandı!');
-      
+
       // Temizle
       clearPayments();
       removeDiscount();
-      
+
     } catch (err: any) {
+      // Suppression listesinden temizle (hata durumunda socket event zaten gelmeyebilir veya gelse bile işlemeliyiz)
+      suppressedTransactionIds.current.delete(txId);
+
       const errorMessage = err?.response?.data?.message || err?.message || 'Ödeme işlemi başarısız';
       setError(errorMessage);
       onError?.(err);
+
+      // Network hatası ise kuyruğa ekle
+      if (err.code === 'ERR_NETWORK' || !err.response) {
+        pendingQueue.add({
+          id: txId,
+          module: 'payment',
+          endpoint: '/payments/split',
+          method: 'POST',
+          payload: { order_id: orderId, payments, discount }
+        });
+      }
+
       toast.error(errorMessage);
     } finally {
       setIsProcessing(false);
@@ -461,23 +471,20 @@ export function usePayment({
     setIsProcessing(true);
     setError(null);
 
+    const txId = crypto.randomUUID();
+
     try {
+      suppressedTransactionIds.current.add(txId);
+
       await paymentsApi.revertPayment({
         payment_id: paymentId,
+        transaction_id: txId,
         reason,
       });
 
-      // Socket broadcast
-      if (isConnected) {
-        emit('payment:reverted', {
-          paymentId,
-          orderId,
-          restaurantId,
-        });
-      }
-
       toast.success('Ödeme iptal edildi');
     } catch (err: any) {
+      suppressedTransactionIds.current.delete(txId);
       const errorMessage = err?.message || 'İptal işlemi başarısız';
       setError(errorMessage);
       toast.error(errorMessage);
@@ -493,6 +500,13 @@ export function usePayment({
 
     // Sipariş güncellendiğinde (başka terminalden ürün eklendi vs)
     const handleOrderUpdated = (data: any) => {
+      // Suppression kontrolü
+      if (data.transaction_id && suppressedTransactionIds.current.has(data.transaction_id)) {
+        console.log('[usePayment] Suppressing duplicate order update:', data.transaction_id);
+        suppressedTransactionIds.current.delete(data.transaction_id);
+        return;
+      }
+
       if (data.orderId === orderId) {
         console.log('[usePayment] Order updated from socket:', data);
         // Sipariş tutarı güncellendi
@@ -509,6 +523,12 @@ export function usePayment({
 
     // Ödeme durumu değişikliği dinleyicisi
     const handlePaymentUpdated = (data: any) => {
+      if (data.transaction_id && suppressedTransactionIds.current.has(data.transaction_id)) {
+        console.log('[usePayment] Suppressing duplicate payment update:', data.transaction_id);
+        suppressedTransactionIds.current.delete(data.transaction_id);
+        return;
+      }
+
       if (data.orderId === orderId) {
         // Uzaktan ödeme güncellendi, UI'ı yenile
         console.log('[usePayment] Payment updated from socket:', data);
@@ -541,15 +561,16 @@ export function usePayment({
     discount,
     activePaymentIndex,
     isProcessing,
+    isSyncing: isProcessing,
     error,
     numericPadValue,
     isMobile,
-    
+
     // Server order data (real-time)
     serverOrderTotal,
     isLoadingOrder,
     orderStatus,
-    
+
     // Computed
     finalTotal,
     totalPaid,
@@ -558,7 +579,7 @@ export function usePayment({
     paymentValidationError,
     totalChange,
     orderTotal,
-    
+
     // Actions
     addPaymentLine,
     updatePaymentLine,
@@ -569,7 +590,7 @@ export function usePayment({
     setActivePaymentIndex,
     completePayment,
     revertPayment,
-    
+
     // Numeric Pad
     appendDigit,
     deleteLastDigit,
@@ -584,16 +605,16 @@ export function usePayment({
 
 function formatNumericDisplay(value: string): string {
   if (!value) return '0';
-  
+
   // Türk formatı: 1.234,56
   const parts = value.split(',');
   let integerPart = parts[0];
   const decimalPart = parts[1];
-  
+
   // Binlik ayracı ekle
   integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  
-  return decimalPart !== undefined 
+
+  return decimalPart !== undefined
     ? `${integerPart},${decimalPart}`
     : integerPart;
 }

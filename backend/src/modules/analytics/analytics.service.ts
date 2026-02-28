@@ -1,7 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { startOfDay, subDays, format, subHours, startOfHour, eachHourOfInterval, differenceInHours, isEqual } from 'date-fns';
+import {
+  startOfDay,
+  subDays,
+  format,
+  subHours,
+  startOfHour,
+  eachHourOfInterval,
+  differenceInHours,
+  isEqual,
+} from 'date-fns';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { Table, TableStatus } from '../tables/entities/table.entity';
 import {
@@ -24,7 +33,7 @@ export class AnalyticsService {
     private readonly tablesRepository: Repository<Table>,
     @InjectRepository(Payment)
     private readonly paymentsRepository: Repository<Payment>,
-  ) { }
+  ) {}
 
   /**
    * Restaurant için analytics özetini getirir
@@ -38,7 +47,13 @@ export class AnalyticsService {
     }
 
     try {
-      const [occupancyRate, revenueData, activeOrdersData, paymentDistribution, orderTypeDistribution] = await Promise.all([
+      const [
+        occupancyRate,
+        revenueData,
+        activeOrdersData,
+        paymentDistribution,
+        orderTypeDistribution,
+      ] = await Promise.all([
         this.calculateOccupancyRate(restaurantId),
         this.calculateRevenueMetrics(restaurantId),
         this.getActiveOrdersMetrics(restaurantId),
@@ -84,16 +99,25 @@ export class AnalyticsService {
         .groupBy('order.type')
         .getRawMany();
 
-      const totalAmount = results.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      const totalAmount = results.reduce(
+        (sum, r) => sum + Number(r.amount || 0),
+        0,
+      );
 
       return results.map((r) => ({
         type: r.type,
         amount: Number(r.amount),
         count: Number(r.count),
-        percentage: totalAmount > 0 ? Math.round((Number(r.amount) / totalAmount) * 100) : 0,
+        percentage:
+          totalAmount > 0
+            ? Math.round((Number(r.amount) / totalAmount) * 100)
+            : 0,
       }));
     } catch (error) {
-      this.logger.error('Failed to calculate order type distribution', error.stack);
+      this.logger.error(
+        'Failed to calculate order type distribution',
+        error.stack,
+      );
       return [];
     }
   }
@@ -127,7 +151,6 @@ export class AnalyticsService {
       const occupied = Number(result?.occupied || 0);
 
       if (total === 0) {
-
         return 0;
       }
 
@@ -234,17 +257,22 @@ export class AnalyticsService {
         .groupBy('payment.payment_method')
         .getRawMany();
 
-
-
-      const total = results.reduce((sum, r) => sum + Number(r.amount || r.payment_amount || 0), 0);
+      const total = results.reduce(
+        (sum, r) => sum + Number(r.amount || r.payment_amount || 0),
+        0,
+      );
 
       return results.map((r) => ({
         method: r.method,
         amount: Number(r.amount),
-        percentage: total > 0 ? Math.round((Number(r.amount) / total) * 100) : 0,
+        percentage:
+          total > 0 ? Math.round((Number(r.amount) / total) * 100) : 0,
       }));
     } catch (error) {
-      this.logger.error('Failed to calculate payment distribution', error.stack);
+      this.logger.error(
+        'Failed to calculate payment distribution',
+        error.stack,
+      );
       return [];
     }
   }
@@ -340,8 +368,6 @@ export class AnalyticsService {
         reportStartTime = startOfHour(oldestOpenOrder.created_at);
       }
 
-
-
       // 2. Ödenmiş siparişler (PAID)
       const paidResults = await this.ordersRepository
         .createQueryBuilder('order')
@@ -385,13 +411,13 @@ export class AnalyticsService {
         .addSelect('SUM(payment.final_amount)', 'collectedAmount')
         .innerJoin('payment.order', 'order')
         .where('order.restaurantId = :restaurantId', { restaurantId })
-        .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+        .andWhere('payment.status = :status', {
+          status: PaymentStatus.COMPLETED,
+        })
         .andWhere('payment.created_at >= :reportStartTime', { reportStartTime })
         .groupBy("DATE_TRUNC('hour', payment.created_at)")
         .orderBy('time_bucket', 'ASC')
         .getRawMany();
-
-
 
       // Interval saatlerini oluştur
       const hoursInterval = eachHourOfInterval({
@@ -442,11 +468,11 @@ export class AnalyticsService {
         if (item) {
           item.collectedAmount = Number(row.collectedAmount) || 0;
         } else {
-          this.logger.warn(`No map entry for collection bucket: ${row.time_bucket} (${rowTime})`);
+          this.logger.warn(
+            `No map entry for collection bucket: ${row.time_bucket} (${rowTime})`,
+          );
         }
       });
-
-
 
       return hourlyData;
     } catch (error) {

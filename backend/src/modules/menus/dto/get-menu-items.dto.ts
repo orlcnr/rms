@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsInt, Min, IsString, IsUUID, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  Min,
+  IsString,
+  IsUUID,
+  IsEnum,
+  IsBoolean,
+} from 'class-validator';
 
 export class GetMenuItemsDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
@@ -28,7 +36,10 @@ export class GetMenuItemsDto {
   categoryId?: string;
 
   // Stock Status: 'all', 'in_stock', 'out_of_stock', 'critical'
-  @ApiPropertyOptional({ enum: ['all', 'in_stock', 'out_of_stock', 'critical'], default: 'all' })
+  @ApiPropertyOptional({
+    enum: ['all', 'in_stock', 'out_of_stock', 'critical'],
+    default: 'all',
+  })
   @IsEnum(['all', 'in_stock', 'out_of_stock', 'critical'])
   @IsOptional()
   stockStatus?: 'all' | 'in_stock' | 'out_of_stock' | 'critical' = 'all';

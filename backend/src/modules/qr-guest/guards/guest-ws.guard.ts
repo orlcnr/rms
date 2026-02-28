@@ -16,7 +16,7 @@ export class GuestWsGuard implements CanActivate {
     private jwtService: JwtService,
     private configService: ConfigService,
     private guestSessionsService: GuestSessionsService,
-  ) { }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client = context.switchToWs().getClient<Socket>();
@@ -61,7 +61,10 @@ export class GuestWsGuard implements CanActivate {
     } catch (error) {
       // Emit unauthorized event to client before throwing
       client.emit('unauthorized', {
-        message: error instanceof UnauthorizedException ? error.message : 'Invalid guest access token',
+        message:
+          error instanceof UnauthorizedException
+            ? error.message
+            : 'Invalid guest access token',
       });
       if (error instanceof UnauthorizedException) {
         throw error;

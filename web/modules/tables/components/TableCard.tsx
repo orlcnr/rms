@@ -31,28 +31,28 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
     // Calculate elapsed time - format: "170:09" or "2s 10dk"
     const getElapsedTime = (): string => {
         if (!table.active_order?.created_at) return ''
-        
+
         const createdAt = new Date(table.active_order.created_at)
         const diffMs = now.getTime() - createdAt.getTime()
         const diffSeconds = Math.floor(diffMs / 1000)
-        
+
         if (diffSeconds < 60) {
             return `${diffSeconds} sn`
         }
-        
+
         const diffMinutes = Math.floor(diffSeconds / 60)
-        
+
         if (diffMinutes < 60) {
             return `${diffMinutes} dk`
         }
-        
+
         const hours = Math.floor(diffMinutes / 60)
         const minutes = diffMinutes % 60
-        
+
         if (hours < 10) {
             return `${hours}:${minutes.toString().padStart(2, '0')}`
         }
-        
+
         return `${hours}s ${minutes}dk`
     }
 
@@ -63,12 +63,12 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
     }
 
     return (
-        <div 
+        <div
             className={cn(
-                "group relative p-4 rounded-sm border transition-all duration-200",
-                isOccupied 
-                    ? "bg-danger-subtle/20 border-l-4 border-l-danger-main border-danger-main/30 ml-[-1px]"
-                    : "bg-bg-surface border-border-light hover:border-primary-main",
+                "group relative p-4 rounded-sm border transition-all duration-200 border-l-[4px]",
+                isOccupied
+                    ? "bg-danger-subtle/20 border-l-danger-main border-y-danger-main/30 border-r-danger-main/30"
+                    : "bg-bg-surface border-l-success-main border-y-border-light border-r-border-light hover:border-primary-main",
                 !isAdminMode && "cursor-pointer hover:shadow-md hover:shadow-primary-main/10"
             )}
             onClick={handleClick}
@@ -76,21 +76,11 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
             {/* Header / Actions */}
             <div className="flex items-start justify-between mb-3">
                 <div className={cn(
-                    "px-2.5 py-1 rounded-sm border text-[8px] font-bold uppercase tracking-wider",
-                    statusStyle,
-                    isOccupied && "border-danger-main bg-danger-main text-white"
-                )}>
-                    {table.status === 'available' && 'BOŞ'}
-                    {table.status === 'occupied' && 'DOLU'}
-                    {table.status === 'reserved' && 'REZERVE'}
-                    {table.status === 'out_of_service' && 'KAPALI'}
-                </div>
-                <div className={cn(
                     "flex items-center gap-0.5 transition-all duration-200",
                     isAdminMode ? "opacity-0 group-hover:opacity-100" : "hidden"
                 )}>
-                    <Button 
-                        variant="ghost" 
+                    <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => onShowQr?.(table)}
                         className="p-1"
@@ -98,8 +88,8 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
                     >
                         <QrCode className="w-3.5 h-3.5" />
                     </Button>
-                    <Button 
-                        variant="ghost" 
+                    <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => onEdit?.(table)}
                         className="p-1"
@@ -112,12 +102,11 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
             {/* Content */}
             <div className="mb-6">
                 <h3 className={cn(
-                    "text-lg font-black tracking-tight transition-colors duration-200",
-                    isOccupied ? "text-danger-main" : "text-text-primary group-hover:text-primary-main"
+                    "text-lg  tracking-tight transition-colors duration-200 text-text-primary group-hover:text-primary-main"
                 )}>
                     {table.name}
                 </h3>
-                <p className="text-[9px] text-text-muted font-bold uppercase tracking-widest">
+                <p className="text-[9px] text-text-muted font-semibold uppercase tracking-widest">
                     {table.area?.name || 'GENEL ALAN'}
                 </p>
             </div>
@@ -126,7 +115,7 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
             <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
                 {/* Price - larger and on the left */}
                 {isOccupied && table.active_order && (
-                    <div className="font-black text-xl text-danger-main">
+                    <div className=" text-xl text-text-primary">
                         {formatCurrency(table.active_order.total_price)}
                     </div>
                 )}

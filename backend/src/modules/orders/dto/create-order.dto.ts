@@ -81,4 +81,9 @@ export class CreateOrderDto {
   @ApiPropertyOptional({ example: { courier_id: '123' } })
   @IsOptional()
   integration_metadata?: any;
+
+  @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
+  @IsString()
+  @IsOptional()
+  transaction_id?: string;
 }

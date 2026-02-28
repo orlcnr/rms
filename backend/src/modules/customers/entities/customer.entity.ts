@@ -1,4 +1,11 @@
-import { Entity, Column, OneToMany, Index, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  OneToMany,
+  Index,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 // Will add Reservation relation later to avoid circular dependency issues initially
@@ -20,7 +27,7 @@ export class Customer extends BaseEntity {
   email: string;
 
   // ===== Multi-tenant: Restaurant ilişkisi =====
-  
+
   @Column({ name: 'restaurant_id' })
   @Index('idx_customers_restaurant')
   restaurantId: string;
@@ -36,7 +43,7 @@ export class Customer extends BaseEntity {
   total_spent: number;
 
   // ===== YENİ: Borç Alanları =====
-  
+
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   total_debt: number; // Toplam borç (tarihsel)
 

@@ -56,15 +56,27 @@ export class NotificationsGateway
   }
 
   // Public method to be called by services
-  notifyNewOrder(restaurantId: string, order: any) {
-    this.logger.log(`[notifyNewOrder] Sending to room: ${restaurantId}, order id: ${order?.id}`);
-    this.server.to(restaurantId).emit('new_order', order);
+  notifyNewOrder(restaurantId: string, order: any, transactionId?: string) {
+    this.logger.log(
+      `[notifyNewOrder] Sending to room: ${restaurantId}, order id: ${order?.id}, transaction_id: ${transactionId}`,
+    );
+    const payload = {
+      ...order,
+      ...(transactionId && { transaction_id: transactionId }),
+    };
+    this.server.to(restaurantId).emit('new_order', payload);
     this.logger.log(`Notification sent to room ${restaurantId}: new_order`);
   }
 
-  notifyOrderStatus(restaurantId: string, order: any) {
-    this.logger.log(`[notifyOrderStatus] Sending to room: ${restaurantId}, order id: ${order?.id}, table_id: ${order?.tableId}, items count: ${order?.items?.length || 0}`);
-    this.server.to(restaurantId).emit('order_status_updated', order);
+  notifyOrderStatus(restaurantId: string, order: any, transactionId?: string) {
+    this.logger.log(
+      `[notifyOrderStatus] Sending to room: ${restaurantId}, order id: ${order?.id}, table_id: ${order?.tableId}, transaction_id: ${transactionId}`,
+    );
+    const payload = {
+      ...order,
+      ...(transactionId && { transaction_id: transactionId }),
+    };
+    this.server.to(restaurantId).emit('order_status_updated', payload);
     this.logger.log(
       `Notification sent to room ${restaurantId}: order_status_updated`,
     );
@@ -72,15 +84,29 @@ export class NotificationsGateway
 
   // Sipariş güncellendiğinde (ürün eklendi, fiyat değişti vb.)
   notifyOrderUpdated(restaurantId: string, order: any) {
-    this.logger.log(`[notifyOrderUpdated] Sending to room: ${restaurantId}, order id: ${order?.id}, totalAmount: ${order?.totalAmount}`);
+    this.logger.log(
+      `[notifyOrderUpdated] Sending to room: ${restaurantId}, order id: ${order?.id}, totalAmount: ${order?.totalAmount}`,
+    );
     this.server.to(restaurantId).emit('order:updated', {
       orderId: order?.id,
       totalAmount: order?.totalAmount,
       status: order?.status,
       updatedAt: new Date().toISOString(),
     });
+    this.logger.log(`Notification sent to room ${restaurantId}: order:updated`);
+  }
+
+  // Kasa işlemleri (oturum açma/kapama)
+  notifyCashSessionUpdate(restaurantId: string, data: any) {
     this.logger.log(
-      `Notification sent to room ${restaurantId}: order:updated`,
+      `[notifyCashSessionUpdate] Sending to room: ${restaurantId}`,
     );
+    this.server.to(restaurantId).emit('cash:session_updated', data);
+  }
+
+  // Kasa hareketi (para girişi/çıkışı/satış)
+  notifyCashMovement(restaurantId: string, data: any) {
+    this.logger.log(`[notifyCashMovement] Sending to room: ${restaurantId}`);
+    this.server.to(restaurantId).emit('cash:movement_added', data);
   }
 }

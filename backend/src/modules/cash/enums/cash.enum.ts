@@ -1,10 +1,10 @@
 export enum CashSessionStatus {
-    OPEN = 'open',
-    CLOSED = 'closed',
+  OPEN = 'open',
+  CLOSED = 'closed',
 }
 
 export enum CashMovementType {
-    SALE = 'sale',
-    IN = 'in',
-    OUT = 'out',
+  SALE = 'sale',
+  IN = 'in',
+  OUT = 'out',
 }

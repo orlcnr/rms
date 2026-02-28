@@ -47,7 +47,11 @@ export class Ingredient extends BaseEntity {
    * @param newUnitPrice - Yeni birim fiyatı
    * @param currentStockQuantity - Mevcut stok miktarı
    */
-  updateCosts(newQuantity: number, newUnitPrice: number, currentStockQuantity: number): void {
+  updateCosts(
+    newQuantity: number,
+    newUnitPrice: number,
+    currentStockQuantity: number,
+  ): void {
     // 1. Önceki fiyatı yedekle (analiz için)
     this.previous_price = this.last_price;
 
@@ -66,7 +70,8 @@ export class Ingredient extends BaseEntity {
     } else if (currentStock > 0) {
       // Ağırlıklı ortalama hesaplama
       // Formül: ((mevcutStok * ortalamaMaliyet) + (yeniMiktar * yeniFiyat)) / (mevcutStok + yeniMiktar)
-      const totalCost = (currentStock * currentAverageCost) + (newQuantity * newUnitPrice);
+      const totalCost =
+        currentStock * currentAverageCost + newQuantity * newUnitPrice;
       this.average_cost = Number((totalCost / totalQuantity).toFixed(2));
     }
 

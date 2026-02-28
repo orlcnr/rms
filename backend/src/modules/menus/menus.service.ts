@@ -35,7 +35,7 @@ export class MenusService {
     private readonly rulesService: RulesService,
     private readonly dataSource: DataSource,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) { }
+  ) {}
 
   private async clearCache(restaurantId: string) {
     const cacheKey = `menus:categories:${restaurantId}`;
@@ -149,7 +149,17 @@ export class MenusService {
     restaurantId: string,
     queryDto: GetMenuItemsDto,
   ): Promise<Pagination<MenuItemResponseDto>> {
-    const { page = 1, limit = 10, search, categoryId, stockStatus, salesStatus, minPrice, maxPrice, posMode } = queryDto;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      categoryId,
+      stockStatus,
+      salesStatus,
+      minPrice,
+      maxPrice,
+      posMode,
+    } = queryDto;
 
     const queryBuilder = this.menuItemRepository
       .createQueryBuilder('item')
@@ -175,28 +185,28 @@ export class MenusService {
     // - track_inventory=false or NULL products: show if is_available=true
     if (posMode) {
       queryBuilder.andWhere(
-        '((item.track_inventory = true AND stock.quantity > 0) OR item.track_inventory = false OR item.track_inventory IS NULL OR stock IS NULL)'
+        '((item.track_inventory = true AND stock.quantity > 0) OR item.track_inventory = false OR item.track_inventory IS NULL OR stock IS NULL)',
       );
       // Also ensure is_available = true in POS mode
-      queryBuilder.andWhere('item.is_available = :isAvailable', { isAvailable: true });
+      queryBuilder.andWhere('item.is_available = :isAvailable', {
+        isAvailable: true,
+      });
     }
 
     // Stock Status Filter (only applied when not in POS mode)
     if (!posMode && stockStatus && stockStatus !== 'all') {
       if (stockStatus === 'out_of_stock') {
         // No stock records or zero quantity
-        queryBuilder.andWhere(
-          '(stock IS NULL OR stock.quantity <= 0)'
-        );
+        queryBuilder.andWhere('(stock IS NULL OR stock.quantity <= 0)');
       } else if (stockStatus === 'critical') {
         // Has stock but below critical level
         queryBuilder.andWhere(
-          'stock.quantity > 0 AND stock.quantity <= ingredient.critical_level'
+          'stock.quantity > 0 AND stock.quantity <= ingredient.critical_level',
         );
       } else if (stockStatus === 'in_stock') {
         // Has stock above critical level
         queryBuilder.andWhere(
-          'stock.quantity > COALESCE(ingredient.critical_level, 0)'
+          'stock.quantity > COALESCE(ingredient.critical_level, 0)',
         );
       }
     }
@@ -204,9 +214,13 @@ export class MenusService {
     // Sales Status Filter
     if (salesStatus && salesStatus !== 'all') {
       if (salesStatus === 'active') {
-        queryBuilder.andWhere('item.is_available = :isAvailable', { isAvailable: true });
+        queryBuilder.andWhere('item.is_available = :isAvailable', {
+          isAvailable: true,
+        });
       } else if (salesStatus === 'inactive') {
-        queryBuilder.andWhere('item.is_available = :isAvailable', { isAvailable: false });
+        queryBuilder.andWhere('item.is_available = :isAvailable', {
+          isAvailable: false,
+        });
       }
     }
 
@@ -226,7 +240,9 @@ export class MenusService {
     });
 
     return new Pagination(
-      paginationResult.items.map((item) => MenuItemResponseDto.fromEntity(item)),
+      paginationResult.items.map((item) =>
+        MenuItemResponseDto.fromEntity(item),
+      ),
       paginationResult.meta,
       paginationResult.links,
     );
@@ -296,7 +312,7 @@ export class MenusService {
       item.category.restaurant_id,
       RuleKey.MENU_PREVENT_DELETE_ITEM,
       id,
-      'Bu ürün silinemez: Aktif siparişlerde kullanılmıştır.'
+      'Bu ürün silinemez: Aktif siparişlerde kullanılmıştır.',
     );
 
     await this.menuItemRepository.delete(id);
