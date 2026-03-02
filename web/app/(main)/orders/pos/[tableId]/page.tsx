@@ -58,7 +58,7 @@ export default async function PosPage({ params, searchParams }: PageProps) {
   }
 
   const [menuItemsResponse, categories] = await Promise.all([
-    productsApi.getProducts(restaurantId, { page: 1, limit: 20 }).catch(() => ({ items: [], total: 0 })),
+    productsApi.getProducts(restaurantId, { page: 1, limit: 20, posMode: true }).catch(() => ({ items: [], total: 0 })),
     productsApi.getCategories(restaurantId).catch(() => []),
   ])
 

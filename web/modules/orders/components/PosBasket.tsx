@@ -7,8 +7,15 @@
 
 'use client'
 
-import React from 'react'
-import { Minus, Plus, Trash2, Package, CreditCard, Send } from 'lucide-react'
+import {
+  Minus,
+  Plus,
+  Trash2,
+  Package,
+  CreditCard,
+  Send,
+  ClipboardList,
+} from 'lucide-react'
 import { BasketItem, calculateBasketSummary, ORDER_TYPE_LABELS, OrderStatus } from '../types'
 import { Table } from '@/modules/tables/types'
 import { Order, OrderType } from '../types'
@@ -27,6 +34,7 @@ interface PosBasketProps {
   onClear: () => void
   onSubmit: () => void
   onPay?: () => void // Ödeme için yeni prop
+  onTrackOrder?: () => void
   isLoading?: boolean
   disabled?: boolean
   className?: string
@@ -49,6 +57,7 @@ export function PosBasket({
   onClear,
   onSubmit,
   onPay,
+  onTrackOrder,
   isLoading = false,
   disabled = false,
   className,
@@ -67,15 +76,15 @@ export function PosBasket({
     existingOrder.status !== OrderStatus.CANCELLED
 
   return (
-    <div className={cn('flex flex-col h-full p-4', className)}>
+    <div className={cn('flex flex-col h-full p-6 pb-12', className)}>
       {/* Header */}
-      <div className="shrink-0 pb-4 border-b-2 border-border-light">
+      <div className="shrink-0 pb-6 border-b border-border-light">
         <h3 className="text-xl font-black text-text-primary uppercase tracking-tight">
           ADİSYON
         </h3>
         {selectedTable && (
-          <p className="text-xs font-bold text-text-muted uppercase mt-1">
-            Masa: {selectedTable.name} • {ORDER_TYPE_LABELS[orderType]}
+          <p className="text-[10px] font-black text-text-muted uppercase mt-1 tracking-widest leading-none">
+            {selectedTable.name} • {ORDER_TYPE_LABELS[orderType]}
           </p>
         )}
       </div>
@@ -182,18 +191,19 @@ export function PosBasket({
       )}
 
       {/* Action Bar - Tam genişlik turuncu buton */}
-      <div className="shrink-0 border-t border-border-light pt-3 mt-auto">
+      <div className="shrink-0 border-t border-border-light pt-4 mt-auto mb-2">
         {/* Ödenmemiş sipariş varsa hem Siparişi Güncelle hem de Ödeme Al butonu */}
         {needsPayment && onPay ? (
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Button
               variant="primary"
               size="lg"
               onClick={onSubmit}
               disabled={isLoading || isEmpty || !selectedTable}
               isLoading={isLoading}
-              className="flex-1 h-12 text-sm font-bold rounded-lg"
+              className="h-12 text-[10px] font-black tracking-[0.16em] rounded-sm border border-primary-main/30 shadow-sm"
             >
+              <Send size={14} className="mr-1.5" />
               {hasUnpaidOrder ? 'SİPARİŞİ GÜNCELLE' : 'SİPARİŞ VER'}
             </Button>
             <Button
@@ -202,10 +212,20 @@ export function PosBasket({
               onClick={onPay}
               disabled={isLoading}
               isLoading={isLoading}
-              className="flex-1 h-12 text-sm font-bold rounded-lg flex items-center justify-center gap-2"
+              className="h-12 text-[10px] font-black tracking-[0.16em] rounded-sm border border-success-main/30 shadow-sm"
             >
-              <CreditCard size={16} />
+              <CreditCard size={14} className="mr-1.5" />
               ÖDEME AL
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={onTrackOrder}
+              disabled={isLoading || !onTrackOrder}
+              className="h-12 text-[10px] font-black tracking-[0.16em] rounded-sm border border-border-medium shadow-sm"
+            >
+              <ClipboardList size={14} className="mr-1.5" />
+              SİPARİŞİ TAKİP ET
             </Button>
           </div>
         ) : (

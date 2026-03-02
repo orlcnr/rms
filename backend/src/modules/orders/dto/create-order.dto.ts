@@ -27,15 +27,15 @@ class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
-  @ApiProperty({ example: 'uuid-of-restaurant' })
-  @IsUUID()
-  @IsNotEmpty()
-  restaurant_id: string;
-
   @ApiPropertyOptional({ example: 'uuid-of-table' })
   @IsUUID()
   @IsOptional()
   table_id?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-restaurant' })
+  @IsUUID()
+  @IsOptional()
+  restaurant_id?: string;
 
   @ApiProperty({ type: [CreateOrderItemDto] })
   @IsArray()

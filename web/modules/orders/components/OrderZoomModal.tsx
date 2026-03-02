@@ -5,53 +5,35 @@
 
 'use client'
 
-import { useMemo } from 'react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import {
-  Maximize2,
   Clock,
   User,
-  MapPin,
-  FileText,
   Printer,
   CreditCard,
   Layers,
-  ChefHat,
-  Check,
-  X,
-  Utensils,
-  Truck,
 } from 'lucide-react'
 import { Modal } from '@/modules/shared/components/Modal'
-import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LABELS } from '../types'
-import { OrderStatusBadge } from './OrderStatusBadge'
+import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS } from '../types'
 import { cn } from '@/modules/shared/utils/cn'
 
 interface OrderZoomModalProps {
   isOpen: boolean
   onClose: () => void
   orderGroup: OrderGroup | null
-  onStatusChange: (orderId: string, newStatus: OrderStatus) => void
-}
-
-// Status icon mapping
-const STATUS_ICONS: Record<OrderStatus, React.ComponentType<{ className?: string }>> = {
-  [OrderStatus.PENDING]: Clock,
-  [OrderStatus.PREPARING]: ChefHat,
-  [OrderStatus.READY]: Check,
-  [OrderStatus.SERVED]: Utensils,
-  [OrderStatus.PAID]: CreditCard,
-  [OrderStatus.ON_WAY]: Truck,
-  [OrderStatus.DELIVERED]: Check,
-  [OrderStatus.CANCELLED]: X,
+  onPrint: (group: OrderGroup) => void
+  onEditOrder: (group: OrderGroup) => void
+  onTakePayment: (group: OrderGroup) => void
 }
 
 export function OrderZoomModal({
   isOpen,
   onClose,
   orderGroup,
-  onStatusChange,
+  onPrint,
+  onEditOrder,
+  onTakePayment,
 }: OrderZoomModalProps) {
   if (!orderGroup) return null
 
@@ -67,6 +49,8 @@ export function OrderZoomModal({
   const isCompleted = orderGroup.status === OrderStatus.SERVED ||
     orderGroup.status === OrderStatus.PAID ||
     orderGroup.status === OrderStatus.CANCELLED
+  const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
+  const hasTable = Boolean(latestOrder?.tableId)
 
   return (
     <Modal
@@ -77,6 +61,39 @@ export function OrderZoomModal({
     >
       <div className="flex flex-col h-[80vh]">
         {/* Header Stats */}
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => onPrint(orderGroup)}
+            className="flex items-center justify-center gap-2 rounded-sm border border-border-light bg-bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Yazdır
+          </button>
+          <button
+            type="button"
+            onClick={() => onEditOrder(orderGroup)}
+            disabled={!hasTable}
+            className="rounded-sm border border-border-light bg-bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Sipariş Güncelle
+          </button>
+          <button
+            type="button"
+            onClick={() => onTakePayment(orderGroup)}
+            disabled={!hasTable}
+            className="flex items-center justify-center gap-2 rounded-sm border border-success-main/30 bg-success-subtle px-3 py-2 text-[10px] font-black uppercase tracking-wider text-success-main hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CreditCard className="h-3.5 w-3.5" />
+            Ödeme Al
+          </button>
+        </div>
+        {!hasTable && (
+          <p className="mb-4 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+            Bu siparişte masa olmadığı için güncelleme ve ödeme aksiyonları pasif.
+          </p>
+        )}
+
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="p-4 bg-bg-app border border-border-light rounded-sm">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">MASA TOPLAMI</p>
@@ -169,7 +186,10 @@ export function OrderZoomModal({
               </div>
               <div className="grid grid-cols-1 gap-2">
                 {orderGroup.previousItems.map((item, idx) => {
-                  const isServed = item.status === OrderStatus.SERVED || item.status === OrderStatus.PAID
+                  const isServed =
+                    item.status === OrderStatus.SERVED ||
+                    item.status === OrderStatus.DELIVERED ||
+                    item.status === OrderStatus.PAID
                   return (
                     <div key={idx} className={cn(
                       "flex justify-between items-center p-4 rounded-sm border transition-all",
@@ -184,11 +204,16 @@ export function OrderZoomModal({
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <span className="text-base font-bold text-text-primary tabular-nums">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
-                        {isServed ? (
-                          <span className="text-[10px] font-black text-success-main uppercase bg-success-subtle px-3 py-1 rounded-full">SERVİS EDİLDİ</span>
-                        ) : (
-                          <span className="text-[10px] font-black text-text-muted uppercase border border-border-light px-3 py-1 rounded-full">{ORDER_STATUS_LABELS[item.status]}</span>
-                        )}
+                        <span
+                          className={cn(
+                            'text-[10px] font-black uppercase px-3 py-1 rounded-full border',
+                            isServed
+                              ? 'text-success-main bg-success-subtle border-success-main/30'
+                              : 'text-text-muted border-border-light'
+                          )}
+                        >
+                          {ORDER_STATUS_LABELS[item.status]}
+                        </span>
                       </div>
                     </div>
                   )

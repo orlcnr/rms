@@ -6,6 +6,7 @@ import {
   Smartphone,
   Building,
   User,
+  Ticket,
   LucideIcon,
 } from 'lucide-react';
 import { PaymentMethod } from '../types';
@@ -18,6 +19,7 @@ import { PaymentMethod } from '../types';
 interface PaymentMethodsGridProps {
   selectedMethod?: PaymentMethod;
   onSelectMethod: (method: PaymentMethod) => void;
+  methods?: PaymentMethod[];
   disabled?: boolean;
 }
 
@@ -35,6 +37,8 @@ const getMethodIcon = (method: PaymentMethod): LucideIcon => {
       return Building;
     case PaymentMethod.OPEN_ACCOUNT:
       return User;
+    case PaymentMethod.MEAL_VOUCHER:
+      return Ticket;
     default:
       return CreditCard;
   }
@@ -55,6 +59,8 @@ const getMethodLabel = (method: PaymentMethod): string => {
       return 'Havale';
     case PaymentMethod.OPEN_ACCOUNT:
       return 'Açık Hesap';
+    case PaymentMethod.MEAL_VOUCHER:
+      return 'Yemek Çeki';
     default:
       return method;
   }
@@ -63,15 +69,18 @@ const getMethodLabel = (method: PaymentMethod): string => {
 export function PaymentMethodsGrid({
   selectedMethod,
   onSelectMethod,
+  methods,
   disabled,
 }: PaymentMethodsGridProps) {
+  const renderMethods = methods && methods.length > 0 ? methods : Object.values(PaymentMethod);
+
   return (
     <div className="p-4 border-b border-border-light">
       <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
         Ödeme Yöntemi Ekle
       </h4>
       <div className="grid grid-cols-4 gap-2">
-        {Object.values(PaymentMethod).map((method) => {
+        {renderMethods.map((method) => {
           const Icon = getMethodIcon(method);
           const isSelected = selectedMethod === method;
 

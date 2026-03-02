@@ -6,18 +6,21 @@
 
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { useOrdersBoard } from '../hooks/useOrdersBoard'
 import { useOrdersSocket } from '../hooks/useOrdersSocket'
 import { useSocketStore } from '@/modules/shared/api/socket'
 import { KanbanBoard } from './KanbanBoard'
-import { BoardFilters } from './BoardFilters'
-import { Archive } from 'lucide-react'
-import { cn } from '@/modules/shared/utils/cn'
+import { Archive, Printer } from 'lucide-react'
 import { SubHeaderSection, BodySection } from '@/modules/shared/components/layout'
 import { OrderBoardToolbar } from './OrderBoardToolbar'
 import { OrderDetailDrawer } from './OrderDetailDrawer'
 import { OrdersByStatus, OrderType, OrderStatus, OrderGroup } from '../types'
+import { PrintFormatModal } from '@/modules/shared/printing/PrintFormatModal'
+import { useOrderPrint } from '@/modules/shared/printing/useOrderPrint'
+import { PrintFormat } from '@/modules/shared/printing/types'
 
 interface OrdersBoardClientProps {
   restaurantId: string
@@ -30,6 +33,8 @@ export function OrdersBoardClient({
   userId,
   initialOrdersByStatus,
 }: OrdersBoardClientProps) {
+  const router = useRouter()
+  const { printOrder } = useOrderPrint()
   const {
     ordersByStatus,
     allOrdersByStatus,
@@ -38,8 +43,13 @@ export function OrdersBoardClient({
     isDetailOpen,
     isLoading,
     isSyncing,
+    archiveOrders,
+    archiveLoading,
+    archiveError,
+    archiveLastFetchedAt,
     updateStatus,
     refetch,
+    fetchArchiveOrders,
     handleSocketEvent,
     updateFilters,
     clearFilters,
@@ -52,10 +62,17 @@ export function OrdersBoardClient({
   })
 
   // Get socket store for connection status
-  const { isConnected, connect, disconnect } = useSocketStore()
+  const { connect, disconnect } = useSocketStore()
 
   // Local state for archive (closed orders) modal
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
+  const [printTarget, setPrintTarget] = useState<OrderGroup | null>(null)
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isArchiveOpen) return
+    void fetchArchiveOrders(true)
+  }, [fetchArchiveOrders, isArchiveOpen])
 
   // Socket connection with sound enabled
   const handleOrderCreated = useCallback((order: Parameters<NonNullable<Parameters<typeof useOrdersSocket>[1]['onOrderCreated']>>[0]) => {
@@ -69,12 +86,23 @@ export function OrdersBoardClient({
   }, [handleSocketEvent])
 
   const handleOrderStatusChanged = useCallback((data: Parameters<NonNullable<Parameters<typeof useOrdersSocket>[1]['onOrderStatusChanged']>>[0]) => {
-    if (data?.order && data.order.type && data.order.type !== OrderType.DINE_IN) return
+    const payload: any = data as any
+    const orderLike = payload?.order ?? payload
+    if (!orderLike || !orderLike.id) return
+    if (!orderLike.type || orderLike.type !== OrderType.DINE_IN) return
+    if (!Object.values(OrderStatus).includes(orderLike.status as OrderStatus)) return
+
+    const hasExplicitTransition =
+      payload?.oldStatus && payload?.newStatus &&
+      Object.values(OrderStatus).includes(payload.oldStatus as OrderStatus) &&
+      Object.values(OrderStatus).includes(payload.newStatus as OrderStatus)
+
     handleSocketEvent({
-      type: 'order_status_changed',
-      order: data.order,
-      oldStatus: data.oldStatus,
-      newStatus: data.newStatus as OrderStatus,
+      type: hasExplicitTransition ? 'order_status_changed' : 'order_updated',
+      order: orderLike,
+      oldStatus: hasExplicitTransition ? payload.oldStatus : undefined,
+      newStatus: hasExplicitTransition ? payload.newStatus as OrderStatus : undefined,
+      transaction_id: payload.transaction_id,
     })
   }, [handleSocketEvent])
 
@@ -97,6 +125,36 @@ export function OrdersBoardClient({
   const handleOrderClick = (orderGroup: Parameters<typeof selectOrderGroup>[0]) => {
     selectOrderGroup(orderGroup)
   }
+
+  const navigateToPosOrder = useCallback((orderGroup: OrderGroup) => {
+    const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
+    if (!latestOrder?.tableId) {
+      toast.error('Bu siparişte masa olmadığı için POS yönlendirmesi yapılamıyor.')
+      return
+    }
+    router.push(`/orders/pos/${latestOrder.tableId}?orderId=${latestOrder.id}`)
+  }, [router])
+
+  const handlePrintRequest = useCallback((orderGroup: OrderGroup | null) => {
+    if (!orderGroup) {
+      toast.error('Önce yazdırılacak bir sipariş seçin.')
+      return
+    }
+    setPrintTarget(orderGroup)
+    setIsPrintModalOpen(true)
+  }, [])
+
+  const handlePrintFormatSelect = useCallback((format: PrintFormat) => {
+    if (!printTarget) return
+    printOrder(printTarget, {
+      format,
+      meta: {
+        printedAt: new Date().toISOString(),
+      },
+    })
+    setIsPrintModalOpen(false)
+    setPrintTarget(null)
+  }, [printOrder, printTarget])
 
   // Handle reconnect
   const handleReconnect = () => {
@@ -171,6 +229,16 @@ export function OrdersBoardClient({
           stats={stats}
           summaryDate={summaryDate}
           socketConnected={socketConnected || false}
+          actions={
+            <button
+              type="button"
+              onClick={() => handlePrintRequest(selectedOrderGroup)}
+              className="flex items-center justify-center gap-2 rounded-sm border border-border-light bg-bg-surface px-4 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary transition-colors hover:bg-bg-muted"
+            >
+              <Printer size={14} />
+              Yazdır
+            </button>
+          }
         />
 
         {/* Kanban Board */}
@@ -178,8 +246,15 @@ export function OrdersBoardClient({
           <KanbanBoard
             ordersByStatus={ordersByStatus}
             allOrdersByStatus={allOrdersByStatus}
+            archiveOrders={archiveOrders}
+            archiveLoading={archiveLoading}
+            archiveError={archiveError}
+            archiveLastFetchedAt={archiveLastFetchedAt}
             onStatusChange={handleStatusChange}
             onOrderClick={handleOrderClick}
+            onPrintOrder={handlePrintRequest}
+            onEditOrder={navigateToPosOrder}
+            onTakePayment={navigateToPosOrder}
             isLoading={isLoading}
             showArchive={isArchiveOpen}
             onCloseArchive={() => setIsArchiveOpen(false)}
@@ -193,7 +268,18 @@ export function OrdersBoardClient({
         isOpen={isDetailOpen}
         onClose={closeDetail}
         orderGroup={selectedOrderGroup}
-        onStatusChange={handleStatusChange}
+        onPrint={handlePrintRequest}
+        onEditOrder={navigateToPosOrder}
+        onTakePayment={navigateToPosOrder}
+      />
+
+      <PrintFormatModal
+        isOpen={isPrintModalOpen}
+        onClose={() => {
+          setIsPrintModalOpen(false)
+          setPrintTarget(null)
+        }}
+        onSelect={handlePrintFormatSelect}
       />
     </div>
   )

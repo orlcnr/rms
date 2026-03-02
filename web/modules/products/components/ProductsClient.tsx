@@ -47,6 +47,7 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
     const [showFilters, setShowFilters] = useState(false)
 
     const [products, setProducts] = useState<MenuItem[]>(initialProductsResponse.items)
+    const [categories, setCategories] = useState<Category[]>(initialCategories)
     const [page, setPage] = useState(1)
     const [hasMore, setHasMore] = useState(initialProductsResponse.meta.currentPage < initialProductsResponse.meta.totalPages)
     const [isLoading, setIsLoading] = useState(false)
@@ -55,6 +56,9 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingProduct, setEditingProduct] = useState<MenuItem | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+    const [categoryName, setCategoryName] = useState('')
+    const [categoryDescription, setCategoryDescription] = useState('')
     const [allIngredients, setAllIngredients] = useState<Ingredient[]>([])
 
     // Mounted check for hydration
@@ -120,7 +124,11 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
                 page: nextPage,
                 limit: 12,
                 search: debouncedSearch,
-                categoryId: activeCategoryId || undefined
+                categoryId: activeCategoryId || undefined,
+                stockStatus: filters.stockStatus !== 'all' ? filters.stockStatus : undefined,
+                salesStatus: filters.salesStatus !== 'all' ? filters.salesStatus : undefined,
+                minPrice: filters.minPrice,
+                maxPrice: filters.maxPrice,
             })
 
             setProducts(prev => [...prev, ...response.items])
@@ -131,7 +139,7 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
         } finally {
             setIsLoading(false)
         }
-    }, [page, isLoading, hasMore, restaurantId, debouncedSearch, activeCategoryId])
+    }, [page, isLoading, hasMore, restaurantId, debouncedSearch, activeCategoryId, filters])
 
     const observerTarget = useIntersectionObserver(loadMore, [loadMore])
 
@@ -139,6 +147,12 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
     const handleAddProduct = () => {
         setEditingProduct(null)
         setIsModalOpen(true)
+    }
+
+    const handleAddCategory = () => {
+        setCategoryName('')
+        setCategoryDescription('')
+        setIsCategoryModalOpen(true)
     }
 
     const handleEditProduct = async (product: MenuItem) => {
@@ -207,6 +221,31 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
         }
     }
 
+    const handleCreateCategory = async () => {
+        const name = categoryName.trim()
+        if (!name) {
+            toast.error('Kategori adı zorunludur.')
+            return
+        }
+
+        setIsSubmitting(true)
+        try {
+            const created = await productsApi.createCategory({
+                name,
+                description: categoryDescription.trim() || undefined,
+                restaurant_id: restaurantId,
+            })
+            setCategories(prev => [...prev, created])
+            toast.success('Kategori başarıyla eklendi.')
+            setIsCategoryModalOpen(false)
+        } catch (error) {
+            console.error('Failed to create category:', error)
+            toast.error('Kategori eklenirken bir hata oluştu.')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     // Calculate active filter count
     const activeFilterCount = useMemo(() => {
         let count = 0
@@ -246,10 +285,16 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
                 isConnected={socketConnected}
                 moduleColor="bg-rose-500"
                 actions={
-                    <Button onClick={handleAddProduct} variant="primary" className="gap-2 text-[10px] sm:text-xs">
-                        <Plus size={16} />
-                        YENİ ÜRÜN EKLE
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button onClick={handleAddCategory} variant="outline" className="gap-2 text-[10px] sm:text-xs">
+                            <Plus size={16} />
+                            YENİ KATEGORİ
+                        </Button>
+                        <Button onClick={handleAddProduct} variant="primary" className="gap-2 text-[10px] sm:text-xs">
+                            <Plus size={16} />
+                            YENİ ÜRÜN EKLE
+                        </Button>
+                    </div>
                 }
             />
 
@@ -426,7 +471,7 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
                                 <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Ürün</p>
                             </div>
                             <div className="text-center w-16">
-                                <p className="text-sm font-black text-success-main tabular-nums">{initialCategories.length}</p>
+                                <p className="text-sm font-black text-success-main tabular-nums">{categories.length}</p>
                                 <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Kategori</p>
                             </div>
                         </div>
@@ -465,10 +510,10 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
 
                     <div className="pt-4 border-t border-border-light mt-2">
                         <CategoryTabs
-                            categories={initialCategories}
+                            categories={categories}
                             activeCategoryId={activeCategoryId}
                             onCategoryChange={setActiveCategoryId}
-                            onAddCategory={() => console.log('Add category')}
+                            onAddCategory={handleAddCategory}
                         />
                     </div>
                 </FilterSection>
@@ -539,13 +584,55 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
             >
                 <ProductForm
                     initialData={editingProduct || undefined}
-                    categories={initialCategories}
+                    categories={categories}
                     ingredients={allIngredients}
                     restaurantId={restaurantId}
                     onSubmit={handleFormSubmit}
                     onCancel={() => setIsModalOpen(false)}
                     isLoading={isSubmitting}
                 />
+            </Modal>
+
+            <Modal
+                isOpen={isCategoryModalOpen}
+                onClose={() => setIsCategoryModalOpen(false)}
+                title="YENİ KATEGORİ"
+                className="max-w-md"
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-text-secondary mb-2">
+                            Kategori Adı
+                        </label>
+                        <input
+                            type="text"
+                            value={categoryName}
+                            onChange={(e) => setCategoryName(e.target.value)}
+                            placeholder="Örn: Tatlılar"
+                            className="w-full bg-bg-app border border-border-light rounded-sm py-2.5 px-3 text-text-primary text-xs font-bold outline-none focus:border-primary-main transition-all"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-text-secondary mb-2">
+                            Açıklama (Opsiyonel)
+                        </label>
+                        <textarea
+                            value={categoryDescription}
+                            onChange={(e) => setCategoryDescription(e.target.value)}
+                            rows={3}
+                            placeholder="Kategori açıklaması"
+                            className="w-full bg-bg-app border border-border-light rounded-sm py-2.5 px-3 text-text-primary text-xs font-semibold outline-none focus:border-primary-main transition-all resize-none"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>
+                            İPTAL
+                        </Button>
+                        <Button variant="primary" onClick={handleCreateCategory} isLoading={isSubmitting}>
+                            KAYDET
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div >
     )

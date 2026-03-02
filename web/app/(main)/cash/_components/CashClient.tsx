@@ -5,7 +5,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, Wallet, TrendingUp, Banknote } from 'lucide-react'
+import { Plus, Search, Wallet, TrendingUp, Banknote, History } from 'lucide-react'
 import { useCash } from '@/modules/cash/hooks/useCash'
 import {
   CashOpenModal,
@@ -23,6 +23,8 @@ import { cn } from '@/modules/shared/utils/cn'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { getNow } from '@/modules/shared/utils/date'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface CashClientProps {
   restaurantId: string
@@ -37,6 +39,7 @@ export default function CashClient({
   initialSessions,
   initialSummary,
 }: CashClientProps) {
+  const router = useRouter()
   // State from hook
   const {
     registersWithStatus,
@@ -78,36 +81,54 @@ export default function CashClient({
   // Handlers
   const handleOpenSession = async (data: { openingBalance: number; notes?: string }) => {
     if (!selectedRegister?.id) return
-    await openSession({
-      cashRegisterId: selectedRegister.id,
-      openingBalance: data.openingBalance,
-      notes: data.notes,
-    })
-    setIsOpenModalOpen(false)
-    setSelectedRegister(null)
-    fetchRegistersWithStatus()
-    const sessions = await fetchActiveSessions()
-    // Yeni oturum açılınca özeti güncelle
-    const newSessionId = sessions?.[0]?.session?.id
-    if (newSessionId) {
-      fetchSessionSummary(newSessionId)
+    try {
+      await openSession({
+        cashRegisterId: selectedRegister.id,
+        openingBalance: data.openingBalance,
+        notes: data.notes,
+      })
+      setIsOpenModalOpen(false)
+      setSelectedRegister(null)
+      fetchRegistersWithStatus()
+      const sessions = await fetchActiveSessions()
+      // Yeni oturum açılınca özeti güncelle
+      const newSessionId = sessions?.[0]?.session?.id
+      if (newSessionId) {
+        fetchSessionSummary(newSessionId)
+      }
+    } catch (error: any) {
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa oturumu açılırken beklenmeyen bir hata oluştu')
+      }
     }
   }
 
   const handleCloseSession = async (data: CashCloseData) => {
     const sessionId = activeSessions?.[0]?.session?.id
     if (!sessionId) return
-    await closeSession(sessionId, data)
-    setIsCloseModalOpen(false)
-    fetchRegistersWithStatus()
-    fetchActiveSessions()
-    // Oturum kapandığında özet bilgisi sıfırlanır (aktif oturum yok)
+    try {
+      await closeSession(sessionId, data)
+      setIsCloseModalOpen(false)
+      fetchRegistersWithStatus()
+      fetchActiveSessions()
+      // Oturum kapandığında özet bilgisi sıfırlanır (aktif oturum yok)
+    } catch (error: any) {
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa oturumu kapatılırken beklenmeyen bir hata oluştu')
+      }
+    }
   }
 
   const handleCreateRegister = async (data: { name: string }) => {
-    await createRegister(data.name)
-    setIsRegisterModalOpen(false)
-    setEditingRegister(null)
+    try {
+      await createRegister(data.name)
+      setIsRegisterModalOpen(false)
+      setEditingRegister(null)
+    } catch (error: any) {
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa oluşturulurken beklenmeyen bir hata oluştu')
+      }
+    }
   }
 
   const handleEditRegister = (register: { id: string; name: string }) => {
@@ -116,9 +137,15 @@ export default function CashClient({
   }
 
   const handleDeleteRegister = async (registerId: string) => {
-    await deleteRegister(registerId)
-    setIsRegisterModalOpen(false)
-    setEditingRegister(null)
+    try {
+      await deleteRegister(registerId)
+      setIsRegisterModalOpen(false)
+      setEditingRegister(null)
+    } catch (error: any) {
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa silinirken beklenmeyen bir hata oluştu')
+      }
+    }
   }
 
   const handleOpenRegisterModal = () => {
@@ -160,14 +187,24 @@ export default function CashClient({
         isSyncing={isSyncing}
         moduleColor="bg-warning-main"
         actions={
-          <Button
-            onClick={handleOpenRegisterModal}
-            variant="primary"
-            className="gap-2"
-          >
-            <Plus size={16} />
-            <span>YENİ KASA</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => router.push("/cash/history")}
+              variant="outline"
+              className="gap-2"
+            >
+              <History size={16} />
+              <span>KASA GEÇMİŞİ</span>
+            </Button>
+            <Button
+              onClick={handleOpenRegisterModal}
+              variant="primary"
+              className="gap-2"
+            >
+              <Plus size={16} />
+              <span>YENİ KASA</span>
+            </Button>
+          </div>
         }
       />
 

@@ -9,6 +9,7 @@ interface CostAnalysisCardsProps {
     costImpacts: CostImpact[]
     foodCostAlerts: FoodCostAlert[]
     countDifferences: CountDifference[]
+    criticalStockCount: number
     isLoading?: boolean
 }
 
@@ -16,11 +17,9 @@ export function CostAnalysisCards({
     costImpacts,
     foodCostAlerts,
     countDifferences,
+    criticalStockCount,
     isLoading = false
 }: CostAnalysisCardsProps) {
-    // Kritik stok sayısı (stok <= kritik seviye)
-    const criticalStockCount = 0 // Bu veri ingredients'den hesaplanmalı
-    
     // Toplam potansiyel kayıp (son sayım farkları)
     const totalLoss = countDifferences.reduce((sum, diff) => sum + diff.difference_try, 0)
     

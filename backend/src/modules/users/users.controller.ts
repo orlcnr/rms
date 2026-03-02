@@ -17,14 +17,15 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ActivateDeactivateUserDto } from './dto/activate-deactivate-user.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
-import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from './entities/user.entity';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @ApiTags('Users')
 @Controller('users')
+@UseGuards(RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

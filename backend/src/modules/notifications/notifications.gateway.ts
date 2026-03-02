@@ -68,11 +68,23 @@ export class NotificationsGateway
     this.logger.log(`Notification sent to room ${restaurantId}: new_order`);
   }
 
-  notifyOrderStatus(restaurantId: string, order: any, transactionId?: string) {
+  notifyOrderStatus(
+    restaurantId: string,
+    order: any,
+    transactionId?: string,
+    transition?: {
+      oldStatus?: string;
+      newStatus?: string;
+    },
+  ) {
     this.logger.log(
       `[notifyOrderStatus] Sending to room: ${restaurantId}, order id: ${order?.id}, table_id: ${order?.tableId}, transaction_id: ${transactionId}`,
     );
     const payload = {
+      orderId: order?.id,
+      order,
+      ...(transition?.oldStatus ? { oldStatus: transition.oldStatus } : {}),
+      ...(transition?.newStatus ? { newStatus: transition.newStatus } : {}),
       ...order,
       ...(transactionId && { transaction_id: transactionId }),
     };
@@ -108,5 +120,50 @@ export class NotificationsGateway
   notifyCashMovement(restaurantId: string, data: any) {
     this.logger.log(`[notifyCashMovement] Sending to room: ${restaurantId}`);
     this.server.to(restaurantId).emit('cash:movement_added', data);
+  }
+
+  // Dashboard mutfak yükü (hazırlanan/hazır sipariş yoğunluğu)
+  notifyKitchenLoad(
+    restaurantId: string,
+    payload: {
+      preparingCount: number;
+      readyCount: number;
+      totalCapacity: number;
+      loadPercentage: number;
+    },
+  ) {
+    this.logger.log(
+      `[notifyKitchenLoad] Sending to room: ${restaurantId}, payload=${JSON.stringify(payload)}`,
+    );
+    this.server.to(restaurantId).emit('kitchen:load', payload);
+  }
+
+  notifyDashboardOpsRefresh(
+    restaurantId: string,
+    payload: {
+      reason: 'order' | 'payment' | 'table';
+      at: string;
+    },
+  ) {
+    this.logger.log(
+      `[notifyDashboardOpsRefresh] Sending to room: ${restaurantId}, payload=${JSON.stringify(payload)}`,
+    );
+    this.server.to(restaurantId).emit('dashboard:ops_refresh', payload);
+  }
+
+  notifyPaymentCompleted(
+    restaurantId: string,
+    payload: {
+      orderId?: string;
+      tableId?: string;
+      amount?: number;
+      paymentMethod?: string;
+      at: string;
+    },
+  ) {
+    this.logger.log(
+      `[notifyPaymentCompleted] Sending to room: ${restaurantId}, payload=${JSON.stringify(payload)}`,
+    );
+    this.server.to(restaurantId).emit('payment.completed', payload);
   }
 }

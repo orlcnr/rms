@@ -116,25 +116,32 @@ export function recalculateGroupFields(group: OrderGroup): OrderGroup {
         const itemCreatedISO = ensureISO(item.created_at || (item as any).createdAt)
         const itemCreatedTime = parseISO(itemCreatedISO).getTime()
 
-        const isServed = item.status === OrderStatus.SERVED || item.status === OrderStatus.DELIVERED || item.status === OrderStatus.PAID
+        const isCompletedStatus =
+          item.status === OrderStatus.SERVED ||
+          item.status === OrderStatus.DELIVERED ||
+          item.status === OrderStatus.PAID ||
+          item.status === OrderStatus.CANCELLED
         const minutesSinceCreated = (now - itemCreatedTime) / (1000 * 60)
 
         // Bu ürün "yeni dalga"da mı? (En son üründen en fazla 5 dk önce eklenmişse)
         const isNewWave = (maxItemTimeMs - itemCreatedTime) <= (WAVE_CLUSTER_MINUTES * 60 * 1000)
 
-        // AYIRMA MANTIĞI:
-        // 1. Durum: Arşivlik Ürünler (>30 dk servis edilmişse ve "Yeni Dalga" değilse)
-        if (isServed && minutesSinceCreated > WAVE_THRESHOLD_MINUTES && !isNewWave) {
-          updatedGroup.servedItems.push(item)
+        // 1) Tamamlanan itemlar yaşına göre arşiv veya önceki isteklerde kalır.
+        if (isCompletedStatus) {
+          if (minutesSinceCreated > WAVE_THRESHOLD_MINUTES && !isNewWave) {
+            updatedGroup.servedItems.push(item)
+          } else {
+            updatedGroup.previousItems.push(item)
+            updatedGroup.activeItems.push(item)
+          }
           return
         }
 
-        // 2. Durum: Son Dalga (Yeni Gelenler)
+        // 2) Tamamlanmamış itemlar yeni dalga veya önceki istek olarak ayrılır.
         if (isNewWave) {
           updatedGroup.activeWaveItems.push(item)
           updatedGroup.activeItems.push(item)
         } else {
-          // 3. Durum: Önceki bekleyenler
           updatedGroup.previousItems.push(item)
           updatedGroup.activeItems.push(item)
         }

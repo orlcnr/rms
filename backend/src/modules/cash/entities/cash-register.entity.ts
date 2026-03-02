@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
+import { CashSession } from './cash-session.entity';
 
 @Entity('cash_registers', { schema: 'operations' })
 export class CashRegister extends BaseEntity {
@@ -17,6 +18,6 @@ export class CashRegister extends BaseEntity {
   @Column({ default: true })
   active: boolean;
 
-  @OneToMany('CashSession', 'cashRegister')
-  sessions: any[];
+  @OneToMany(() => CashSession, (session) => session.cashRegister)
+  sessions: CashSession[];
 }

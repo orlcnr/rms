@@ -7,11 +7,12 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Brackets } from 'typeorm';
 import { Category } from './entities/category.entity';
 import { MenuItem } from './entities/menu-item.entity';
 import { Recipe } from '../inventory/entities/recipe.entity';
 import { Ingredient } from '../inventory/entities/ingredient.entity';
+import { Stock } from '../inventory/entities/stock.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { RulesService } from '../rules/rules.service';
 import { RuleKey } from '../rules/enums/rule-key.enum';
@@ -23,9 +24,12 @@ import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { paginate, Pagination } from 'nestjs-typeorm-paginate';
 import { GetMenuItemsDto } from './dto/get-menu-items.dto';
 import { MenuItemResponseDto } from './dto/menu-item-response.dto';
+import { MenuItemAvailabilityStatus } from './enums/menu-item-availability-status.enum';
 
 @Injectable()
 export class MenusService {
+  private readonly LOW_STOCK_THRESHOLD = 5; // Define a low stock threshold
+
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
@@ -163,11 +167,15 @@ export class MenusService {
 
     const queryBuilder = this.menuItemRepository
       .createQueryBuilder('item')
-      .leftJoinAndSelect('item.category', 'category')
+      .innerJoinAndSelect('item.category', 'category')
       .leftJoinAndSelect('item.recipes', 'recipes')
       .leftJoinAndSelect('recipes.ingredient', 'ingredient')
       .leftJoinAndSelect('ingredient.stock', 'stock')
       .where('category.restaurant_id = :restaurantId', { restaurantId });
+
+    // Pagination + relation joins can produce duplicate root rows.
+    // Distinct keeps item listing stable across pages.
+    queryBuilder.distinct(true);
 
     if (search) {
       queryBuilder.andWhere(
@@ -181,16 +189,33 @@ export class MenusService {
     }
 
     // POS Mode: Automatic stock-based filtering
-    // - track_inventory=true products: only show if stock > 0
-    // - track_inventory=false or NULL products: show if is_available=true
     if (posMode) {
-      queryBuilder.andWhere(
-        '((item.track_inventory = true AND stock.quantity > 0) OR item.track_inventory = false OR item.track_inventory IS NULL OR stock IS NULL)',
-      );
-      // Also ensure is_available = true in POS mode
+      // 1. Ensure item is available
       queryBuilder.andWhere('item.is_available = :isAvailable', {
         isAvailable: true,
       });
+
+      // 2. Inventory Check: If track_inventory is true, at least one ingredient must have stock
+      // or if no ingredients defined but track_inventory is true, we might want to hide it or show it.
+      // The logic here: if any ingredient is OUT OF STOCK, we hide the item (Safe approach)
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('item.track_inventory = false')
+            .orWhere('item.track_inventory IS NULL')
+            .orWhere((subQb) => {
+              const subQuery = subQb
+                .subQuery()
+                .select('1')
+                .from(Recipe, 'r')
+                .leftJoin(Ingredient, 'i', 'i.id = r.ingredient_id')
+                .leftJoin(Stock, 's', 's.ingredient_id = i.id')
+                .where('r.product_id = item.id')
+                .andWhere('s.quantity <= 0')
+                .getQuery();
+              return `NOT EXISTS ${subQuery}`;
+            });
+        }),
+      );
     }
 
     // Stock Status Filter (only applied when not in POS mode)
@@ -239,10 +264,38 @@ export class MenusService {
       limit,
     });
 
+    const mappedItems = paginationResult.items.map((item) => {
+      let availabilityStatus = MenuItemAvailabilityStatus.AVAILABLE;
+
+      if (item.track_inventory) {
+        if (!item.recipes || item.recipes.length === 0) {
+          availabilityStatus = MenuItemAvailabilityStatus.OUT_OF_STOCK;
+        } else {
+          // A product can be produced by the bottleneck ingredient, not by sum.
+          const producibleCounts = item.recipes.map((recipe) => {
+            const availableStock = Number(
+              recipe.ingredient?.stock?.quantity || 0,
+            );
+            const requiredQuantity = Number(recipe.quantity || 0);
+            if (requiredQuantity <= 0) return 0;
+            return Math.floor(availableStock / requiredQuantity);
+          });
+
+          const maxProducible = Math.min(...producibleCounts);
+
+          if (maxProducible <= 0) {
+            availabilityStatus = MenuItemAvailabilityStatus.OUT_OF_STOCK;
+          } else if (maxProducible <= this.LOW_STOCK_THRESHOLD) {
+            availabilityStatus = MenuItemAvailabilityStatus.LIMITED_STOCK;
+          }
+        }
+      }
+
+      return MenuItemResponseDto.fromEntity(item, availabilityStatus);
+    });
+
     return new Pagination(
-      paginationResult.items.map((item) =>
-        MenuItemResponseDto.fromEntity(item),
-      ),
+      mappedItems,
       paginationResult.meta,
       paginationResult.links,
     );

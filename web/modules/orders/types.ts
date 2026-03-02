@@ -56,6 +56,7 @@ export enum PaymentMethod {
   DIGITAL_WALLET = 'digital_wallet',
   BANK_TRANSFER = 'bank_transfer',
   OPEN_ACCOUNT = 'open_account', // Açık Hesap / Cari
+  MEAL_VOUCHER = 'meal_voucher', // Yemek Çeki
 }
 
 /**
@@ -114,6 +115,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   [PaymentMethod.DIGITAL_WALLET]: 'Dijital Cüzdan',
   [PaymentMethod.BANK_TRANSFER]: 'Havale/EFT',
   [PaymentMethod.OPEN_ACCOUNT]: 'Açık Hesap',
+  [PaymentMethod.MEAL_VOUCHER]: 'Yemek Çeki',
 }
 
 export const DISCOUNT_TYPE_LABELS: Record<DiscountType, string> = {
@@ -403,8 +405,12 @@ export interface RevertPaymentRequest {
  * Sepet toplamını hesapla
  */
 export function calculateBasketSummary(items: BasketItem[]): BasketSummary {
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  if (!items || !Array.isArray(items)) {
+    return { itemCount: 0, subtotal: 0, total: 0 }
+  }
+
+  const itemCount = items.reduce((sum, item) => sum + (item?.quantity || 0), 0)
+  const subtotal = items.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0)
 
   return {
     itemCount,
@@ -537,6 +543,7 @@ export function getPaymentMethodIcon(method: PaymentMethod): string {
     [PaymentMethod.DIGITAL_WALLET]: 'Smartphone',
     [PaymentMethod.BANK_TRANSFER]: 'Building',
     [PaymentMethod.OPEN_ACCOUNT]: 'User',
+    [PaymentMethod.MEAL_VOUCHER]: 'Ticket',
   }
   return icons[method] || 'DollarSign'
 }
@@ -656,18 +663,14 @@ export const KANBAN_COLUMNS_COMPLETED: KanbanColumnConfig[] = [
  * Get next possible status options for a given status
  */
 export function getNextStatusOptions(currentStatus: OrderStatus): OrderStatus[] {
-  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-    [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-    [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
-    [OrderStatus.SERVED]: [OrderStatus.PAID],
-    [OrderStatus.PAID]: [],
-    [OrderStatus.ON_WAY]: [OrderStatus.DELIVERED],
-    [OrderStatus.DELIVERED]: [],
-    [OrderStatus.CANCELLED]: [],
+  if (
+    currentStatus === OrderStatus.PAID ||
+    currentStatus === OrderStatus.CANCELLED
+  ) {
+    return []
   }
 
-  return validTransitions[currentStatus] || []
+  return Object.values(OrderStatus).filter((status) => status !== currentStatus)
 }
 
 /**

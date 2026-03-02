@@ -12,6 +12,7 @@ import {
     CostImpact,
     FoodCostAlert,
     CountDifference,
+    InventorySummary,
     CreateIngredientPayload,
     UpdateIngredientPayload,
     CreateStockMovementPayload,
@@ -36,6 +37,7 @@ export function useInventory({ restaurantId, initialIngredientsResponse }: UseIn
     const [costImpacts, setCostImpacts] = useState<CostImpact[]>([])
     const [foodCostAlerts, setFoodCostAlerts] = useState<FoodCostAlert[]>([])
     const [countDifferences, setCountDifferences] = useState<CountDifference[]>([])
+    const [summary, setSummary] = useState<InventorySummary | null>(null)
     const [isAnalysisLoading, setIsAnalysisLoading] = useState(false)
 
     // UI State
@@ -90,14 +92,16 @@ export function useInventory({ restaurantId, initialIngredientsResponse }: UseIn
     const fetchAnalysisData = useCallback(async () => {
         setIsAnalysisLoading(true)
         try {
-            const [costImpactData, foodCostData, countDiffData] = await Promise.all([
+            const [costImpactData, foodCostData, countDiffData, summaryData] = await Promise.all([
                 inventoryApi.getCostImpact(7),
                 inventoryApi.getFoodCostAlerts(),
-                inventoryApi.getCountDifferences(4)
+                inventoryApi.getCountDifferences(4),
+                inventoryApi.getSummary(),
             ])
             setCostImpacts(costImpactData)
             setFoodCostAlerts(foodCostData)
             setCountDifferences(countDiffData)
+            setSummary(summaryData)
         } catch (error) {
             console.error('Failed to load analysis data:', error)
             toast.error('Analiz verileri yüklenemedi.')
@@ -314,6 +318,7 @@ export function useInventory({ restaurantId, initialIngredientsResponse }: UseIn
         foodCostAlerts,
         countDifferences,
         isAnalysisLoading,
+        summary,
 
         // Actions
         fetchIngredients,

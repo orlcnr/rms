@@ -14,7 +14,6 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  closestCenter,
 } from '@dnd-kit/core'
 import { OrderStatus, Order } from '../types'
 
@@ -87,24 +86,8 @@ export function useKanbanDnD({
       return
     }
 
-    // Validate status transition
-    const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-      [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.PAID],
-      [OrderStatus.SERVED]: [OrderStatus.PAID],
-      [OrderStatus.PAID]: [],
-      [OrderStatus.ON_WAY]: [],
-      [OrderStatus.DELIVERED]: [],
-      [OrderStatus.CANCELLED]: [],
-    }
-
-    const allowedTransitions = validTransitions[currentStatus] || []
-
-    if (!allowedTransitions.includes(newStatus)) {
-      console.warn(
-        `Invalid status transition from ${currentStatus} to ${newStatus}. Allowed: ${allowedTransitions.join(', ')}`
-      )
+    if (!isValidStatusTransition(currentStatus, newStatus)) {
+      console.warn(`Invalid status transition from ${currentStatus} to ${newStatus}.`)
       return
     }
 
@@ -150,35 +133,25 @@ export function isValidStatusTransition(
   currentStatus: OrderStatus,
   newStatus: OrderStatus
 ): boolean {
-  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-    [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-    [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.PAID],
-    [OrderStatus.SERVED]: [OrderStatus.PAID],
-    [OrderStatus.PAID]: [],
-    [OrderStatus.ON_WAY]: [],
-    [OrderStatus.DELIVERED]: [],
-    [OrderStatus.CANCELLED]: [],
+  if (currentStatus === newStatus) return true
+  if (
+    currentStatus === OrderStatus.PAID ||
+    currentStatus === OrderStatus.CANCELLED
+  ) {
+    return false
   }
-
-  const allowedTransitions = validTransitions[currentStatus] || []
-  return allowedTransitions.includes(newStatus)
+  return true
 }
 
 /**
  * Get allowed target statuses for a given status
  */
 export function getAllowedTargetStatuses(currentStatus: OrderStatus): OrderStatus[] {
-  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-    [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-    [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.PAID],
-    [OrderStatus.SERVED]: [OrderStatus.PAID],
-    [OrderStatus.PAID]: [],
-    [OrderStatus.ON_WAY]: [],
-    [OrderStatus.DELIVERED]: [],
-    [OrderStatus.CANCELLED]: [],
+  if (
+    currentStatus === OrderStatus.PAID ||
+    currentStatus === OrderStatus.CANCELLED
+  ) {
+    return []
   }
-
-  return validTransitions[currentStatus] || []
+  return Object.values(OrderStatus).filter((status) => status !== currentStatus)
 }

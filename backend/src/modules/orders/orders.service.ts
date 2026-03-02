@@ -19,6 +19,8 @@ import { Table, TableStatus } from '../tables/entities/table.entity';
 import { MoveOrderUseCase } from './use-cases/move-order.use-case';
 import { RulesService } from '../rules/rules.service';
 import { RuleKey } from '../rules/enums/rule-key.enum';
+import { User } from '../users/entities/user.entity';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class OrdersService {
@@ -31,24 +33,19 @@ export class OrdersService {
     private notificationsGateway: NotificationsGateway,
     private readonly moveOrderUseCase: MoveOrderUseCase,
     private readonly rulesService: RulesService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async findAll(
-    user: any,
+    restaurantId: string,
     status?: string,
     waiterId?: string,
     type?: string,
     tableId?: string,
+    limit?: number,
   ): Promise<Order[]> {
-    const restaurantId = user.restaurantId;
-    if (!restaurantId && user.role !== 'super_admin') {
-      return [];
-    }
-
     const where: any = {};
-    if (user.role !== 'super_admin') {
-      where.restaurantId = restaurantId;
-    }
+    where.restaurantId = restaurantId;
 
     if (status) {
       const statuses = status
@@ -80,14 +77,14 @@ export class OrdersService {
       where,
       relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
       order: { created_at: 'DESC' } as any,
+      ...(limit && Number.isFinite(limit) && limit > 0 ? { take: limit } : {}),
     });
 
     return orders;
   }
 
-  async create(createOrderDto: CreateOrderDto, user: any): Promise<Order> {
+  async create(createOrderDto: CreateOrderDto, user: User): Promise<Order> {
     const {
-      restaurant_id,
       table_id,
       items,
       notes,
@@ -107,7 +104,7 @@ export class OrdersService {
 
     try {
       const order = queryRunner.manager.create(Order, {
-        restaurantId: restaurant_id,
+        restaurantId: user.restaurant_id,
         tableId: table_id || null,
         userId: user ? user.id : null,
         notes: notes || null,
@@ -126,10 +123,17 @@ export class OrdersService {
       // Business Rule Check: Masa Seçimi Zorunluluğu (Sadece DINE_IN için)
       if (order.type === OrderType.DINE_IN) {
         await this.rulesService.checkRule(
-          restaurant_id,
+          user.restaurant_id,
           RuleKey.ORDER_MANDATORY_TABLE,
           table_id, // Pass table_id as context
           'Bu sipariş için masa seçilmesi zorunludur.',
+        );
+        // Business Rule Check: Açık Kasa Zorunluluğu
+        await this.rulesService.checkRule(
+          user.restaurant_id,
+          RuleKey.ORDER_REQUIRE_OPEN_CASH,
+          null,
+          'Sipariş alabilmek için açık bir kasa oturumu bulunmalıdır.',
         );
       }
 
@@ -168,9 +172,15 @@ export class OrdersService {
 
       let totalAmount = 0;
       for (const itemDto of items) {
-        const menuItem = await queryRunner.manager.findOne(MenuItem, {
-          where: { id: itemDto.menu_item_id },
-        });
+        const menuItem = await queryRunner.manager
+          .createQueryBuilder(MenuItem, 'menuItem')
+          .where('menuItem.id = :menuItemId', {
+            menuItemId: itemDto.menu_item_id,
+          })
+          .andWhere('menuItem.restaurant_id = :restaurantId', {
+            restaurantId: user.restaurant_id,
+          })
+          .getOne();
         if (!menuItem) {
           throw new NotFoundException(
             `Menu item with ID ${itemDto.menu_item_id} not found`,
@@ -197,9 +207,21 @@ export class OrdersService {
 
       const finalOrder = await this.findOne(savedOrder.id);
       this.notificationsGateway.notifyNewOrder(
-        restaurant_id,
+        user.restaurant_id,
         finalOrder,
         transaction_id,
+      );
+      this.eventEmitter.emit('order.dashboard.changed', {
+        restaurantId: user.restaurant_id,
+        reason: 'order',
+      });
+      await this.calculateAndNotifyKitchenLoad(user.restaurant_id).catch(
+        (error) => {
+          console.error(
+            '[OrdersService] Failed to notify kitchen load after create:',
+            error,
+          );
+        },
       );
 
       return finalOrder;
@@ -209,6 +231,15 @@ export class OrdersService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async findAllByRestaurant(restaurantId: string): Promise<Order[]> {
+    const orders = await this.ordersRepository.find({
+      where: { restaurantId },
+      relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
+      order: { created_at: 'DESC' } as any,
+    });
+    return orders;
   }
 
   async findOne(id: string): Promise<Order> {
@@ -223,8 +254,20 @@ export class OrdersService {
     return order;
   }
 
-  async updateStatus(id: string, status: OrderStatus): Promise<Order> {
+  async updateStatus(
+    id: string,
+    status: OrderStatus,
+    transactionId?: string,
+  ): Promise<Order> {
     const order = await this.findOne(id);
+    const previousStatus = order.status;
+
+    // Validate status transition
+    if (!this._isValidStatusTransition(order.status, status)) {
+      throw new BadRequestException(
+        `Invalid status transition from ${order.status} to ${status}`,
+      );
+    }
 
     // Business Rule Check: Onaylı Sipariş İptal Kısıtı
     if (status === OrderStatus.CANCELLED) {
@@ -238,16 +281,12 @@ export class OrdersService {
 
     order.status = status;
 
-    // Update all mutable items to match order status using query builder
+    // Update only transition-eligible items to match order status.
     if (order.items && order.items.length > 0) {
       try {
         const itemIds = order.items
-          .filter(
-            (item) =>
-              item.status !== OrderStatus.SERVED &&
-              item.status !== OrderStatus.DELIVERED &&
-              item.status !== OrderStatus.PAID &&
-              item.status !== OrderStatus.CANCELLED,
+          .filter((item) =>
+            this._shouldUpdateItemForOrderTransition(item.status, status),
           )
           .map((item) => item.id);
         if (itemIds.length > 0) {
@@ -265,6 +304,7 @@ export class OrdersService {
     }
 
     const updatedOrder = await this.ordersRepository.save(order);
+    const finalOrder = await this.findOne(updatedOrder.id);
 
     // Eğer sipariş ödendi veya iptal edildiyse, masa durumunu kontrol et
     if (
@@ -303,14 +343,34 @@ export class OrdersService {
 
     this.notificationsGateway.notifyOrderStatus(
       order.restaurantId,
-      updatedOrder,
+      finalOrder,
+      transactionId,
+      previousStatus !== finalOrder.status
+        ? {
+            oldStatus: previousStatus,
+            newStatus: finalOrder.status,
+          }
+        : undefined,
     );
-    return updatedOrder;
+    this.eventEmitter.emit('order.dashboard.changed', {
+      restaurantId: order.restaurantId,
+      reason: 'order',
+    });
+    await this.calculateAndNotifyKitchenLoad(order.restaurantId).catch(
+      (error) => {
+        console.error(
+          '[OrdersService] Failed to notify kitchen load after updateStatus:',
+          error,
+        );
+      },
+    );
+    return finalOrder;
   }
 
   async batchUpdateStatus(
     orderIds: string[],
     status: OrderStatus,
+    transactionId?: string,
   ): Promise<Order[]> {
     if (!orderIds.length) return [];
 
@@ -321,6 +381,17 @@ export class OrdersService {
     });
 
     if (!orders.length) return [];
+    const previousStatusesByOrderId = new Map(
+      orders.map((order) => [order.id, order.status]),
+    );
+
+    for (const order of orders) {
+      if (!this._isValidStatusTransition(order.status, status)) {
+        throw new BadRequestException(
+          `Invalid status transition for order ${order.id}: ${order.status} -> ${status}`,
+        );
+      }
+    }
 
     // --- Business rule: cancel restriction ---
     if (status === OrderStatus.CANCELLED) {
@@ -342,16 +413,12 @@ export class OrdersService {
       .where('id IN (:...orderIds)', { orderIds })
       .execute();
 
-    // --- Bulk update order item statuses ---
+    // --- Bulk update order item statuses (only transition-eligible rows) ---
     const allItemIds = orders.flatMap(
       (o) =>
         o.items
-          ?.filter(
-            (i) =>
-              i.status !== OrderStatus.SERVED &&
-              i.status !== OrderStatus.DELIVERED &&
-              i.status !== OrderStatus.PAID &&
-              i.status !== OrderStatus.CANCELLED,
+          ?.filter((i) =>
+            this._shouldUpdateItemForOrderTransition(i.status, status),
           )
           .map((i) => i.id) ?? [],
     );
@@ -409,17 +476,45 @@ export class OrdersService {
     if (restaurantId) {
       // Single notification per update batch (not per order)
       updatedOrders.forEach((o) =>
-        this.notificationsGateway.notifyOrderStatus(restaurantId, o),
+        this.notificationsGateway.notifyOrderStatus(
+          restaurantId,
+          o,
+          transactionId,
+          previousStatusesByOrderId.get(o.id) !== o.status
+            ? {
+                oldStatus: previousStatusesByOrderId.get(o.id),
+                newStatus: o.status,
+              }
+            : undefined,
+        ),
       );
+      this.eventEmitter.emit('order.dashboard.changed', {
+        restaurantId,
+        reason: 'order',
+      });
+      await this.calculateAndNotifyKitchenLoad(restaurantId).catch((error) => {
+        console.error(
+          '[OrdersService] Failed to notify kitchen load after batchUpdateStatus:',
+          error,
+        );
+      });
     }
 
     return updatedOrders;
   }
 
-  async updateItems(
+  async moveOrder(
     orderId: string,
-    items: { menu_item_id: string; quantity: number }[],
-    user: any,
+    newTableId: string,
+    restaurantId: string,
+  ): Promise<Order> {
+    return this.moveOrderUseCase.execute(orderId, newTableId, restaurantId);
+  }
+
+  async updateItems(
+    id: string,
+    items: any[],
+    restaurantId: string,
     notes?: string,
     type?: OrderType,
     customer_id?: string,
@@ -431,223 +526,323 @@ export class OrdersService {
     await queryRunner.startTransaction();
 
     try {
-      const order = await queryRunner.manager.findOne(Order, {
-        where: { id: orderId },
-        lock: { mode: 'pessimistic_write' },
-      });
+      const order = await this._validateOrderForUpdate(queryRunner, id);
+      const previousStatus = order.status;
+      let hasNewItems = false;
 
-      if (!order) {
-        throw new NotFoundException(`Order with ID ${orderId} not found`);
-      }
-
-      if (order.status === 'paid' || order.status === 'cancelled') {
-        throw new BadRequestException('Order cannot be modified');
-      }
-
-      if (notes !== undefined) {
-        order.notes = notes;
-      }
-
-      if (type !== undefined) {
-        order.type = type;
-      }
-
-      if (customer_id !== undefined) {
-        order.customerId = customer_id;
-      }
-
-      if (address !== undefined) {
-        order.address = address;
-      }
-
-      const validItems = items.filter((i) => i.quantity > 0);
-      if (!validItems.length) {
-        throw new BadRequestException('No valid items provided');
-      }
-
-      const menuItemIds = [
-        ...new Set([
-          ...validItems.map((i) => i.menu_item_id),
-          ...(order.items?.map((i) => i.menuItemId) || []),
-        ]),
-      ];
-
-      const menuItems = await queryRunner.manager.find(MenuItem, {
-        where: { id: In(menuItemIds) },
-      });
-
-      const menuItemMap = new Map(menuItems.map((i) => [i.id, i]));
-
-      if (menuItems.length === 0 && validItems.length > 0) {
-        throw new NotFoundException('One or more menu items not found');
-      }
-
-      // 1. Get existing items
-      const existingItems = await queryRunner.manager.find(OrderItem, {
-        where: { orderId },
-      });
-
-      // 3. Separate items into frozen (SERVED/READY) and mutable (PENDING/PREPARING)
-      const frozenItems = existingItems.filter(
-        (i) =>
-          i.status === OrderStatus.SERVED || i.status === OrderStatus.READY,
-      );
-      const mutableItems = existingItems.filter(
-        (i) =>
-          i.status !== OrderStatus.SERVED && i.status !== OrderStatus.READY,
-      );
-
-      // Group requested items by menu_item_id
-      const requestedItemsMap = new Map<string, number>();
-      validItems.forEach((i) => {
-        requestedItemsMap.set(i.menu_item_id, i.quantity);
-      });
-
-      // Track all menu IDs involved
-      const allMenuIds = new Set([
-        ...requestedItemsMap.keys(),
-        ...existingItems.map((i) => i.menuItemId),
-      ]);
-
-      let hasNewOrChangedItems = false;
-      let totalAmount = 0;
-
-      for (const menuItemId of allMenuIds) {
-        const menuItem = menuItemMap.get(menuItemId);
-        const targetQty = requestedItemsMap.get(menuItemId) || 0;
-
-        const currentItemsForProduct = existingItems.filter(
-          (i) => i.menuItemId === menuItemId,
+      // Ensure the order belongs to the authenticated restaurant
+      if (order.restaurantId !== restaurantId) {
+        throw new BadRequestException(
+          `Order with ID ${id} does not belong to restaurant ${restaurantId}`,
         );
-        const currentTotalQty = currentItemsForProduct.reduce(
-          (sum, i) => sum + i.quantity,
-          0,
+      }
+
+      // Update order details if provided
+      if (notes !== undefined) order.notes = notes;
+      if (type !== undefined) order.type = type;
+      if (customer_id !== undefined) order.customerId = customer_id;
+      if (address !== undefined) order.address = address;
+
+      const requestedQuantities = this._normalizeRequestedItems(items);
+      const requestedMenuIds = [...requestedQuantities.keys()];
+
+      const existingItems = await queryRunner.manager
+        .createQueryBuilder(OrderItem, 'orderItem')
+        .setLock('pessimistic_write')
+        .where('orderItem.order_id = :orderId', { orderId: id })
+        .orderBy('orderItem.created_at', 'ASC')
+        .getMany();
+
+      const menuItemsById = new Map<string, MenuItem>();
+      if (requestedMenuIds.length > 0) {
+        const menuItems = await queryRunner.manager
+          .createQueryBuilder(MenuItem, 'menuItem')
+          .where('menuItem.id IN (:...menuIds)', {
+            menuIds: requestedMenuIds,
+          })
+          .andWhere('menuItem.restaurant_id = :restaurantId', {
+            restaurantId: restaurantId,
+          })
+          .getMany();
+
+        menuItems.forEach((menuItem) => {
+          menuItemsById.set(menuItem.id, menuItem);
+        });
+
+        const missingMenuIds = requestedMenuIds.filter(
+          (menuId) => !menuItemsById.has(menuId),
         );
-
-        const delta = targetQty - currentTotalQty;
-
-        if (delta > 0) {
-          // ADDITION: Create a new row for the difference
-          if (!menuItem)
-            throw new NotFoundException(`Menu item ${menuItemId} not found`);
-
-          const newItem = queryRunner.manager.create(OrderItem, {
-            orderId,
-            menuItemId,
-            quantity: delta,
-            unitPrice: menuItem.price,
-            totalPrice: menuItem.price * delta,
-            status: OrderStatus.PENDING,
-          });
-          await queryRunner.manager.save(newItem);
-          hasNewOrChangedItems = true;
-        } else if (delta < 0) {
-          // REDUCTION: Reduce or delete latest mutable rows
-          let toRemove = Math.abs(delta);
-          const mutableForProduct = currentItemsForProduct
-            .filter(
-              (i) =>
-                i.status !== OrderStatus.SERVED &&
-                i.status !== OrderStatus.READY,
-            )
-            .sort(
-              (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime(),
-            );
-
-          for (const item of mutableForProduct) {
-            if (toRemove <= 0) break;
-
-            if (item.quantity <= toRemove) {
-              toRemove -= item.quantity;
-              await queryRunner.manager.remove(item);
-            } else {
-              item.quantity -= toRemove;
-              item.totalPrice = Number(item.unitPrice) * item.quantity;
-              await queryRunner.manager.save(item);
-              toRemove = 0;
-            }
-            hasNewOrChangedItems = true;
-          }
+        if (missingMenuIds.length > 0) {
+          throw new NotFoundException(
+            `Menu item with ID ${missingMenuIds[0]} not found in this restaurant`,
+          );
         }
       }
 
-      // Re-calculate total amount from all items currently in DB for this order
-      const finalItems = await queryRunner.manager.find(OrderItem, {
-        where: { orderId },
+      const mutableItemsByMenuId = new Map<string, OrderItem[]>();
+      const protectedItems = existingItems.filter((existingItem) =>
+        this._isProtectedItemStatus(existingItem.status),
+      );
+      const mutableItems = existingItems.filter(
+        (existingItem) => !this._isProtectedItemStatus(existingItem.status),
+      );
+
+      mutableItems.forEach((existingItem) => {
+        const current = mutableItemsByMenuId.get(existingItem.menuItemId) ?? [];
+        current.push(existingItem);
+        mutableItemsByMenuId.set(existingItem.menuItemId, current);
       });
-      totalAmount = finalItems.reduce(
-        (sum, i) => sum + Number(i.totalPrice),
+
+      const itemsToSave: OrderItem[] = [...protectedItems];
+      const itemsToDelete: OrderItem[] = [];
+      const handledMenuIds = new Set<string>();
+
+      for (const [menuItemId, requestedQty] of requestedQuantities.entries()) {
+        handledMenuIds.add(menuItemId);
+        const pool = mutableItemsByMenuId.get(menuItemId) ?? [];
+        let remainingRequestedQty = requestedQty;
+
+        for (const existingItem of pool) {
+          if (remainingRequestedQty <= 0) {
+            itemsToDelete.push(existingItem);
+            continue;
+          }
+
+          if (existingItem.quantity <= remainingRequestedQty) {
+            itemsToSave.push(existingItem);
+            remainingRequestedQty -= existingItem.quantity;
+            continue;
+          }
+
+          existingItem.quantity = remainingRequestedQty;
+          existingItem.totalPrice =
+            Number(existingItem.unitPrice) * remainingRequestedQty;
+          itemsToSave.push(existingItem);
+          remainingRequestedQty = 0;
+        }
+
+        if (remainingRequestedQty > 0) {
+          const menuItem = menuItemsById.get(menuItemId)!;
+          const unitPrice = Number(menuItem.price);
+          const newItem = queryRunner.manager.create(OrderItem, {
+            orderId: order.id,
+            menuItemId: menuItem.id,
+            quantity: remainingRequestedQty,
+            unitPrice,
+            totalPrice: unitPrice * remainingRequestedQty,
+            status: OrderStatus.PENDING,
+          });
+          itemsToSave.push(newItem);
+          hasNewItems = true;
+        }
+      }
+
+      for (const [menuItemId, pool] of mutableItemsByMenuId.entries()) {
+        if (handledMenuIds.has(menuItemId)) continue;
+        itemsToDelete.push(...pool);
+      }
+
+      if (itemsToDelete.length > 0) {
+        await queryRunner.manager.remove(OrderItem, itemsToDelete);
+      }
+
+      if (itemsToSave.length > 0) {
+        await queryRunner.manager.save(OrderItem, itemsToSave);
+      }
+
+      const finalItems = await queryRunner.manager.find(OrderItem, {
+        where: { orderId: order.id },
+      });
+      const totalAmount = finalItems.reduce(
+        (sum, item) => sum + Number(item.totalPrice),
         0,
       );
 
-      // 4. Reset order status if new items were added to a completed order
-      if (
-        hasNewOrChangedItems &&
-        (order.status === OrderStatus.SERVED ||
-          order.status === OrderStatus.READY)
-      ) {
-        order.status = OrderStatus.PENDING;
-        // Reset item statuses that were READY to PENDING?
-        // Actually the user said "yeni item eklenirse eski siparişe tkrar bekleyen siparişlere çekilsin"
-      }
-
       order.totalAmount = totalAmount;
-      await queryRunner.manager.save(order);
+      if (hasNewItems && order.status !== OrderStatus.PENDING) {
+        order.status = OrderStatus.PENDING;
+      }
+      const updatedOrder = await queryRunner.manager.save(order);
 
       await queryRunner.commitTransaction();
 
-      const finalOrder = await this.findOne(orderId);
-      console.log(
-        `[updateItems] Notifying for order ${finalOrder.id}, tableId: ${finalOrder.tableId}, restaurantId: ${finalOrder.restaurantId}`,
-      );
+      const finalOrder = await this.findOne(updatedOrder.id);
       this.notificationsGateway.notifyOrderStatus(
-        order.restaurantId,
+        restaurantId,
         finalOrder,
         transaction_id,
+        previousStatus !== finalOrder.status
+          ? {
+              oldStatus: previousStatus,
+              newStatus: finalOrder.status,
+            }
+          : undefined,
       );
-
-      // Sipariş güncellendi (fiyat değişti vb.) - ödeme ekranını bilgilendir
-      this.notificationsGateway.notifyOrderUpdated(
-        order.restaurantId,
-        finalOrder,
-      );
+      this.eventEmitter.emit('order.dashboard.changed', {
+        restaurantId,
+        reason: 'order',
+      });
+      await this.calculateAndNotifyKitchenLoad(restaurantId).catch((error) => {
+        console.error(
+          '[OrdersService] Failed to notify kitchen load after updateItems:',
+          error,
+        );
+      });
 
       return finalOrder;
-    } catch (error) {
+    } catch (err) {
       await queryRunner.rollbackTransaction();
-      throw error;
+      throw err;
     } finally {
       await queryRunner.release();
     }
   }
 
-  async findAllByRestaurant(restaurantId: string, user: any): Promise<Order[]> {
-    if (user.role === 'super_admin') {
-      return this.ordersRepository.find({
-        where: { restaurantId: restaurantId },
-        relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
-        order: { created_at: 'DESC' } as any,
-      });
-    }
-
-    if (user.restaurantId !== restaurantId) {
-      throw new NotFoundException('Bu restorana erişim yetkiniz yok');
-    }
-
-    return this.ordersRepository.find({
-      where: { restaurantId: user.restaurantId },
-      relations: ['items', 'items.menuItem', 'table', 'user', 'customer'],
-      order: { created_at: 'DESC' } as any,
+  private async _validateOrderForUpdate(
+    queryRunner: any,
+    orderId: string,
+  ): Promise<Order> {
+    const order = await queryRunner.manager.findOne(Order, {
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
     });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${orderId} not found`);
+    }
+
+    if (
+      order.status === OrderStatus.PAID ||
+      order.status === OrderStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Order cannot be modified');
+    }
+    return order;
   }
 
-  async moveOrder(
-    orderId: string,
-    newTableId: string,
-    user: any,
-  ): Promise<Order> {
-    return this.moveOrderUseCase.execute(orderId, newTableId, user);
+  private _isValidStatusTransition(
+    currentStatus: OrderStatus,
+    newStatus: OrderStatus,
+  ): boolean {
+    if (currentStatus === newStatus) {
+      return true;
+    }
+
+    if (
+      currentStatus === OrderStatus.PAID ||
+      currentStatus === OrderStatus.CANCELLED
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private _isProtectedItemStatus(status: OrderStatus): boolean {
+    return (
+      status === OrderStatus.SERVED ||
+      status === OrderStatus.DELIVERED ||
+      status === OrderStatus.PAID ||
+      status === OrderStatus.CANCELLED
+    );
+  }
+
+  private _shouldUpdateItemForOrderTransition(
+    itemStatus: OrderStatus,
+    targetOrderStatus: OrderStatus,
+  ): boolean {
+    // Immutable terminal item states must never be rewritten.
+    if (
+      itemStatus === OrderStatus.DELIVERED ||
+      itemStatus === OrderStatus.PAID ||
+      itemStatus === OrderStatus.CANCELLED
+    ) {
+      return false;
+    }
+
+    // Manual drag to pending should not downgrade any item.
+    if (targetOrderStatus === OrderStatus.PENDING) {
+      return false;
+    }
+
+    if (targetOrderStatus === OrderStatus.PREPARING) {
+      return itemStatus === OrderStatus.PENDING;
+    }
+
+    if (targetOrderStatus === OrderStatus.READY) {
+      return itemStatus === OrderStatus.PREPARING;
+    }
+
+    if (targetOrderStatus === OrderStatus.SERVED) {
+      return itemStatus === OrderStatus.READY;
+    }
+
+    if (targetOrderStatus === OrderStatus.PAID) {
+      return (
+        itemStatus === OrderStatus.PENDING ||
+        itemStatus === OrderStatus.PREPARING ||
+        itemStatus === OrderStatus.READY ||
+        itemStatus === OrderStatus.SERVED
+      );
+    }
+
+    if (targetOrderStatus === OrderStatus.CANCELLED) {
+      return (
+        itemStatus === OrderStatus.PENDING ||
+        itemStatus === OrderStatus.PREPARING ||
+        itemStatus === OrderStatus.READY
+      );
+    }
+
+    return false;
+  }
+
+  private _normalizeRequestedItems(
+    items: Array<{ menu_item_id: string; quantity: number }>,
+  ): Map<string, number> {
+    const normalized = new Map<string, number>();
+
+    for (const item of items) {
+      if (!item?.menu_item_id || !Number.isFinite(item.quantity)) continue;
+      if (item.quantity <= 0) continue;
+
+      const current = normalized.get(item.menu_item_id) ?? 0;
+      normalized.set(item.menu_item_id, current + item.quantity);
+    }
+
+    return normalized;
+  }
+
+  private async calculateAndNotifyKitchenLoad(
+    restaurantId: string,
+  ): Promise<void> {
+    const [preparingCount, readyCount] = await Promise.all([
+      this.ordersRepository.count({
+        where: {
+          restaurantId,
+          status: OrderStatus.PREPARING,
+        },
+      }),
+      this.ordersRepository.count({
+        where: {
+          restaurantId,
+          status: OrderStatus.READY,
+        },
+      }),
+    ]);
+
+    const activeLoad = preparingCount + readyCount;
+    const totalCapacity = Math.max(1, Math.ceil(activeLoad / 0.7));
+    const loadPercentage =
+      totalCapacity > 0
+        ? Math.min(100, Math.round((activeLoad / totalCapacity) * 100))
+        : 0;
+
+    this.notificationsGateway.notifyKitchenLoad(restaurantId, {
+      preparingCount,
+      readyCount,
+      totalCapacity,
+      loadPercentage,
+    });
   }
 }

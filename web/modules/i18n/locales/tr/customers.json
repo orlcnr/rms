@@ -1,0 +1,39 @@
+{
+    "title": "MÜŞTERİ VERİTABANI",
+    "description": "Müşteri kayıtlarını yönetin, sadakat puanlarını ve borç geçmişini takip edin.",
+    "newCustomer": "YENİ MÜŞTERİ",
+    "searchPlaceholder": "İSİM VEYA TELEFON İLE ARA...",
+    "table": {
+        "name": "MÜŞTERİ ADI",
+        "phone": "TELEFON",
+        "visits": "ZİYARET",
+        "spending": "HARCAMA",
+        "debt": "BORÇ",
+        "actions": "İŞLEMLER"
+    },
+    "form": {
+        "firstName": "Ad",
+        "lastName": "Soyad",
+        "phone": "Telefon",
+        "email": "E-posta",
+        "notes": "Notlar",
+        "tags": "Etiketler",
+        "creditLimit": "Kredi Limiti",
+        "creditLimitEnabled": "Kredi Limiti Aktif",
+        "maxOpenOrders": "Maks. Açık Sipariş"
+    },
+    "details": {
+        "title": "MÜŞTERİ DETAYI",
+        "stats": "İSTATİSTİKLER",
+        "orderHistory": "SİPARİŞ GEÇMİŞİ",
+        "totalSpent": "Toplam Harcama",
+        "visitCount": "Ziyaret Sayısı",
+        "currentDebt": "Güncel Borç"
+    },
+    "messages": {
+        "createSuccess": "Müşteri başarıyla oluşturuldu.",
+        "updateSuccess": "Müşteri başarıyla güncellendi.",
+        "deleteSuccess": "Müşteri başarıyla silindi.",
+        "deleteConfirm": "Müşteriyi silmek istediğinize emin misiniz?"
+    }
+}

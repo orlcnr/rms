@@ -214,16 +214,24 @@ export function OrderCard({
             </div>
             <div className="space-y-1">
               {orderGroup.previousItems.map((item, idx) => {
-                const isServed = item.status === OrderStatus.SERVED || item.status === OrderStatus.DELIVERED || item.status === OrderStatus.PAID
+                const isServed =
+                  item.status === OrderStatus.SERVED ||
+                  item.status === OrderStatus.DELIVERED ||
+                  item.status === OrderStatus.PAID
                 return (
                   <div key={idx} className={cn(
                     "flex justify-between items-center text-[11px] px-1.5 py-1 rounded-sm",
                     isServed ? "opacity-40 grayscale bg-bg-muted" : "font-medium text-text-muted"
                   )}>
                     <span className={cn(isServed && "line-through italic")}>{item.quantity}x {item.menuItem?.name}</span>
-                    {isServed && (
-                      <span className="text-[8px] text-success-main uppercase font-black">SERVİS EDİLDİ</span>
-                    )}
+                    <span
+                      className={cn(
+                        'text-[8px] uppercase font-black',
+                        isServed ? 'text-success-main' : 'text-text-muted'
+                      )}
+                    >
+                      {ORDER_STATUS_LABELS[item.status]}
+                    </span>
                   </div>
                 )
               })}

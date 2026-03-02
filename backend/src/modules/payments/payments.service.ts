@@ -17,6 +17,8 @@ import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../orders/enums/order-status.enum';
 import { Table, TableStatus } from '../tables/entities/table.entity';
 import { CashSession } from '../cash/entities/cash-session.entity';
+import { CreateCashMovementDto } from '../cash/dto/cash-ops.dto';
+import { CashMovementType } from '../cash/enums/cash.enum';
 import { InventoryService } from '../inventory/inventory.service';
 import { paginate, Pagination } from 'nestjs-typeorm-paginate';
 import { GetPaymentsDto } from './dto/get-payments.dto';
@@ -100,6 +102,29 @@ const calculateNetTip = (
   const commissionCents = Math.round(tipAmount * 100 * commissionRate);
   const netCents = Math.round(tipAmount * 100) - commissionCents;
   return Math.max(0, netCents / 100);
+};
+
+const normalizeCommissionRate = (value?: number | string | null): number => {
+  if (value === undefined || value === null || value === '') {
+    return 0;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new BadRequestException('Komisyon oranı geçersiz');
+  }
+
+  // Support both formats:
+  // - ratio: 0.03
+  // - percent: 3
+  if (numeric <= 1) {
+    return numeric;
+  }
+  if (numeric <= 100) {
+    return numeric / 100;
+  }
+
+  throw new BadRequestException('Komisyon oranı 0 ile 100 arasında olmalıdır');
 };
 
 @Injectable()
@@ -208,6 +233,9 @@ export class PaymentsService {
           0.02, // Fallback if settings are not initialized
         );
       }
+      const normalizedCommissionRate = normalizeCommissionRate(
+        resolvedCommissionRate,
+      );
 
       // 3. Create Payment
       const payment = this.paymentRepository.create({
@@ -221,15 +249,9 @@ export class PaymentsService {
         transaction_id,
         description,
         tip_amount: tip_amount ? Number(tip_amount) : null,
-        commission_rate:
-          resolvedCommissionRate !== undefined
-            ? Number(resolvedCommissionRate)
-            : null,
+        commission_rate: tip_amount ? normalizedCommissionRate : null,
         net_tip_amount: tip_amount
-          ? calculateNetTip(
-              Number(tip_amount),
-              Number(resolvedCommissionRate || 0),
-            )
+          ? calculateNetTip(Number(tip_amount), normalizedCommissionRate)
           : null,
       });
       const savedPayment = await queryRunner.manager.save(payment);
@@ -242,36 +264,54 @@ export class PaymentsService {
       await this.inventoryService.decreaseStockForOrder(order, queryRunner);
 
       // 4.5. Check if there's an active cash session BEFORE committing
-      const cashSessionRepo = queryRunner.manager.getRepository(CashSession);
-      const activeSession = await cashSessionRepo
-        .createQueryBuilder('session')
-        .innerJoin('session.cashRegister', 'register')
-        .where('register.restaurant_id = :restaurantId', {
-          restaurantId: order.restaurantId,
-        })
-        .andWhere('session.status = :status', { status: 'open' })
-        .getOne();
+      // Use centralized register retrieval as source of truth
+      const activeRegister = await this.cashService.getActiveRegister(
+        order.restaurantId,
+      );
+      const activeSessions = await this.cashService.getAllActiveSessions(
+        order.restaurantId,
+      );
+      const activeSession = activeSessions.find(
+        (s) => s.register.id === activeRegister.id,
+      )?.session;
 
       if (!activeSession) {
         throw new BadRequestException(
-          'Ödeme yapılamaz: Bu restoranda açık bir kasa oturumu bulunmuyor. ' +
-            'Lütfen önce bir kasa açın veya yöneticinize başvurun.',
+          'Ödeme yapılamaz: Bu restoranda aktif kasanın açık bir oturumu bulunmuyor. ' +
+            'Lütfen önce kasayı açın veya yöneticinize başvurun.',
         );
       }
-      // 4.6. Record cash movement in transaction
-      await this.cashService.recordPaymentMovementsInTransaction(
-        queryRunner.manager,
-        activeSession,
-        order.restaurantId,
-        [{
-          orderId: order.id,
+
+      await this.cashService.addMovement(
+        (userId || order.userId)!, // Ensure userId is always a string
+        activeSession.id,
+        {
+          cash_register_id: activeRegister.id,
           amount: Number(savedPayment.amount),
+          type: CashMovementType.SALE,
           paymentMethod: savedPayment.payment_method,
-          tipAmount: savedPayment.tip_amount ? Number(savedPayment.tip_amount) : null,
-          userId: userId || order.userId || undefined,
-        }],
+          description: `Payment for order ${order.id}`,
+          is_payment: true,
+        },
+        queryRunner,
       );
 
+      // 4.7. Record Tip as cash movement if exists
+      if (savedPayment.tip_amount && Number(savedPayment.tip_amount) > 0) {
+        await this.cashService.addMovement(
+          (userId || order.userId)!,
+          activeSession.id,
+          {
+            cash_register_id: activeRegister.id,
+            amount: Number(savedPayment.tip_amount),
+            type: CashMovementType.IN,
+            paymentMethod: savedPayment.payment_method,
+            description: `Tip for order ${order.id}`,
+            isTip: true,
+          },
+          queryRunner,
+        );
+      }
 
       await queryRunner.commitTransaction();
 
@@ -448,13 +488,20 @@ export class PaymentsService {
       }
 
       // 4. Aktif kasa oturumunu bul (tüm ödeme yöntemleri için zorunlu)
-      const activeSession = await this.cashService.findActiveSession(
+      // Use centralized register retrieval as source of truth
+      const activeRegister = await this.cashService.getActiveRegister(
         order.restaurantId,
-        userId,
       );
-      if (!activeSession) {
+      const activeSessions = await this.cashService.getAllActiveSessions(
+        order.restaurantId,
+      );
+      const typedActiveSession = activeSessions.find(
+        (s) => s.register.id === activeRegister.id,
+      )?.session;
+
+      if (!typedActiveSession) {
         throw new BadRequestException(
-          'Ödeme yapılamaz: Bu restoranda açık bir kasa oturumu bulunmuyor. Lütfen önce bir kasa açın.',
+          'Ödeme yapılamaz: Bu restoranda aktif kasanın açık bir oturumu bulunmuyor. Lütfen önce kasayı açın.',
         );
       }
 
@@ -482,6 +529,44 @@ export class PaymentsService {
         const tipAmount = payment.tip_amount ? Number(payment.tip_amount) : 0;
         let resolvedCommissionRate = payment.commission_rate;
 
+        // 6. Kasa hareketini kaydet (Nakit, Kredi Kartı veya Açık Hesap ödemeleri için)
+        if (
+          payment.payment_method === PaymentMethod.CASH ||
+          payment.payment_method === PaymentMethod.CREDIT_CARD ||
+          payment.payment_method === PaymentMethod.OPEN_ACCOUNT
+        ) {
+          await this.cashService.addMovement(
+            (userId || order.userId)!, // Ensure userId is always a string
+            typedActiveSession.id,
+            {
+              cash_register_id: activeRegister.id,
+              amount: amount,
+              type: CashMovementType.SALE,
+              paymentMethod: payment.payment_method,
+              description: `Split payment for order ${order.id} via ${payment.payment_method}`,
+              is_payment: true,
+            },
+            queryRunner,
+          );
+        }
+
+        // 6.1. Bahşişi kaydet (eğer varsa)
+        if (tipAmount > 0) {
+          await this.cashService.addMovement(
+            (userId || order.userId)!,
+            typedActiveSession.id,
+            {
+              cash_register_id: activeRegister.id,
+              amount: tipAmount,
+              type: CashMovementType.IN,
+              paymentMethod: payment.payment_method,
+              description: `Tip for order ${order.id} via ${payment.payment_method}`,
+              isTip: true,
+            },
+            queryRunner,
+          );
+        }
+
         if (tipAmount > 0 && resolvedCommissionRate === undefined) {
           resolvedCommissionRate = await this.settingsService.getSetting(
             order.restaurantId,
@@ -489,10 +574,13 @@ export class PaymentsService {
             0.02,
           );
         }
+        const normalizedCommissionRate = normalizeCommissionRate(
+          resolvedCommissionRate,
+        );
 
         const netTipAmount =
           tipAmount > 0
-            ? calculateNetTip(tipAmount, Number(resolvedCommissionRate || 0))
+            ? calculateNetTip(tipAmount, normalizedCommissionRate)
             : null;
 
         const newPayment = this.paymentRepository.create({
@@ -510,10 +598,7 @@ export class PaymentsService {
           cash_received: cashReceived,
           change_given: change,
           tip_amount: tipAmount > 0 ? tipAmount : null,
-          commission_rate:
-            resolvedCommissionRate !== undefined
-              ? Number(resolvedCommissionRate)
-              : null,
+          commission_rate: tipAmount > 0 ? normalizedCommissionRate : null,
           net_tip_amount: netTipAmount,
           status: PaymentStatus.COMPLETED,
         });
@@ -532,28 +617,10 @@ export class PaymentsService {
             'current_debt',
             amount,
           );
-          await queryRunner.manager.increment(
-            Customer,
-          amount: Number(p.amount),
-          paymentMethod: p.payment_method,
-          tipAmount: p.tip_amount ? Number(p.tip_amount) : null,
-          userId: userId || order.userId || undefined,
         }
       }
 
-      // 5.2. Kasa hareketlerini aynı transaction içinde kaydet (atomik)
-      await this.cashService.recordPaymentMovementsInTransaction(
-        queryRunner.manager,
-        activeSession,
-        order.restaurantId,
-        savedPayments.map((p) => ({
-          orderId: order.id,
-          amount: p.amount,
-          paymentMethod: p.payment_method,
-          tipAmount: p.tip_amount,
-          userId: userId || order.userId || undefined,
-        })),
-      );
+      // 5.2. Kasa hareketleri zaten yukarıdaki döngüde kaydedildi (atomik)
 
       // 6. Sipariş durumunu güncelle
       order.status = OrderStatus.PAID;

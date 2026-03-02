@@ -130,50 +130,27 @@ export const ordersApi = {
  * Can change order status to given status
  */
 export function canChangeStatus(currentStatus: OrderStatus, newStatus: OrderStatus): boolean {
-  // Valid status transitions
-  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [
-      OrderStatus.PREPARING,
-      OrderStatus.CANCELLED,
-    ],
-    [OrderStatus.PREPARING]: [
-      OrderStatus.READY,
-      OrderStatus.CANCELLED,
-    ],
-    [OrderStatus.READY]: [
-      OrderStatus.SERVED,
-      OrderStatus.CANCELLED,
-    ],
-    [OrderStatus.SERVED]: [
-      OrderStatus.PAID,
-    ],
-    [OrderStatus.PAID]: [],
-    [OrderStatus.ON_WAY]: [
-      OrderStatus.DELIVERED,
-    ],
-    [OrderStatus.DELIVERED]: [],
-    [OrderStatus.CANCELLED]: [],
+  if (currentStatus === newStatus) return true
+  if (
+    currentStatus === OrderStatus.PAID ||
+    currentStatus === OrderStatus.CANCELLED
+  ) {
+    return false
   }
-
-  return validTransitions[currentStatus]?.includes(newStatus) ?? false
+  return true
 }
 
 /**
  * Get next possible status options
  */
 export function getNextStatusOptions(currentStatus: OrderStatus): OrderStatus[] {
-  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-    [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-    [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
-    [OrderStatus.SERVED]: [OrderStatus.PAID],
-    [OrderStatus.PAID]: [],
-    [OrderStatus.ON_WAY]: [OrderStatus.DELIVERED],
-    [OrderStatus.DELIVERED]: [],
-    [OrderStatus.CANCELLED]: [],
+  if (
+    currentStatus === OrderStatus.PAID ||
+    currentStatus === OrderStatus.CANCELLED
+  ) {
+    return []
   }
-
-  return validTransitions[currentStatus] || []
+  return Object.values(OrderStatus).filter((status) => status !== currentStatus)
 }
 
 /**

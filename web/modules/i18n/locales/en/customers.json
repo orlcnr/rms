@@ -1,0 +1,39 @@
+{
+    "title": "CUSTOMER DATABASE",
+    "description": "Manage customer records, track loyalty points and debt history.",
+    "newCustomer": "NEW CUSTOMER",
+    "searchPlaceholder": "SEARCH BY NAME OR PHONE...",
+    "table": {
+        "name": "CUSTOMER NAME",
+        "phone": "PHONE",
+        "visits": "VISITS",
+        "spending": "SPENDING",
+        "debt": "DEBT",
+        "actions": "ACTIONS"
+    },
+    "form": {
+        "firstName": "First Name",
+        "lastName": "Last Name",
+        "phone": "Phone",
+        "email": "Email",
+        "notes": "Notes",
+        "tags": "Tags",
+        "creditLimit": "Credit Limit",
+        "creditLimitEnabled": "Credit Limit Enabled",
+        "maxOpenOrders": "Max Open Orders"
+    },
+    "details": {
+        "title": "CUSTOMER DETAILS",
+        "stats": "STATISTICS",
+        "orderHistory": "ORDER HISTORY",
+        "totalSpent": "Total Spent",
+        "visitCount": "Visit Count",
+        "currentDebt": "Current Debt"
+    },
+    "messages": {
+        "createSuccess": "Customer created successfully.",
+        "updateSuccess": "Customer updated successfully.",
+        "deleteSuccess": "Customer deleted successfully.",
+        "deleteConfirm": "Are you sure you want to delete this customer?"
+    }
+}

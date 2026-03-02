@@ -19,6 +19,7 @@ interface OrderSocketEvents {
     oldStatus: OrderStatus
     newStatus: OrderStatus
     order: Order
+    transaction_id?: string
   }) => void
   onOrderItemAdded?: (data: {
     orderId: string
@@ -111,6 +112,7 @@ export function useOrdersSocket(
         oldStatus: OrderStatus
         newStatus: OrderStatus
         order: Order
+        transaction_id?: string
       }
       onOrderStatusChangedRef.current?.(payload)
     }

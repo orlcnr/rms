@@ -21,7 +21,6 @@ interface PaymentMethodDetailsProps {
   onAddNewCustomer?: (name: string) => Promise<Customer | null>;
   onOpenNewCustomerModal?: (initialName?: string) => void;
   commissionRate?: number;
-  isEditable?: boolean;
   tipEnabled?: boolean;
 }
 
@@ -245,7 +244,6 @@ function CardPaymentForm({
   disabled,
   methodLabel,
   commissionRate = 0.02,
-  isEditable = true,
   tipEnabled = false,
 }: {
   payment: PaymentLine;
@@ -253,12 +251,10 @@ function CardPaymentForm({
   disabled: boolean;
   methodLabel: string;
   commissionRate?: number;
-  isEditable?: boolean;
   tipEnabled?: boolean;
 }) {
   const [localAmount, setLocalAmount] = useState(payment.amount.toString());
   const [localTip, setLocalTip] = useState((payment.tipAmount || 0).toString());
-  const [localCommission, setLocalCommission] = useState((payment.commissionRate || commissionRate).toString());
 
   useEffect(() => {
     setLocalAmount(payment.amount.toString());
@@ -267,10 +263,6 @@ function CardPaymentForm({
   useEffect(() => {
     setLocalTip((payment.tipAmount || 0).toString());
   }, [payment.tipAmount]);
-
-  useEffect(() => {
-    setLocalCommission((payment.commissionRate || commissionRate).toString());
-  }, [payment.commissionRate, commissionRate]);
 
   const handleAmountChange = (value: string) => {
     setLocalAmount(value);
@@ -284,14 +276,10 @@ function CardPaymentForm({
     onUpdate({ tipAmount: num });
   };
 
-  const handleCommissionChange = (value: string) => {
-    setLocalCommission(value);
-    const num = parseFloat(value.replace(',', '.')) || 0;
-    onUpdate({ commissionRate: num });
-  };
-
   const tip = parseFloat(localTip.replace(',', '.')) || 0;
-  const comm = parseFloat(localCommission.replace(',', '.')) || 0;
+  const comm = typeof payment.commissionRate === 'number'
+    ? payment.commissionRate
+    : commissionRate;
   const netTip = tip * (1 - comm);
 
   return (
@@ -342,15 +330,12 @@ function CardPaymentForm({
                 Komisyon Oranı
               </label>
               <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={localCommission}
-                  onChange={(e) => handleCommissionChange(e.target.value)}
-                  disabled={disabled || !isEditable}
-                  className="flex-1 px-3 py-2 text-base font-bold text-right bg-bg-muted border border-border-light rounded-sm
-                    focus:outline-none focus:border-primary-main disabled:opacity-50"
-                  placeholder="0,02"
-                />
+                <div
+                  className="flex-1 px-3 py-2 text-base font-bold text-right bg-bg-muted border border-border-light rounded-sm text-text-primary"
+                  aria-label="Komisyon oranı bilgisi"
+                >
+                  %{(comm * 100).toFixed(2)}
+                </div>
               </div>
             </div>
           </div>
@@ -377,7 +362,6 @@ export function PaymentMethodDetails({
   onAddNewCustomer,
   onOpenNewCustomerModal,
   commissionRate,
-  isEditable,
   tipEnabled,
 }: PaymentMethodDetailsProps) {
   // Boş durum
@@ -415,7 +399,6 @@ export function PaymentMethodDetails({
             disabled={disabled}
             methodLabel={method === PaymentMethod.CREDIT_CARD ? 'Kredi Kartı' : 'Banka Kartı'}
             commissionRate={commissionRate}
-            isEditable={isEditable}
             tipEnabled={tipEnabled}
           />
         )}
@@ -427,7 +410,6 @@ export function PaymentMethodDetails({
           disabled={disabled}
           methodLabel="Dijital Cüzdan"
           commissionRate={commissionRate}
-          isEditable={isEditable}
           tipEnabled={tipEnabled}
         />
       )}
@@ -439,7 +421,6 @@ export function PaymentMethodDetails({
           disabled={disabled}
           methodLabel="Havale"
           commissionRate={commissionRate}
-          isEditable={isEditable}
           tipEnabled={tipEnabled}
         />
       )}

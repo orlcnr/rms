@@ -1,22 +1,7 @@
+import common from '../locales/en/common.json';
+
 export const en = {
-  // Common
-  common: {
-    loading: 'Loading...',
-    save: 'Save',
-    cancel: 'Cancel',
-    delete: 'Delete',
-    edit: 'Edit',
-    add: 'Add',
-    search: 'Search',
-    filter: 'Filter',
-    back: 'Back',
-    next: 'Next',
-    submit: 'Submit',
-    confirm: 'Confirm',
-    yes: 'Yes',
-    no: 'No',
-    or: 'Or',
-  },
+  common,
 
   // Auth
   auth: {
@@ -64,8 +49,49 @@ export const en = {
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
     continueWith: 'Or continue with',
-    google: 'Google',
-    apple: 'Apple',
+    google: 'Google' as string,
+    apple: 'Apple' as string,
+  },
+
+  customers: {
+    title: "CUSTOMER DATABASE",
+    description: "Manage customer records, track loyalty points and debt history.",
+    newCustomer: "NEW CUSTOMER",
+    debtOnly: "DEBT ONLY",
+    searchPlaceholder: "SEARCH BY NAME OR PHONE...",
+    table: {
+      name: "CUSTOMER NAME",
+      phone: "PHONE",
+      visit_count: "VISITS",
+      total_spent: "SPENDING",
+      current_debt: "DEBT",
+      creditLimit: "CREDIT LIMIT",
+      lastVisit: "LAST VISIT",
+      actions: "ACTIONS"
+    },
+    form: {
+      firstName: "FIRST NAME",
+      lastName: "LAST NAME",
+      phone: "PHONE",
+      email: "EMAIL",
+      creditLimitEnabled: "CREDIT LIMIT ENABLED",
+      creditLimit: "LIMIT AMOUNT",
+      maxOpenOrders: "MAX OPEN ORDERS",
+      notes: "NOTES"
+    },
+    details: {
+      title: "CUSTOMER DETAILS",
+      stats: "STATISTICS",
+      visitCount: "TOTAL VISITS",
+      totalSpent: "TOTAL SPENT",
+      currentDebt: "CURRENT DEBT",
+      orderHistory: "ORDER HISTORY"
+    },
+    messages: {
+      createSuccess: "Customer created successfully.",
+      updateSuccess: "Customer updated successfully.",
+      deleteSuccess: "Customer deleted successfully.",
+      deleteConfirm: "Are you sure you want to delete this customer?"
+    }
   },
 } as const;
-

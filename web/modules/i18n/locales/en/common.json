@@ -13,5 +13,20 @@
   "confirm": "Confirm",
   "yes": "Yes",
   "no": "No",
-  "or": "Or"
+  "or": "Or",
+  "tables_management": "TABLES MANAGEMENT",
+  "order_tracking": "ORDER TRACKING",
+  "stock_and_inventory": "STOCK AND INVENTORY",
+  "product_catalog": "PRODUCT CATALOG",
+  "daily_reports": "DAILY REPORTS",
+  "cash_operations": "CASH OPERATIONS",
+  "dashboard": "DASHBOARD",
+  "orders": "ORDERS",
+  "cash": "CASH",
+  "reservations": "RESERVATIONS",
+  "customer_database": "CUSTOMER DATABASE",
+  "system_settings": "SYSTEM SETTINGS",
+  "system_secure": "SYSTEM SECURE",
+  "logout": "LOGOUT",
+  "version_stable": "v2.4.0-STABLE"
 }

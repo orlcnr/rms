@@ -65,6 +65,7 @@ export class GetMenuItemsDto {
   // - track_inventory=true products: only show if stock > 0
   // - track_inventory=false products: show if is_available=true
   @ApiPropertyOptional({ default: false })
+  @Type(() => Boolean)
   @IsBoolean()
   @IsOptional()
   posMode?: boolean = false;

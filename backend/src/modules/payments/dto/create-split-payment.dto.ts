@@ -52,11 +52,8 @@ export class PaymentTransactionDto {
   @ApiPropertyOptional({ example: 3.0 })
   @IsNumber()
   @IsOptional()
-  @ApiPropertyOptional({ example: 3.0 })
-  @IsNumber()
-  @IsOptional()
   @Min(0)
-  @Max(1) // %100'den fazla komisyon olamaz
+  @Max(100) // 0-1 (oran) veya 0-100 (yüzde) kabul edilir
   commission_rate?: number;
 
   @ApiPropertyOptional({ example: 'Payment note' })

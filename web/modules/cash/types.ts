@@ -3,7 +3,8 @@
 // Backend: backend/src/modules/cash/
 // ============================================
 
-import { BaseEntity } from '@/modules/shared/types';
+import { BaseEntity, PaginatedResponse } from '@/modules/shared/types';
+import { PaymentMethod } from '@/modules/orders/types';
 
 // ============================================
 // ENUMS
@@ -40,18 +41,7 @@ export enum CashMovementSubtype {
   ADJUSTMENT = 'adjustment', // Düzeltme
 }
 
-/**
- * Payment Method
- * Backend: backend/src/modules/payments/entities/payment.entity.ts
- */
-export enum CashPaymentMethod {
-  CASH = 'cash',
-  CREDIT_CARD = 'credit_card',
-  DEBIT_CARD = 'debit_card',
-  DIGITAL_WALLET = 'digital_wallet',
-  BANK_TRANSFER = 'bank_transfer',
-  OPEN_ACCOUNT = 'open_account',
-}
+
 
 // ============================================
 // INTERFACES
@@ -108,7 +98,7 @@ export interface CashMovement extends BaseEntity {
   cashSessionId: string
   type: CashMovementType
   subtype?: CashMovementSubtype
-  paymentMethod: CashPaymentMethod
+  paymentMethod: PaymentMethod
   amount: number
   description: string
   userId: string
@@ -169,6 +159,31 @@ export interface CashSummaryData {
   totalCash: number // Kasa Toplamı (Nakit + Nakit Bahşiş)
   cashTips: number // Nakit Bahşiş
   cardTips: number // Kart Bahşiş
+  paymentBreakdown?: Record<string, number> // Ödeme yöntemi kırılımı
+}
+
+/**
+ * Reconciliation Report Data
+ * Full end-of-day audit
+ */
+export interface ReconciliationReport {
+  sessionOpenedAt: string;
+  sessionClosedAt: string | null;
+  openedBy: string;
+  closedBy: string | null;
+  cashRegisterName: string;
+  openingBalance: number;
+  totalGrossSales: number;
+  voidedSales: number;
+  salesByMethod: Record<string, number>;
+  totalTip: number;
+  tipCommission: number;
+  netTip: number;
+  expectedCash: number;
+  actualCash: number | null;
+  difference: number | null;
+  netBankAmount: number;
+  movementCount: number;
 }
 
 /**
@@ -212,7 +227,7 @@ export interface CashOpenData {
 export interface CreateMovementData {
   type: CashMovementType
   subtype?: CashMovementSubtype
-  paymentMethod: CashPaymentMethod
+  paymentMethod: PaymentMethod
   amount: number
   description?: string
   orderId?: string
@@ -221,6 +236,19 @@ export interface CreateMovementData {
   // Frontend tarafından belirlenen alanlar
   isLiquid: boolean
   isRevenue: boolean
+}
+
+/**
+ * Cash Session History Filters
+ */
+export interface CashSessionHistoryFilters {
+  startDate?: string
+  endDate?: string
+  registerId?: string
+  status?: CashSessionStatus
+  openedById?: string
+  page?: number
+  limit?: number
 }
 
 // ============================================

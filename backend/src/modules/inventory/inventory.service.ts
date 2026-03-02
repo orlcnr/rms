@@ -139,6 +139,24 @@ export class InventoryService {
       .getMany();
   }
 
+  async getSummary(
+    restaurantId: string,
+  ): Promise<{ criticalStockCount: number }> {
+    const raw = (await this.ingredientRepository
+      .createQueryBuilder('ingredient')
+      .leftJoin('ingredient.stock', 'stock')
+      .select('COUNT(*)', 'critical_stock_count')
+      .where('ingredient.restaurant_id = :restaurantId', { restaurantId })
+      .andWhere('ingredient.critical_level > 0')
+      .andWhere('COALESCE(stock.quantity, 0) > 0')
+      .andWhere('COALESCE(stock.quantity, 0) <= ingredient.critical_level')
+      .getRawOne()) as { critical_stock_count?: string | number } | null;
+
+    return {
+      criticalStockCount: Number(raw?.critical_stock_count || 0),
+    };
+  }
+
   async addStockMovement(dto: CreateStockMovementDto): Promise<StockMovement> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

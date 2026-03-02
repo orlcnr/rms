@@ -1,4 +1,4 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BusinessRule } from './entities/business-rule.entity';
 import { RulesService } from './rules.service';
@@ -10,12 +10,14 @@ import { MenuRuleEvaluator } from './evaluators/menu-rule.evaluator';
 import { TablesModule } from '../tables/tables.module';
 import { StockMovement } from '../inventory/entities/stock-movement.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
+import { CashModule } from '../cash/cash.module';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([BusinessRule, StockMovement, OrderItem]),
     TablesModule, // Required by CashRuleEvaluator
+    forwardRef(() => CashModule), // Required by OrderRuleEvaluator for cash session check
   ],
   controllers: [RulesController],
   providers: [

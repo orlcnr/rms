@@ -27,6 +27,9 @@ export class MenuItem extends BaseEntity {
   popularity: number;
 
   @Column()
+  restaurant_id: string;
+
+  @Column()
   category_id: string;
 
   @ManyToOne(() => Category, (category) => category.items, {

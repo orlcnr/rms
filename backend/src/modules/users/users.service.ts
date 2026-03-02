@@ -114,7 +114,8 @@ export class UsersService {
     createUserDto: CreateUserDto,
     requesterUser: User,
   ): Promise<User> {
-    const { email, first_name, last_name, role, restaurant_id } = createUserDto;
+    const { email, first_name, last_name, role, restaurant_id, phone } =
+      createUserDto;
 
     // Validate role if provided
     if (role) {
@@ -141,8 +142,13 @@ export class UsersService {
       );
     }
 
-    // Generate a random password for the user
-    const tempPassword = Math.random().toString(36).slice(-8);
+    // Use provided password when available, otherwise generate a temporary one.
+    const providedPassword =
+      typeof createUserDto.password === 'string'
+        ? createUserDto.password.trim()
+        : '';
+    const tempPassword =
+      providedPassword || Math.random().toString(36).slice(-8);
     const salt = await bcrypt.genSalt();
     const password_hash = await bcrypt.hash(tempPassword, salt);
 
@@ -151,6 +157,7 @@ export class UsersService {
       password_hash,
       first_name,
       last_name,
+      phone,
       role: role || Role.CUSTOMER,
       restaurant_id: userRestaurantId,
     });
@@ -158,7 +165,8 @@ export class UsersService {
     try {
       const savedUser = await this.usersRepository.save(user);
       // Remove password_hash from response
-      const { password_hash: _, ...result } = savedUser;
+      const { password_hash: passwordHash, ...result } = savedUser;
+      void passwordHash;
       return result as User;
     } catch (error) {
       if (error.code === '23505') {
@@ -224,7 +232,10 @@ export class UsersService {
     const result = await paginate<User>(queryBuilder, { page, limit });
     // Remove password_hash from items
     const sanitizedItems = result.items.map(
-      ({ password_hash: _, ...user }) => user as User,
+      ({ password_hash: passwordHash, ...user }) => {
+        void passwordHash;
+        return user as User;
+      },
     );
     return {
       items: sanitizedItems,
@@ -254,7 +265,8 @@ export class UsersService {
     }
 
     // Remove password_hash from response
-    const { password_hash: _, ...result } = user;
+    const { password_hash: passwordHash, ...result } = user;
+    void passwordHash;
     return result as User;
   }
 
@@ -307,11 +319,20 @@ export class UsersService {
       }
     }
 
-    // Update user
-    Object.assign(user, updateUserDto);
+    const { password, ...safeUpdates } = updateUserDto;
+
+    // Update user fields (except password)
+    Object.assign(user, safeUpdates);
+
+    // Ignore empty password, update hash only when a non-empty value is provided
+    if (typeof password === 'string' && password.trim().length > 0) {
+      const salt = await bcrypt.genSalt();
+      user.password_hash = await bcrypt.hash(password.trim(), salt);
+    }
 
     const savedUser = await this.usersRepository.save(user);
-    const { password_hash: _, ...result } = savedUser;
+    const { password_hash: passwordHash, ...result } = savedUser;
+    void passwordHash;
     return result as User;
   }
 
@@ -356,7 +377,8 @@ export class UsersService {
     user.is_active = activateDeactivateDto.is_active;
 
     const savedUser = await this.usersRepository.save(user);
-    const { password_hash: _, ...result } = savedUser;
+    const { password_hash: passwordHash, ...result } = savedUser;
+    void passwordHash;
     return result as User;
   }
 

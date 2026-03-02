@@ -39,6 +39,7 @@ export class SettingsController {
     return this.settingsService.getSettingsByGroup(
       restaurantId,
       query.group || 'payment',
+      query.includeMeta || false,
     );
   }
 

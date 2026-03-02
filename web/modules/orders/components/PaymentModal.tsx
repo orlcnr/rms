@@ -10,6 +10,7 @@ import {
   Smartphone,
   Building,
   User,
+  Ticket,
   Calculator,
 } from 'lucide-react';
 import { usePayment } from '../hooks/usePayment';
@@ -120,12 +121,44 @@ export function PaymentModal({
     editable: true,
     rate: 0.02
   });
+  const [enabledPaymentMethods, setEnabledPaymentMethods] = useState<PaymentMethod[]>(
+    Object.values(PaymentMethod),
+  );
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const settings: any = await http.get(`/settings/${restaurantId}?group=payment`);
-        
+
+        const rawEnabledMethods = settings.enabled_payment_methods;
+        const parsedEnabledMethods = (() => {
+          if (Array.isArray(rawEnabledMethods)) {
+            return rawEnabledMethods.filter((method): method is PaymentMethod =>
+              Object.values(PaymentMethod).includes(method as PaymentMethod),
+            );
+          }
+          if (typeof rawEnabledMethods === 'string') {
+            try {
+              const parsed = JSON.parse(rawEnabledMethods);
+              if (!Array.isArray(parsed)) {
+                return [];
+              }
+              return parsed.filter((method): method is PaymentMethod =>
+                Object.values(PaymentMethod).includes(method as PaymentMethod),
+              );
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })();
+
+        setEnabledPaymentMethods(
+          parsedEnabledMethods.length > 0
+            ? parsedEnabledMethods
+            : Object.values(PaymentMethod),
+        );
+
         setTipSettings({
           rate: parseFloat(settings.tip_commission_rate) || 0.02,
           enabled: settings.tip_commission_enabled === true || settings.tip_commission_enabled === "true",
@@ -159,6 +192,7 @@ export function PaymentModal({
       case PaymentMethod.DIGITAL_WALLET: return Smartphone;
       case PaymentMethod.BANK_TRANSFER: return Building;
       case PaymentMethod.OPEN_ACCOUNT: return User;
+      case PaymentMethod.MEAL_VOUCHER: return Ticket;
       default: return CreditCard;
     }
   };
@@ -293,6 +327,7 @@ export function PaymentModal({
                   <PaymentMethodsGrid
                     selectedMethod={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
                     onSelectMethod={(method) => hook.addPaymentLine(method)}
+                    methods={enabledPaymentMethods}
                     disabled={hook.isSyncing}
                   />
                 </div>
@@ -311,7 +346,6 @@ export function PaymentModal({
                     onOpenNewCustomerModal={handleOpenNewCustomerModal}
                     restaurantId={restaurantId}
                     commissionRate={tipSettings.rate}
-                    isEditable={tipSettings.editable}
                     tipEnabled={tipSettings.enabled}
                   />
                 </div>
@@ -337,6 +371,7 @@ export function PaymentModal({
           restaurantId={restaurantId}
           onClose={onClose}
           getMethodIcon={getMethodIcon}
+          enabledMethods={enabledPaymentMethods}
           handleComplete={handleComplete}
           onAddNewCustomer={handleAddNewCustomer}
           isCreatingCustomer={isCreatingCustomer}

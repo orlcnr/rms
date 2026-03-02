@@ -4,19 +4,21 @@
 // ============================================
 
 import { http } from '@/modules/shared/api/http'
+import { PaginatedResponse } from '@/modules/shared/types'
 import {
   CashRegister,
   CashSession,
   CashMovement,
-  CashSessionStatus,
-  CashMovementType,
-  CashMovementSubtype,
   CashRegisterWithStatus,
   CashSummaryData,
   CreateMovementData,
   CashCloseData,
   CashOpenData,
   ActiveSessionWrapper,
+  CashSessionHistoryFilters,
+  CashMovementType,
+  CashMovementSubtype,
+  ReconciliationReport,
 } from './types'
 
 // ============================================
@@ -25,7 +27,6 @@ import {
 
 /**
  * Get all cash registers for a restaurant
- * GET /cash/registers
  */
 export const getRegisters = async (): Promise<CashRegister[]> => {
   return await http.get<CashRegister[]>('/cash/registers')
@@ -33,15 +34,13 @@ export const getRegisters = async (): Promise<CashRegister[]> => {
 
 /**
  * Get cash registers with their current status
- * GET /cash/registers/with-status
  */
 export const getRegistersWithStatus = async (): Promise<CashRegisterWithStatus[]> => {
-  return await http.get<CashRegisterWithStatus[]>('/cash/registers/with-status')
+  return await http.get<CashRegisterWithStatus[]>('/cash/registers')
 }
 
 /**
  * Get all active sessions across all registers
- * GET /cash/registers/active-sessions
  */
 export const getActiveSessions = async (): Promise<ActiveSessionWrapper[]> => {
   return await http.get<ActiveSessionWrapper[]>('/cash/registers/active-sessions')
@@ -49,7 +48,6 @@ export const getActiveSessions = async (): Promise<ActiveSessionWrapper[]> => {
 
 /**
  * Create a new cash register
- * POST /cash/registers
  */
 export const createRegister = async (name: string): Promise<CashRegister> => {
   return await http.post<CashRegister>('/cash/registers', { name })
@@ -57,7 +55,6 @@ export const createRegister = async (name: string): Promise<CashRegister> => {
 
 /**
  * Delete a cash register (soft delete)
- * DELETE /cash/registers/:registerId
  */
 export const deleteRegister = async (registerId: string): Promise<void> => {
   return await http.delete<void>(`/cash/registers/${registerId}`)
@@ -65,7 +62,6 @@ export const deleteRegister = async (registerId: string): Promise<void> => {
 
 /**
  * Ensure a default register exists
- * POST /cash/registers/ensure-default
  */
 export const ensureDefaultRegister = async (): Promise<CashRegister> => {
   return await http.post<CashRegister>('/cash/registers/ensure-default', {})
@@ -73,7 +69,6 @@ export const ensureDefaultRegister = async (): Promise<CashRegister> => {
 
 /**
  * Get sessions for a specific register
- * GET /cash/registers/:registerId/sessions
  */
 export const getSessions = async (registerId: string): Promise<CashSession[]> => {
   return await http.get<CashSession[]>(`/cash/registers/${registerId}/sessions`)
@@ -81,7 +76,6 @@ export const getSessions = async (registerId: string): Promise<CashSession[]> =>
 
 /**
  * Open a new cash session
- * POST /cash/sessions/open
  */
 export const openSession = async (data: CashOpenData): Promise<CashSession> => {
   return await http.post<CashSession>('/cash/sessions/open', data)
@@ -89,7 +83,6 @@ export const openSession = async (data: CashOpenData): Promise<CashSession> => {
 
 /**
  * Close a cash session
- * POST /cash/sessions/:sessionId/close
  */
 export const closeSession = async (
   sessionId: string,
@@ -100,7 +93,6 @@ export const closeSession = async (
 
 /**
  * Get movements for a session
- * GET /cash/sessions/:sessionId/movements
  */
 export const getMovements = async (sessionId: string): Promise<CashMovement[]> => {
   return await http.get<CashMovement[]>(`/cash/sessions/${sessionId}/movements`)
@@ -108,7 +100,6 @@ export const getMovements = async (sessionId: string): Promise<CashMovement[]> =
 
 /**
  * Add a new movement to a session
- * POST /cash/sessions/:sessionId/movements
  */
 export const addMovement = async (
   sessionId: string,
@@ -119,82 +110,34 @@ export const addMovement = async (
 
 /**
  * Get session summary (sales, tips, etc.)
- * GET /cash/sessions/:sessionId/summary
  */
 export const getSessionSummary = async (sessionId: string): Promise<CashSummaryData> => {
   return await http.get<CashSummaryData>(`/cash/sessions/${sessionId}/summary`)
 }
 
 /**
- * Get session history with filters
- * GET /cash/sessions/history
+ * Get session history with filters and pagination
  */
-export const getSessionHistory = async (filters?: {
-  startDate?: string
-  endDate?: string
-  registerId?: string
-  status?: CashSessionStatus
-}): Promise<CashSession[]> => {
-  const params = new URLSearchParams()
-  if (filters?.startDate) params.append('startDate', filters.startDate)
-  if (filters?.endDate) params.append('endDate', filters.endDate)
-  if (filters?.registerId) params.append('registerId', filters.registerId)
-  if (filters?.status) params.append('status', filters.status)
-
-  const queryString = params.toString()
-  return await http.get<CashSession[]>(
-    queryString ? `/cash/sessions/history?${queryString}` : '/cash/sessions/history'
-  )
-}
-
-// ============================================
-// HELPER FUNCTIONS FOR PAYMENT INTEGRATION
-// ============================================
-
-/**
- * Create a sale movement from payment
- * Used in POS payment flow
- */
-export const createSaleMovement = async (
-  sessionId: string,
-  orderId: string,
-  amount: number,
-  paymentMethod: string,
-  isLiquid: boolean
-): Promise<CashMovement> => {
-  return await addMovement(sessionId, {
-    type: CashMovementType.SALE,
-    subtype: CashMovementSubtype.REGULAR,
-    paymentMethod: paymentMethod as CashMovementSubtype extends string ? never : never,
-    amount,
-    description: `Sipariş #${orderId} Satış`,
-    orderId,
-    isLiquid,
-    isRevenue: true, // Sale is revenue
+export const getSessionHistory = async (
+  filters?: CashSessionHistoryFilters
+): Promise<PaginatedResponse<CashSession>> => {
+  return await http.get<PaginatedResponse<CashSession>>('/cash/sessions/history', {
+    params: filters,
   })
 }
 
 /**
- * Create a tip movement from payment
- * Used in POS payment flow
+ * Get full reconciliation report for a session
  */
-export const createTipMovement = async (
-  sessionId: string,
-  orderId: string,
-  tipAmount: number,
-  paymentMethod: string,
-  isLiquid: boolean
-): Promise<CashMovement> => {
-  return await addMovement(sessionId, {
-    type: CashMovementType.IN,
-    subtype: CashMovementSubtype.TIP,
-    paymentMethod: paymentMethod as CashMovementSubtype extends string ? never : never,
-    amount: tipAmount,
-    description: `Sipariş #${orderId} Bahşiş`,
-    orderId,
-    isLiquid,
-    isRevenue: false, // Tip is NOT revenue (it's a liability)
-  })
+export const getReconciliationReport = async (sessionId: string): Promise<ReconciliationReport> => {
+  return await http.get<ReconciliationReport>(`/cash/sessions/${sessionId}/reconciliation`)
+}
+
+/**
+ * Get a single session by ID with movements
+ */
+export const getSessionById = async (sessionId: string): Promise<CashSession> => {
+  return await http.get<CashSession>(`/cash/sessions/${sessionId}`)
 }
 
 // ============================================
@@ -216,14 +159,14 @@ export const cashApi = {
   closeSession,
   getSessionSummary,
   getSessionHistory,
+  getSessionById,
 
   // Movements
   getMovements,
   addMovement,
 
-  // Payment integration helpers
-  createSaleMovement,
-  createTipMovement,
+  // Reports
+  getReconciliationReport,
 }
 
 export default cashApi

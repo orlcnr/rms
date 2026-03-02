@@ -35,6 +35,7 @@ import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { MailModule } from './modules/mail/mail.module';
 import { RulesModule } from './modules/rules/rules.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -113,6 +114,8 @@ import { SettingsModule } from './modules/settings/settings.module';
     SuperAdminModule,
     MailModule,
     SettingsModule,
+    DashboardModule,
+    RulesModule,
     DebugModule,
   ],
   controllers: [AppController],

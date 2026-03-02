@@ -9,6 +9,8 @@ import restaurantsTr from './locales/tr/restaurants.json';
 import restaurantsEn from './locales/en/restaurants.json';
 import menusTr from './locales/tr/menus.json';
 import menusEn from './locales/en/menus.json';
+import customersTr from './locales/tr/customers.json';
+import customersEn from './locales/en/customers.json';
 
 export type Locale = 'tr' | 'en';
 
@@ -18,12 +20,14 @@ export const dictionaries = {
     common: commonTr,
     restaurants: restaurantsTr,
     menus: menusTr,
+    customers: customersTr,
   },
   en: {
     auth: authEn,
     common: commonEn,
     restaurants: restaurantsEn,
     menus: menusEn,
+    customers: customersEn,
   },
 };
 

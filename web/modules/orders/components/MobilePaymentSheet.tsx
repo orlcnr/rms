@@ -15,6 +15,7 @@ interface MobilePaymentSheetProps {
   restaurantId: string;
   onClose: () => void;
   getMethodIcon: (method: PaymentMethod) => any;
+  enabledMethods: PaymentMethod[];
   handleComplete: () => void;
   onAddNewCustomer?: (name: string) => Promise<Customer | null>;
   isCreatingCustomer?: boolean;
@@ -26,6 +27,7 @@ export function MobilePaymentSheet({
   restaurantId,
   onClose,
   getMethodIcon,
+  enabledMethods,
   handleComplete,
   onAddNewCustomer,
   isCreatingCustomer,
@@ -47,6 +49,8 @@ export function MobilePaymentSheet({
         return 'Havale/EFT';
       case 'open_account':
         return 'Cari';
+      case 'meal_voucher':
+        return 'Yemek Çeki';
       default:
         return method;
     }
@@ -80,7 +84,7 @@ export function MobilePaymentSheet({
 
         {/* Quick Add Buttons */}
         <div className="grid grid-cols-3 gap-2">
-          {Object.values(PaymentMethod).slice(0, 6).map((method) => {
+          {enabledMethods.map((method) => {
             const Icon = getMethodIcon(method);
             return (
               <button

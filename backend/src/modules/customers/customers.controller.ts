@@ -10,6 +10,7 @@ import {
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { Delete } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -67,5 +68,17 @@ export class CustomersController {
   @ApiOperation({ summary: 'Get customer by ID' })
   findOne(@Param('id') id: string, @GetUser() user: User) {
     return this.customersService.findOne(id, user.restaurant_id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a customer' })
+  remove(@Param('id') id: string, @GetUser() user: User) {
+    return this.customersService.remove(id, user.restaurant_id);
+  }
+
+  @Get(':id/orders')
+  @ApiOperation({ summary: 'Get orders by customer ID' })
+  getOrders(@Param('id') id: string, @GetUser() user: User) {
+    return this.customersService.getCustomerOrders(id, user.restaurant_id);
   }
 }

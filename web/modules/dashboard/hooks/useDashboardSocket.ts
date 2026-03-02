@@ -1,210 +1,228 @@
-// ============================================
-// USE DASHBOARD SOCKET HOOK
-// Socket connection management for dashboard real-time updates
-// ============================================
+'use client'
 
-import { useEffect, useCallback } from 'react';
-import { useSocketStore } from '@/modules/shared/api/socket';
-import { useDashboardStore } from '../store/dashboard.store';
-import { DashboardOrder, KitchenLoad, InventoryAlert, TableTurnaround } from '../types/dashboard.types';
-import { toast } from 'sonner';
+import { useCallback, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
+import { useSocketStore } from '@/modules/shared/api/socket'
+import { Order, OrderStatus } from '@/modules/orders/types'
+import { useDashboardStore } from '../stores/dashboard.store'
 
 interface UseDashboardSocketProps {
-  restaurantId: string;
+  restaurantId: string
+}
+
+type NewOrderEvent = {
+  order: Partial<Order> & { id: string; status: Order['status'] }
+  totalAmount?: number
+}
+
+type OrderStatusUpdatedEvent = {
+  orderId: string
+  status: Order['status']
+  previousStatus?: Order['status']
+}
+
+type DashboardOpsRefreshEvent = {
+  reason: 'order' | 'payment' | 'table'
+  at: string
+}
+
+type PaymentCompletedEvent = {
+  orderId?: string
+  tableId?: string
+  amount?: number
+  at?: string
 }
 
 export function useDashboardSocket({ restaurantId }: UseDashboardSocketProps) {
-  const socketStore = useSocketStore();
-  const store = useDashboardStore();
+  const socket = useSocketStore((state) => state.socket)
+  const isConnected = useSocketStore((state) => state.isConnected)
+  const connectSocket = useSocketStore((state) => state.connect)
+  const disconnectSocket = useSocketStore((state) => state.disconnect)
+  const onSocketEvent = useSocketStore((state) => state.on)
+  const offSocketEvent = useSocketStore((state) => state.off)
+  const setConnectionStatus = useDashboardStore((state) => state.setConnectionStatus)
+  const reloadPanel = useDashboardStore((state) => state.reloadPanel)
+  const upsertRecentOrderFromSocket = useDashboardStore(
+    (state) => state.upsertRecentOrderFromSocket,
+  )
+  const updateRecentOrderStatus = useDashboardStore((state) => state.updateRecentOrderStatus)
+  const patchKpi = useDashboardStore((state) => state.patchKpi)
+  const opsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const opsReloadInFlightRef = useRef(false)
+  const kpiRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const kpiReloadInFlightRef = useRef(false)
 
-  // Connect to socket
   const connect = useCallback(() => {
-    if (restaurantId && !socketStore.socket) {
-      socketStore.connect(restaurantId);
-    }
-  }, [restaurantId, socketStore]);
+    if (!restaurantId) return
+    connectSocket(restaurantId)
+  }, [connectSocket, restaurantId])
 
-  // Disconnect from socket
   const disconnect = useCallback(() => {
-    socketStore.disconnect();
-  }, [socketStore]);
+    disconnectSocket()
+  }, [disconnectSocket])
 
-  // Handle new order event
-  const handleNewOrder = useCallback(
-    (data: { order: DashboardOrder; totalAmount?: number }) => {
-      if (data.order) {
-        // Add to recent orders
-        store.addRecentOrder(data.order);
-
-        // Update KPIs - increment order count and revenue
-        if (data.totalAmount) {
-          store.updateKPIs({
-            orderCount: (store.kpis?.orderCount || 0) + 1,
-            totalRevenue: (store.kpis?.totalRevenue || 0) + data.totalAmount,
-            preparingOrders: (store.kpis?.preparingOrders || 0) + 1,
-          });
-        }
-
-        toast.info(`Yeni sipariş: ${data.order.orderNumber}`, {
-          description: `${data.order.tableName || 'Masa'} - ₺${data.totalAmount?.toFixed(2)}`,
-          duration: 3000,
-        });
-      }
-    },
-    [store]
-  );
-
-  // Handle order status update event
-  const handleOrderStatusUpdate = useCallback(
-    (data: { orderId: string; status: string; previousStatus?: string }) => {
-      store.updateOrder(data.orderId, {
-        status: data.status as DashboardOrder['status'],
-      });
-
-      // Update KPIs based on status change
-      const kpis = store.kpis;
-      if (kpis) {
-        const updates: Record<string, number> = {};
-
-        // Moving from preparing to ready
-        if (data.previousStatus === 'preparing' && data.status === 'ready') {
-          updates.preparingOrders = Math.max(0, (kpis.preparingOrders || 1) - 1);
-          updates.readyCount = (kpis.readyCount || 0) + 1;
-        }
-        // Moving from ready to served
-        if (data.status === 'served') {
-          updates.readyCount = Math.max(0, (kpis.readyCount || 1) - 1);
-          updates.servedOrders = (kpis.servedOrders || 0) + 1;
-        }
-        // Moving from served to paid
-        if (data.status === 'paid') {
-          updates.servedOrders = Math.max(0, (kpis.servedOrders || 1) - 1);
-        }
-
-        if (Object.keys(updates).length > 0) {
-          store.updateKPIs(updates);
-        }
-      }
-    },
-    [store]
-  );
-
-  // Handle order updated event
-  const handleOrderUpdated = useCallback(
-    (data: { orderId: string; totalAmount?: number }) => {
-      if (data.totalAmount !== undefined) {
-        store.updateOrder(data.orderId, { totalAmount: data.totalAmount });
-      }
-    },
-    [store]
-  );
-
-  // Handle kitchen load event
-  const handleKitchenLoad = useCallback(
-    (data: KitchenLoad) => {
-      store.setKitchenLoad(data);
-    },
-    [store]
-  );
-
-  // Handle inventory low event
-  const handleInventoryLow = useCallback(
-    (data: InventoryAlert) => {
-      store.addCriticalStock(data);
-
-      toast.warning(`Kritik stok: ${data.productName}`, {
-        description: `Mevcut: ${data.currentStock} ${data.unit} (Min: ${data.minStock})`,
-        duration: 5000,
-      });
-    },
-    [store]
-  );
-
-  // Handle table turnaround event
-  const handleTableTurnaround = useCallback(
-    (data: TableTurnaround) => {
-      store.setTableTurnaround(data);
-    },
-    [store]
-  );
-
-  // Handle reservation update
-  const handleReservationUpdate = useCallback(
-    (data: { reservation: any; action: 'add' | 'update' | 'remove' }) => {
-      // Could update reservations here if needed
-      console.log('[DashboardSocket] Reservation update:', data);
-    },
-    []
-  );
-
-  // Setup socket event listeners
-  useEffect(() => {
-    if (!socketStore.socket) {
-      return;
+  const scheduleKpiReload = useCallback(() => {
+    if (kpiRefreshTimerRef.current) {
+      clearTimeout(kpiRefreshTimerRef.current)
     }
 
-    // Register event listeners
-    socketStore.on('new_order', (data: unknown) => handleNewOrder(data as { order: DashboardOrder; totalAmount?: number }));
-    socketStore.on('order_status_updated', (data: unknown) => handleOrderStatusUpdate(data as { orderId: string; status: string; previousStatus?: string }));
-    socketStore.on('order:updated', (data: unknown) => handleOrderUpdated(data as { orderId: string; totalAmount?: number }));
-    socketStore.on('kitchen:load', (data: unknown) => handleKitchenLoad(data as KitchenLoad));
-    socketStore.on('inventory:low', (data: unknown) => handleInventoryLow(data as InventoryAlert));
-    socketStore.on('table:turnaround', (data: unknown) => handleTableTurnaround(data as TableTurnaround));
-    socketStore.on('reservation_update', (data: unknown) => handleReservationUpdate(data as { reservation: unknown; action: 'add' | 'update' | 'remove' }));
+    kpiRefreshTimerRef.current = setTimeout(async () => {
+      if (kpiReloadInFlightRef.current) {
+        return
+      }
+      kpiReloadInFlightRef.current = true
+      try {
+        await reloadPanel('kpi')
+      } finally {
+        kpiReloadInFlightRef.current = false
+      }
+    }, 3000)
+  }, [reloadPanel])
 
-    // Handle connect/disconnect for UI status
-    socketStore.on('connect', () => {
-      store.setConnectionStatus(true);
-      toast.success('Canlı veri bağlantısı aktif', {
-        duration: 2000,
-      });
-    });
+  const handleNewOrder = useCallback(
+    (data: NewOrderEvent) => {
+      if (!data?.order?.id) return
 
-    socketStore.on('disconnect', () => {
-      store.setConnectionStatus(false);
-      toast.error('Bağlantı kesildi', {
-        description: 'Tekrar bağlanıyor...',
-        duration: 3000,
-      });
-    });
+      upsertRecentOrderFromSocket(data.order)
 
-    // Cleanup on unmount
+      const kpi = useDashboardStore.getState().kpi
+      if (kpi) {
+        patchKpi({
+          activeOrders: kpi.activeOrders + 1,
+          activeOrdersPending:
+            data.order.status === 'pending'
+              ? kpi.activeOrdersPending + 1
+              : kpi.activeOrdersPending,
+        })
+      }
+
+      scheduleKpiReload()
+      toast.info('Yeni sipariş geldi')
+    },
+    [patchKpi, scheduleKpiReload, upsertRecentOrderFromSocket],
+  )
+
+  const handleOrderStatusUpdate = useCallback(
+    (data: OrderStatusUpdatedEvent) => {
+      if (!data?.orderId) return
+
+      updateRecentOrderStatus(data.orderId, data.status)
+
+      const kpi = useDashboardStore.getState().kpi
+      if (!kpi) return
+
+      let pending = kpi.activeOrdersPending
+      if (data.previousStatus === 'pending' && data.status !== 'pending') {
+        pending = Math.max(0, pending - 1)
+      }
+      if (data.previousStatus !== 'pending' && data.status === 'pending') {
+        pending += 1
+      }
+
+      let active = kpi.activeOrders
+      const closedStatuses: Array<Order['status']> = [
+        OrderStatus.PAID,
+        OrderStatus.CANCELLED,
+        OrderStatus.DELIVERED,
+      ]
+      const previousStatus = data.previousStatus || OrderStatus.PENDING
+      if (closedStatuses.includes(data.status) && !closedStatuses.includes(previousStatus)) {
+        active = Math.max(0, active - 1)
+      }
+
+      patchKpi({
+        activeOrders: active,
+        activeOrdersPending: pending,
+      })
+    },
+    [patchKpi, updateRecentOrderStatus],
+  )
+
+  const scheduleOperationsReload = useCallback(() => {
+    if (opsRefreshTimerRef.current) {
+      clearTimeout(opsRefreshTimerRef.current)
+    }
+
+    opsRefreshTimerRef.current = setTimeout(async () => {
+      if (opsReloadInFlightRef.current) {
+        return
+      }
+      opsReloadInFlightRef.current = true
+      try {
+        await reloadPanel('operations')
+      } finally {
+        opsReloadInFlightRef.current = false
+      }
+    }, 2500)
+  }, [reloadPanel])
+
+  const handleDashboardOpsRefresh = useCallback(
+    (_payload: DashboardOpsRefreshEvent) => {
+      scheduleOperationsReload()
+    },
+    [scheduleOperationsReload],
+  )
+
+  const handlePaymentCompleted = useCallback(
+    (_payload: PaymentCompletedEvent) => {
+      scheduleKpiReload()
+    },
+    [scheduleKpiReload],
+  )
+
+  useEffect(() => {
+    if (!socket) return
+
+    const onNewOrder = (data: unknown) => handleNewOrder(data as NewOrderEvent)
+    const onOrderStatusUpdated = (data: unknown) =>
+      handleOrderStatusUpdate(data as OrderStatusUpdatedEvent)
+    const onDashboardOpsRefresh = (data: unknown) =>
+      handleDashboardOpsRefresh(data as DashboardOpsRefreshEvent)
+    const onPaymentCompleted = (data: unknown) =>
+      handlePaymentCompleted(data as PaymentCompletedEvent)
+
+    onSocketEvent('new_order', onNewOrder)
+    onSocketEvent('order_status_updated', onOrderStatusUpdated)
+    onSocketEvent('dashboard:ops_refresh', onDashboardOpsRefresh)
+    onSocketEvent('payment.completed', onPaymentCompleted)
+
     return () => {
-      socketStore.off('new_order');
-      socketStore.off('order_status_updated');
-      socketStore.off('order:updated');
-      socketStore.off('kitchen:load');
-      socketStore.off('inventory:low');
-      socketStore.off('table:turnaround');
-      socketStore.off('reservation_update');
-      socketStore.off('connect');
-      socketStore.off('disconnect');
-    };
+      offSocketEvent('new_order', onNewOrder)
+      offSocketEvent('order_status_updated', onOrderStatusUpdated)
+      offSocketEvent('dashboard:ops_refresh', onDashboardOpsRefresh)
+      offSocketEvent('payment.completed', onPaymentCompleted)
+      if (opsRefreshTimerRef.current) {
+        clearTimeout(opsRefreshTimerRef.current)
+      }
+      if (kpiRefreshTimerRef.current) {
+        clearTimeout(kpiRefreshTimerRef.current)
+      }
+    }
   }, [
-    socketStore.socket,
+    socket,
+    handleDashboardOpsRefresh,
     handleNewOrder,
     handleOrderStatusUpdate,
-    handleOrderUpdated,
-    handleKitchenLoad,
-    handleInventoryLow,
-    handleTableTurnaround,
-    handleReservationUpdate,
-    store,
-    socketStore,
-  ]);
+    handlePaymentCompleted,
+    scheduleKpiReload,
+    scheduleOperationsReload,
+    offSocketEvent,
+    onSocketEvent,
+  ])
 
-  // Connect on mount, disconnect on unmount
   useEffect(() => {
-    connect();
+    setConnectionStatus(isConnected)
+  }, [isConnected, setConnectionStatus])
 
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
+  useEffect(() => {
+    if (!restaurantId) return
+    connect()
+    return () => disconnect()
+  }, [restaurantId, connect, disconnect])
 
   return {
-    isConnected: socketStore.isConnected,
+    isConnected,
     connect,
     disconnect,
-  };
+  }
 }

@@ -25,6 +25,7 @@ import {
   GetCostAnalysisDto,
   GetCountDifferencesDto,
 } from './dto/get-cost-analysis.dto';
+import { InventorySummaryDto } from './dto/inventory-summary.dto';
 import { BulkStockUpdateDto } from './dto/bulk-stock-update.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -168,6 +169,13 @@ export class InventoryController {
   @ApiOperation({ summary: 'Restorana ait stok durumlarını getir' })
   getStocks(@Param('restaurantId') restaurantId: string) {
     return this.inventoryService.getStocks(restaurantId);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Envanter özet metrikleri' })
+  @ApiResponse({ status: 200, type: InventorySummaryDto })
+  getSummary(@GetUser() user: User) {
+    return this.inventoryService.getSummary(user.restaurant_id);
   }
 
   @Post('movements')

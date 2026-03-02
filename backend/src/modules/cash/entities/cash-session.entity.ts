@@ -2,15 +2,20 @@ import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 import { CashSessionStatus } from '../enums/cash.enum';
+import { CashRegister } from './cash-register.entity';
+import { CashMovement } from './cash-movement.entity';
 
 @Entity('cash_sessions', { schema: 'operations' })
 export class CashSession extends BaseEntity {
+  @Column({ name: 'restaurant_id', nullable: true })
+  restaurantId: string;
+
   @Column({ name: 'cash_register_id' })
   cashRegisterId: string;
 
-  @ManyToOne('CashRegister', 'sessions')
+  @ManyToOne(() => CashRegister, (register) => register.sessions)
   @JoinColumn({ name: 'cash_register_id' })
-  cashRegister: any;
+  cashRegister: CashRegister;
 
   @Column({ name: 'opened_by_id' })
   openedById: string;
@@ -78,6 +83,6 @@ export class CashSession extends BaseEntity {
   })
   status: CashSessionStatus;
 
-  @OneToMany('CashMovement', 'session')
-  movements: any[];
+  @OneToMany(() => CashMovement, (movement) => movement.session)
+  movements: CashMovement[];
 }

@@ -64,6 +64,6 @@ export class CreatePaymentDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
-  @Max(1) // %100'den fazla komisyon olamaz
+  @Max(100) // 0-1 (oran) veya 0-100 (yüzde) kabul edilir
   commission_rate?: number;
 }

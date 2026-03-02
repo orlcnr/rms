@@ -25,17 +25,23 @@ import {
   Order,
 } from '../types'
 import { KanbanColumn } from './KanbanColumn'
-import { KANBAN_COLUMNS_DINE_IN, KANBAN_COLUMNS_COMPLETED } from '../types'
+import { KANBAN_COLUMNS_DINE_IN } from '../types'
 import { OrderZoomModal } from './OrderZoomModal'
 import { PaidOrdersSection } from './kanban/PaidOrdersSection'
 import { Modal } from '@/modules/shared/components/Modal'
-import { Archive } from 'lucide-react'
 
 interface KanbanBoardProps {
   ordersByStatus: OrdersByStatus
   allOrdersByStatus?: OrdersByStatus  // Unfiltered - for drag source lookups
+  archiveOrders?: OrderGroup[]
+  archiveLoading?: boolean
+  archiveError?: string | null
+  archiveLastFetchedAt?: number | null
   onStatusChange: (orderId: string | string[], newStatus: OrderStatus) => Promise<void>
   onOrderClick: (orderGroup: OrderGroup) => void
+  onPrintOrder: (orderGroup: OrderGroup) => void
+  onEditOrder: (orderGroup: OrderGroup) => void
+  onTakePayment: (orderGroup: OrderGroup) => void
   isLoading?: boolean
   showArchive?: boolean
   onCloseArchive?: () => void
@@ -51,8 +57,15 @@ const ARCHIVE_STATUSES = [OrderStatus.PAID, OrderStatus.CANCELLED]
 export function KanbanBoard({
   ordersByStatus,
   allOrdersByStatus,
+  archiveOrders = [],
+  archiveLoading = false,
+  archiveError = null,
+  archiveLastFetchedAt = null,
   onStatusChange,
   onOrderClick,
+  onPrintOrder,
+  onEditOrder,
+  onTakePayment,
   isLoading = false,
   showArchive = false,
   onCloseArchive,
@@ -86,16 +99,6 @@ export function KanbanBoard({
     const filtered: OrdersByStatus = {} as OrdersByStatus
     Object.entries(ordersByStatus).forEach(([status, groups]) => {
       if (!ARCHIVE_STATUSES.includes(status as OrderStatus)) {
-        filtered[status as keyof OrdersByStatus] = groups
-      }
-    })
-    return filtered
-  }, [ordersByStatus])
-
-  const archiveOrdersByStatus = useMemo(() => {
-    const filtered: OrdersByStatus = {} as OrdersByStatus
-    Object.entries(ordersByStatus).forEach(([status, groups]) => {
-      if (ARCHIVE_STATUSES.includes(status as OrderStatus)) {
         filtered[status as keyof OrdersByStatus] = groups
       }
     })
@@ -160,26 +163,13 @@ export function KanbanBoard({
     if (currentStatus === newStatus) return
 
     try {
-      const orderIds = draggedGroup.orders.map(o => o.id)
+      const orderIds = [...new Set(draggedGroup.orders.map(o => o.id))]
       await onStatusChange(orderIds, newStatus)
     } catch (error) {
       console.error('Status change failed:', error)
+      toast.error('Durum güncellenemedi. Lütfen tekrar deneyin.')
     }
   }
-
-  // Archive orders flat list for PaidOrdersSection
-  const archiveOrders = useMemo(() => {
-    const orders: OrderGroup[] = []
-    ARCHIVE_STATUSES.forEach((status) => {
-      const groups = archiveOrdersByStatus[status]
-      if (groups) {
-        orders.push(...groups)
-      }
-    })
-    return orders
-  }, [archiveOrdersByStatus])
-
-  const hasArchiveData = archiveOrders.length > 0
 
   if (!mounted) {
     return (
@@ -236,11 +226,21 @@ export function KanbanBoard({
         maxWidth="max-w-6xl"
       >
         <div className="min-h-[500px]">
+          {archiveError ? (
+            <div className="mb-4 rounded-sm border border-danger-main/30 bg-danger-bg px-4 py-3 text-xs font-bold uppercase tracking-wider text-danger-main">
+              {archiveError}
+            </div>
+          ) : null}
+          {archiveLastFetchedAt ? (
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-text-muted">
+              Son güncelleme: {new Date(archiveLastFetchedAt).toLocaleTimeString('tr-TR')}
+            </p>
+          ) : null}
           <PaidOrdersSection
             orders={archiveOrders}
             onOrderClick={onOrderClick}
             onZoomClick={handleZoomClick}
-            isLoading={isLoading}
+            isLoading={archiveLoading}
             isModalView
           />
         </div>
@@ -263,7 +263,9 @@ export function KanbanBoard({
           setZoomOrderGroup(null)
         }}
         orderGroup={zoomOrderGroup}
-        onStatusChange={onStatusChange}
+        onPrint={onPrintOrder}
+        onEditOrder={onEditOrder}
+        onTakePayment={onTakePayment}
       />
     </DndContext>
   )

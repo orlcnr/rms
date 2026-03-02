@@ -91,8 +91,8 @@ services:
     env_file:
       - ./env/.env.glitchtip
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@docker-postgres-1:5432/glitchtip
-      - REDIS_URL=redis://docker-redis-1:6379/1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/glitchtip
+      - REDIS_URL=redis://redis:6379/1
     networks:
       - rms_network
       - proxy
@@ -103,7 +103,7 @@ services:
       - "traefik.http.services.glitchtip.loadbalancer.server.port=8000"
       - "traefik.docker.network=proxy"
     volumes:
-      - glitchtip_data:/code/uploads
+      - ./data/glitchtip:/code/uploads
     restart: unless-stopped
 
   glitchtip_worker:
@@ -129,4 +129,3 @@ networks:
 
 volumes:
   web_node_modules:
-  glitchtip_data:

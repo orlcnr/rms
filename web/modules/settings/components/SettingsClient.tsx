@@ -1,0 +1,322 @@
+'use client'
+
+import React, { useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
+import { Button } from '@/modules/shared/components/Button'
+import { BodySection, FilterSection, SubHeaderSection } from '@/modules/shared/components/layout'
+import { cn } from '@/modules/shared/utils/cn'
+import { useSettingsStore } from '../stores/settings.store'
+import { useRestaurantStore } from '../stores/restaurant.store'
+import { useUsersStore } from '../stores/users.store'
+import {
+  RestaurantFormInput,
+  SettingKey,
+  SettingValue,
+  SETTINGS_TABS,
+  SettingsTab,
+  UserRole,
+} from '../types'
+import { SettingsSkeleton } from './SettingsSkeleton'
+import { GeneralTab } from './tabs/GeneralTab'
+import { UsersTab } from './tabs/UsersTab'
+import { PaymentTab } from './tabs/PaymentTab'
+import { CashTab } from './tabs/CashTab'
+import { PaymentMethod } from '@/modules/orders/types'
+
+interface SettingsClientProps {
+  activeTab: SettingsTab
+  restaurantId: string
+  userRole: string
+}
+
+export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsClientProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const [mounted, setMounted] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [pendingSettings, setPendingSettings] = useState<Partial<Record<SettingKey, SettingValue>>>({})
+
+  const settingsStore = useSettingsStore()
+  const restaurantStore = useRestaurantStore()
+  const usersStore = useUsersStore()
+
+  const castedRole = (userRole || UserRole.MANAGER) as UserRole
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted || !restaurantId) return
+
+    settingsStore.loadSettings(restaurantId)
+    restaurantStore.loadRestaurant(restaurantId)
+  }, [mounted, restaurantId])
+
+  useEffect(() => {
+    if (!mounted || activeTab !== 'users') return
+    usersStore.loadUsers()
+  }, [mounted, activeTab])
+
+  useEffect(() => {
+    if (!mounted) return
+
+    setPendingSettings({
+      [SettingKey.ENABLED_PAYMENT_METHODS]: (() => {
+        const loadedValue = settingsStore.getSetting(
+          SettingKey.ENABLED_PAYMENT_METHODS,
+          '',
+        )
+        if (Array.isArray(loadedValue)) {
+          return JSON.stringify(loadedValue)
+        }
+        return typeof loadedValue === 'string'
+          ? loadedValue
+          : JSON.stringify(Object.values(PaymentMethod))
+      })(),
+      [SettingKey.TIP_COMMISSION_ENABLED]: settingsStore.getSetting(
+        SettingKey.TIP_COMMISSION_ENABLED,
+        true,
+      ),
+      [SettingKey.TIP_COMMISSION_RATE]: settingsStore.getSetting(
+        SettingKey.TIP_COMMISSION_RATE,
+        0.02,
+      ),
+      [SettingKey.TIP_COMMISSION_EDITABLE]: settingsStore.getSetting(
+        SettingKey.TIP_COMMISSION_EDITABLE,
+        true,
+      ),
+      [SettingKey.DEFAULT_OPENING_BALANCE]: settingsStore.getSetting(
+        SettingKey.DEFAULT_OPENING_BALANCE,
+        0,
+      ),
+      [SettingKey.SHIFT_DURATION_HOURS]: settingsStore.getSetting(SettingKey.SHIFT_DURATION_HOURS, 8),
+      [SettingKey.REQUIRE_CLOSING_COUNT]: settingsStore.getSetting(
+        SettingKey.REQUIRE_CLOSING_COUNT,
+        false,
+      ),
+    })
+  }, [mounted, settingsStore.lastFetched])
+
+  const isConnected = true
+  const isSyncing = settingsStore.isLoading || restaurantStore.isLoading || usersStore.isLoading
+
+  function parseEnabledPaymentMethods(value: SettingValue | undefined): PaymentMethod[] {
+    const defaults = Object.values(PaymentMethod)
+    if (Array.isArray(value)) {
+      const validMethods = new Set(Object.values(PaymentMethod))
+      const methods = value.filter(
+        (item): item is PaymentMethod =>
+          typeof item === 'string' && validMethods.has(item as PaymentMethod),
+      )
+      return methods.length > 0 ? methods : defaults
+    }
+
+    if (typeof value !== 'string') {
+      return defaults
+    }
+
+    try {
+      const parsed = JSON.parse(value)
+      if (!Array.isArray(parsed)) {
+        return defaults
+      }
+
+      const validMethods = new Set(Object.values(PaymentMethod))
+      const methods = parsed.filter(
+        (item): item is PaymentMethod =>
+          typeof item === 'string' && validMethods.has(item as PaymentMethod),
+      )
+      return methods.length > 0 ? methods : defaults
+    } catch {
+      return defaults
+    }
+  }
+
+  const summaryText = useMemo(() => {
+    const now = new Date().toLocaleDateString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+    return `SON SENKRON: ${now}`
+  }, [settingsStore.lastFetched])
+
+  async function handleRefresh() {
+    try {
+      await Promise.all([
+        settingsStore.loadSettings(restaurantId, true),
+        restaurantStore.loadRestaurant(restaurantId),
+        activeTab === 'users' ? usersStore.loadUsers() : Promise.resolve(),
+      ])
+      toast.success('Ayarlar güncellendi')
+    } catch {
+      toast.error('Yenileme sırasında bir hata oluştu')
+    }
+  }
+
+  function handleTabChange(nextTab: SettingsTab) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('tab', nextTab)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  function handleSettingChange(key: SettingKey, value: SettingValue) {
+    setPendingSettings((state) => ({ ...state, [key]: value }))
+  }
+
+  async function saveSettingKeys(keys: SettingKey[]) {
+    setIsSaving(true)
+
+    try {
+      await Promise.all(
+        keys.map((key) => {
+          const nextValue = pendingSettings[key]
+          if (nextValue === undefined) return Promise.resolve()
+          return settingsStore.updateSetting(restaurantId, key, nextValue as SettingValue)
+        }),
+      )
+      await settingsStore.loadSettings(restaurantId, true)
+      toast.success('Ayarlar kaydedildi')
+    } catch {
+      toast.error('Ayarlar kaydedilemedi')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function handleSaveGeneral(values: RestaurantFormInput) {
+    if (!restaurantId) return
+
+    try {
+      await restaurantStore.updateRestaurant(restaurantId, values)
+      toast.success('Firma bilgileri güncellendi')
+    } catch {
+      toast.error('Firma bilgileri güncellenemedi')
+    }
+  }
+
+  if (!mounted) {
+    return <SettingsSkeleton />
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen bg-bg-app">
+      <SubHeaderSection
+        title="AYARLAR"
+        description="Sistem, firma, kullanıcı, ödeme ve kasa ayarları"
+        isConnected={isConnected}
+        isSyncing={isSyncing}
+        onRefresh={handleRefresh}
+        moduleColor="bg-primary-main"
+        actions={
+          <Button variant="outline" onClick={handleRefresh} isLoading={isSyncing}>
+            YENİLE
+          </Button>
+        }
+      />
+
+      <main className="flex flex-col flex-1 pb-6 min-h-0">
+        <FilterSection className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            {SETTINGS_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                className={cn(
+                  'px-4 py-2 text-[10px] font-black uppercase tracking-wider border rounded-sm transition-all',
+                  activeTab === tab.id
+                    ? 'bg-primary-main text-text-inverse border-primary-main'
+                    : 'bg-bg-app text-text-secondary border-border-light hover:border-primary-main/40',
+                )}
+                onClick={() => handleTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-text-muted">
+            <span className="inline-flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-success-main animate-pulse" />
+              BAĞLANTI AKTİF
+            </span>
+            <span>{summaryText}</span>
+          </div>
+        </FilterSection>
+
+        <BodySection>
+          {activeTab === 'general' && (
+            <GeneralTab
+              restaurant={restaurantStore.restaurant}
+              isLoading={restaurantStore.isLoading}
+              onSave={handleSaveGeneral}
+            />
+          )}
+
+          {activeTab === 'users' && <UsersTab currentUserRole={castedRole} />}
+
+          {activeTab === 'payment' && (
+            <PaymentTab
+              values={{
+                enabledPaymentMethods: parseEnabledPaymentMethods(
+                  pendingSettings[SettingKey.ENABLED_PAYMENT_METHODS],
+                ),
+                tipCommissionEnabled: Boolean(
+                  pendingSettings[SettingKey.TIP_COMMISSION_ENABLED] ?? true,
+                ),
+                tipCommissionRate: Number(
+                  pendingSettings[SettingKey.TIP_COMMISSION_RATE] ?? 0.02,
+                ),
+                tipCommissionEditable: Boolean(
+                  pendingSettings[SettingKey.TIP_COMMISSION_EDITABLE] ?? true,
+                ),
+              }}
+              isSaving={isSaving}
+              onChange={handleSettingChange}
+              onPaymentMethodsChange={(methods) =>
+                handleSettingChange(
+                  SettingKey.ENABLED_PAYMENT_METHODS,
+                  JSON.stringify(methods),
+                )
+              }
+              onSave={() =>
+                saveSettingKeys([
+                  SettingKey.ENABLED_PAYMENT_METHODS,
+                  SettingKey.TIP_COMMISSION_ENABLED,
+                  SettingKey.TIP_COMMISSION_RATE,
+                  SettingKey.TIP_COMMISSION_EDITABLE,
+                ])
+              }
+            />
+          )}
+
+          {activeTab === 'cash' && (
+            <CashTab
+              values={{
+                defaultOpeningBalance: Number(
+                  pendingSettings[SettingKey.DEFAULT_OPENING_BALANCE] ?? 0,
+                ),
+                shiftDurationHours: Number(pendingSettings[SettingKey.SHIFT_DURATION_HOURS] ?? 8),
+                requireClosingCount: Boolean(
+                  pendingSettings[SettingKey.REQUIRE_CLOSING_COUNT] ?? false,
+                ),
+              }}
+              isSaving={isSaving}
+              onChange={handleSettingChange}
+              onSave={() =>
+                saveSettingKeys([
+                  SettingKey.DEFAULT_OPENING_BALANCE,
+                  SettingKey.SHIFT_DURATION_HOURS,
+                  SettingKey.REQUIRE_CLOSING_COUNT,
+                ])
+              }
+            />
+          )}
+        </BodySection>
+      </main>
+    </div>
+  )
+}

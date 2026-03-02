@@ -13,14 +13,13 @@ import {
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-import { Order } from './entities/order.entity';
 import { OrderStatus } from './enums/order-status.enum';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-// import { User } from '../users/entities/user.entity'; // Removed
+import { User } from '../users/entities/user.entity';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { MoveOrderDto } from './dto/move-order.dto';
 import { BatchUpdateStatusDto } from './dto/batch-update-status.dto';
@@ -36,37 +35,36 @@ export class OrdersController {
   @Get()
   @ApiOperation({ summary: 'Get filtered orders' })
   findAll(
-    @Request() req,
+    @GetUser() user: User,
     @Query('status') status?: string,
     @Query('waiterId') waiterId?: string,
     @Query('type') type?: string,
     @Query('tableId') tableId?: string,
-    @Query('restaurantId') restaurantId?: string,
+    @Query('limit') limit?: string,
   ) {
+    const parsedLimit = limit ? Number(limit) : undefined;
     return this.ordersService.findAll(
-      req.user,
+      user.restaurant_id,
       status,
       waiterId,
       type,
       tableId,
+      parsedLimit,
     );
   }
 
   @Roles(Role.WAITER, Role.MANAGER, Role.RESTAURANT_OWNER, Role.SUPER_ADMIN)
   @Post()
   @ApiOperation({ summary: 'Create a new order' })
-  create(@Body() createOrderDto: CreateOrderDto, @Request() req) {
-    return this.ordersService.create(createOrderDto, req.user);
+  create(@Body() createOrderDto: CreateOrderDto, @GetUser() user: User) {
+    return this.ordersService.create(createOrderDto, user);
   }
 
   @Roles(Role.RESTAURANT_OWNER, Role.SUPER_ADMIN, Role.MANAGER)
   @Get('restaurants/:restaurantId')
   @ApiOperation({ summary: 'Get all orders for a restaurant' })
-  findAllByRestaurant(
-    @Param('restaurantId') restaurantId: string,
-    @Request() req,
-  ) {
-    return this.ordersService.findAllByRestaurant(restaurantId, req.user);
+  findAllByRestaurant(@GetUser() user: User) {
+    return this.ordersService.findAllByRestaurant(user.restaurant_id);
   }
 
   @Roles(
@@ -97,11 +95,16 @@ export class OrdersController {
       type: 'object',
       properties: {
         status: { type: 'string', enum: Object.values(OrderStatus) },
+        transaction_id: { type: 'string' },
       },
     },
   })
-  updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus) {
-    return this.ordersService.updateStatus(id, status);
+  updateStatus(
+    @Param('id') id: string,
+    @Body('status') status: OrderStatus,
+    @Body('transaction_id') transactionId?: string,
+  ) {
+    return this.ordersService.updateStatus(id, status, transactionId);
   }
 
   @Roles(
@@ -117,7 +120,11 @@ export class OrdersController {
     summary: 'Batch update order statuses (single request for multiple orders)',
   })
   batchUpdateStatus(@Body() dto: BatchUpdateStatusDto) {
-    return this.ordersService.batchUpdateStatus(dto.order_ids, dto.status);
+    return this.ordersService.batchUpdateStatus(
+      dto.order_ids,
+      dto.status,
+      dto.transaction_id,
+    );
   }
 
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER, Role.SUPER_ADMIN) // Updated roles
@@ -127,9 +134,13 @@ export class OrdersController {
   async moveOrder(
     @Param('id', ParseUUIDPipe) orderId: string,
     @Body() dto: MoveOrderDto,
-    @GetUser() user: any, // Changed to any
+    @GetUser() user: User,
   ) {
-    return this.ordersService.moveOrder(orderId, dto.new_table_id, user);
+    return this.ordersService.moveOrder(
+      orderId,
+      dto.new_table_id,
+      user.restaurant_id,
+    );
   }
 
   @Roles(Role.RESTAURANT_OWNER, Role.SUPER_ADMIN, Role.MANAGER) // Cleaned up roles
@@ -138,13 +149,13 @@ export class OrdersController {
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 60 saniyede maksimum 20 istek
   updateItems(
     @Param('id', ParseUUIDPipe) id: string,
-    @GetUser() user: any,
+    @GetUser() user: User,
     @Body() dto: UpdateOrderItemsDto,
   ) {
     return this.ordersService.updateItems(
       id,
       dto.items,
-      user,
+      user.restaurant_id,
       dto.notes,
       dto.type,
       dto.customer_id,

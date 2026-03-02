@@ -1,4 +1,4 @@
-.PHONY: dev dev-down dev-up-backend dev-up-frontend dev-down-backend dev-down-frontend prod prod-down build-dev build-prod build-backend build-frontend build-web logs-dev logs-prod ps clean certs start stop restart restart-backend restart-frontend dev-web dev-backend dev-web-down dev-backend-down dev-web-logs dev-backend-logs install install-web install-backend rebuild-web rebuild-backend
+.PHONY: dev dev-down dev-up-backend dev-up-frontend dev-down-backend dev-down-frontend prod prod-down build-dev build-prod build-backend build-frontend build-web logs-dev logs-prod ps clean certs start stop restart restart-backend restart-frontend dev-web dev-backend dev-web-down dev-backend-down dev-web-logs dev-backend-logs install install-web install-backend rebuild-web rebuild-backend clean-web-next
 
 # Docker-based development
 dev:
@@ -70,14 +70,17 @@ dev-web:
 
 dev-web-down:
 	@echo "Stopping web dev server (port 3003)..."
-	-@sudo fuser -k 3003/tcp 2>/dev/null || true
+	-@fuser -k 3003/tcp 2>/dev/null || true
 	@echo "Done"
 
 dev-web-logs:
 	@echo "Web dev server logs - use terminal output above"
 
 build-web:
-	cd web && npm run build
+	$(MAKE) -C docker build-web
+
+clean-web-next:
+	cd web && rm -rf .next
 
 rebuild-web:
 	$(MAKE) -C docker build-web

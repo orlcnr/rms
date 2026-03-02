@@ -66,6 +66,7 @@ export function InventoryClient({ restaurantId, initialIngredientsResponse }: In
         foodCostAlerts,
         countDifferences,
         isAnalysisLoading,
+        summary,
         fetchIngredients,
         fetchMovements,
         fetchAnalysisData,
@@ -320,6 +321,7 @@ export function InventoryClient({ restaurantId, initialIngredientsResponse }: In
                                             costImpacts={costImpacts}
                                             foodCostAlerts={foodCostAlerts}
                                             countDifferences={countDifferences}
+                                            criticalStockCount={summary?.criticalStockCount ?? 0}
                                             isLoading={isAnalysisLoading}
                                         />
                                     ) : (

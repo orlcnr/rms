@@ -13,5 +13,20 @@
   "confirm": "Onayla",
   "yes": "Evet",
   "no": "Hayır",
-  "or": "Veya"
+  "or": "Veya",
+  "tables_management": "MASA YÖNETİMİ",
+  "order_tracking": "SİPARİŞ TAKİBİ",
+  "stock_and_inventory": "STOK VE ENVANTER",
+  "product_catalog": "ÜRÜN KATALOĞU",
+  "daily_reports": "GÜNLÜK RAPORLAR",
+  "cash_operations": "KASA İŞLEMLERİ",
+  "dashboard": "DASHBOARD",
+  "orders": "SİPARİŞLER",
+  "cash": "KASA",
+  "reservations": "REZERVASYONLAR",
+  "customer_database": "MÜŞTERİ VERİTABANI",
+  "system_settings": "SİSTEM AYARLARI",
+  "system_secure": "SİSTEM GÜVENLİ",
+  "logout": "ÇIKIŞ YAP",
+  "version_stable": "v2.4.0-STABLE"
 }

@@ -10,7 +10,8 @@ import {
     IngredientUsage,
     CostImpact,
     CountDifference,
-    FoodCostAlert
+    FoodCostAlert,
+    InventorySummary
 } from '../types'
 
 export const inventoryApi = {
@@ -89,5 +90,9 @@ export const inventoryApi = {
     // Food Cost uyarıları
     getFoodCostAlerts: async () => {
         return http.get<FoodCostAlert[]>('/inventory/analysis/food-cost-alerts')
+    },
+
+    getSummary: async () => {
+        return http.get<InventorySummary>('/inventory/summary')
     },
 }

@@ -17,7 +17,7 @@ import {
 } from '../types'
 import { ordersApi, ORDERS_CACHE_TAGS } from '../services'
 import { usePendingQueue } from '@/modules/shared/hooks/usePendingQueue'
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import {
   filterOrdersByType,
   filterOrdersByTable,
@@ -26,11 +26,221 @@ import {
   groupOrdersByTableAndStatus,
   recalculateGroupFields,
 } from '../utils/order-group'
+import { ensureISO, getNow } from '@/modules/shared/utils/date'
 
 interface UseOrdersBoardProps {
   restaurantId: string
   userId: string
   initialOrdersByStatus: OrdersByStatus
+}
+
+const ACTIVE_STATUSES = [
+  OrderStatus.PENDING,
+  OrderStatus.PREPARING,
+  OrderStatus.READY,
+  OrderStatus.SERVED,
+]
+
+function getIstanbulTodayKey(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+  }).format(date)
+}
+
+function filterOrdersByIstanbulToday(orders: Order[]): Order[] {
+  const todayKey = getIstanbulTodayKey(getNow())
+  return orders.filter((order) => {
+    const rawCreatedAt =
+      (order as unknown as { created_at?: string }).created_at || order.createdAt
+    if (!rawCreatedAt) return false
+    const key = getIstanbulTodayKey(new Date(ensureISO(rawCreatedAt)))
+    return key === todayKey
+  })
+}
+
+function getOrderVersionTime(order: Order | null | undefined): number {
+  if (!order) return 0
+  const raw =
+    (order as unknown as { updated_at?: string }).updated_at ||
+    order.updatedAt ||
+    (order as unknown as { created_at?: string }).created_at ||
+    order.createdAt
+  if (!raw) return 0
+  const parsed = new Date(ensureISO(raw)).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function shouldUpdateItemForTransition(itemStatus: OrderStatus, targetOrderStatus: OrderStatus): boolean {
+  if (
+    itemStatus === OrderStatus.DELIVERED ||
+    itemStatus === OrderStatus.PAID ||
+    itemStatus === OrderStatus.CANCELLED
+  ) {
+    return false
+  }
+
+  if (targetOrderStatus === OrderStatus.PENDING) {
+    return false
+  }
+
+  if (targetOrderStatus === OrderStatus.PREPARING) {
+    return itemStatus === OrderStatus.PENDING
+  }
+
+  if (targetOrderStatus === OrderStatus.READY) {
+    return itemStatus === OrderStatus.PREPARING
+  }
+
+  if (targetOrderStatus === OrderStatus.SERVED) {
+    return itemStatus === OrderStatus.READY
+  }
+
+  if (targetOrderStatus === OrderStatus.PAID) {
+    return (
+      itemStatus === OrderStatus.PENDING ||
+      itemStatus === OrderStatus.PREPARING ||
+      itemStatus === OrderStatus.READY ||
+      itemStatus === OrderStatus.SERVED
+    )
+  }
+
+  if (targetOrderStatus === OrderStatus.CANCELLED) {
+    return (
+      itemStatus === OrderStatus.PENDING ||
+      itemStatus === OrderStatus.PREPARING ||
+      itemStatus === OrderStatus.READY
+    )
+  }
+
+  return false
+}
+
+function getOrderStatusKey(status: OrderStatus): keyof OrdersByStatus {
+  return status as keyof OrdersByStatus
+}
+
+function getOrderTableId(order: Order): string {
+  return order.tableId || `no-table-${order.id}`
+}
+
+function createOrderGroupFromOrder(order: Order): OrderGroup {
+  return recalculateGroupFields({
+    tableId: getOrderTableId(order),
+    tableName: order.table?.name || 'Sipariş',
+    orders: [order],
+    totalItems: 0,
+    totalAmount: 0,
+    firstOrderTime: order.createdAt || (order as any).created_at,
+    lastOrderTime: order.createdAt || (order as any).created_at,
+    activeWaveTime: order.createdAt || (order as any).created_at,
+    customerName: order.customer?.name,
+    orderType: order.type,
+    status: order.status,
+    activeItems: [],
+    activeWaveItems: [],
+    previousItems: [],
+    servedItems: [],
+  })
+}
+
+function removeOrderEverywhere(state: OrdersByStatus, orderId: string) {
+  const statusKeys = Object.keys(state) as Array<keyof OrdersByStatus>
+
+  statusKeys.forEach((statusKey) => {
+    const groups = state[statusKey] || []
+    const nextGroups: OrderGroup[] = []
+
+    groups.forEach((group) => {
+      const filteredOrders = group.orders.filter((order) => order.id !== orderId)
+      if (filteredOrders.length === 0) {
+        return
+      }
+      nextGroups.push(
+        recalculateGroupFields({
+          ...group,
+          orders: filteredOrders,
+        }),
+      )
+    })
+
+    state[statusKey] = nextGroups
+  })
+}
+
+function insertOrderIntoStatusGroup(
+  state: OrdersByStatus,
+  order: Order,
+  status: OrderStatus,
+) {
+  const statusKey = getOrderStatusKey(status)
+  const tableId = getOrderTableId(order)
+  const groups = state[statusKey] || []
+  const groupIndex = groups.findIndex((group) => group.tableId === tableId)
+
+  if (groupIndex === -1) {
+    state[statusKey] = [...groups, createOrderGroupFromOrder(order)]
+    return
+  }
+
+  const group = groups[groupIndex]
+  const withoutSameOrder = group.orders.filter((existing) => existing.id !== order.id)
+  const mergedGroup = recalculateGroupFields({
+    ...group,
+    orders: [...withoutSameOrder, order],
+  })
+
+  state[statusKey] = groups.map((currentGroup, index) =>
+    index === groupIndex ? mergedGroup : currentGroup,
+  )
+}
+
+function upsertOrder(
+  state: OrdersByStatus,
+  order: Order,
+  targetStatus: OrderStatus,
+) {
+  removeOrderEverywhere(state, order.id)
+
+  if (targetStatus === OrderStatus.PAID || targetStatus === OrderStatus.CANCELLED) {
+    return
+  }
+
+  insertOrderIntoStatusGroup(state, { ...order, status: targetStatus }, targetStatus)
+}
+
+function findOrderInState(
+  state: OrdersByStatus,
+  orderId: string,
+): Order | undefined {
+  const statusKeys = Object.keys(state) as Array<keyof OrdersByStatus>
+  for (const statusKey of statusKeys) {
+    const found = (state[statusKey] || [])
+      .flatMap((group) => group.orders)
+      .find((order) => order.id === orderId)
+    if (found) return found
+  }
+  return undefined
+}
+
+function assertNoDuplicateOrdersDev(state: OrdersByStatus, source: string) {
+  if (process.env.NODE_ENV === 'production') return
+
+  const idCounts = new Map<string, number>()
+  ;(Object.keys(state) as Array<keyof OrdersByStatus>).forEach((statusKey) => {
+    ;(state[statusKey] || []).forEach((group) => {
+      group.orders.forEach((order) => {
+        idCounts.set(order.id, (idCounts.get(order.id) || 0) + 1)
+      })
+    })
+  })
+
+  const duplicates = Array.from(idCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id)
+
+  if (duplicates.length > 0) {
+    console.warn(`[useOrdersBoard] Duplicate order ids after ${source}:`, duplicates)
+  }
 }
 
 export function useOrdersBoard({
@@ -45,6 +255,11 @@ export function useOrdersBoard({
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [archiveOrders, setArchiveOrders] = useState<OrderGroup[]>([])
+  const [archiveLoading, setArchiveLoading] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
+  const [archiveLastFetchedAt, setArchiveLastFetchedAt] = useState<number | null>(null)
+  const archiveLastFetchedAtRef = useRef<number | null>(null)
 
   const pendingQueue = usePendingQueue()
   const suppressedTransactionIds = useRef<Set<string>>(new Set())
@@ -103,21 +318,12 @@ export function useOrdersBoard({
       const response = await ordersApi.getOrders({
         restaurantId,
         limit: 100,
-        type: OrderType.DINE_IN
+        type: OrderType.DINE_IN,
+        status: ACTIVE_STATUSES.join(',') as any,
       })
       const freshOrders = response.items || (response as any) || []
 
-      // Filter: Active orders + today's completed orders
-      const now = new Date()
-      const todayStart = new Date(now.setHours(0, 0, 0, 0))
-      const relevantOrders = freshOrders.filter((order: Order) => {
-        const isCompleted = order.status === OrderStatus.PAID || order.status === OrderStatus.CANCELLED
-        if (!isCompleted) return true
-        const createdAt = new Date(order.createdAt || (order as any).created_at)
-        return createdAt >= todayStart
-      })
-
-      const grouped = groupOrdersByTableAndStatus(relevantOrders)
+      const grouped = groupOrdersByTableAndStatus(freshOrders)
       setOrdersByStatus(grouped)
     } catch (error) {
       console.error('Refetch failed:', error)
@@ -126,10 +332,46 @@ export function useOrdersBoard({
     }
   }, [restaurantId])
 
+  const fetchArchiveOrders = useCallback(
+    async (force = false) => {
+      const isFresh =
+        archiveLastFetchedAtRef.current !== null &&
+        Date.now() - archiveLastFetchedAtRef.current < 60 * 1000
+      if (!force && isFresh) return
+
+      setArchiveLoading(true)
+      setArchiveError(null)
+
+      try {
+        const response = await ordersApi.getOrders({
+          restaurantId,
+          limit: 200,
+          type: OrderType.DINE_IN,
+          status: `${OrderStatus.PAID},${OrderStatus.CANCELLED}` as any,
+        })
+        const fetchedOrders = (response.items || (response as any) || []) as Order[]
+        const todayOrders = filterOrdersByIstanbulToday(fetchedOrders)
+        const grouped = groupOrdersByTableAndStatus(todayOrders)
+
+        setArchiveOrders([...(grouped.paid || []), ...(grouped.cancelled || [])])
+        const fetchedAt = Date.now()
+        archiveLastFetchedAtRef.current = fetchedAt
+        setArchiveLastFetchedAt(fetchedAt)
+      } catch (error) {
+        console.error('Archive fetch failed:', error)
+        setArchiveError('Arşiv siparişleri alınamadı')
+      } finally {
+        setArchiveLoading(false)
+      }
+    },
+    [restaurantId],
+  )
+
   // Sipariş durumunu güncelle
   const updateStatus = useCallback(
     async (orderIdOrIds: string | string[], newStatus: OrderStatus) => {
-      const orderIds = Array.isArray(orderIdOrIds) ? orderIdOrIds : [orderIdOrIds]
+      const rawOrderIds = Array.isArray(orderIdOrIds) ? orderIdOrIds : [orderIdOrIds]
+      const orderIds = [...new Set(rawOrderIds)]
       if (orderIds.length === 0) return
 
       const txId = crypto.randomUUID()
@@ -139,111 +381,24 @@ export function useOrdersBoard({
       setOrdersByStatus(prev => {
         // Deep clone to avoid mutation
         const nextState: OrdersByStatus = JSON.parse(JSON.stringify(prev))
-        const statusKeys = Object.keys(nextState) as Array<keyof OrdersByStatus>
-        const newStatusKey = newStatus as keyof OrdersByStatus
-
-        // Ensure destination status array exists
-        if (!nextState[newStatusKey]) {
-          nextState[newStatusKey] = []
-        }
-
-        // For each orderId, find its source group and move it
+        // For each orderId, find current snapshot and upsert with transition matrix
         for (const orderId of orderIds) {
-          let foundOrder: Order | null = null
-          let sourceStatusKey: keyof OrdersByStatus | null = null
-          let sourceGroupTableId: string | null = null
-
-          // Search for the order in all status groups
-          for (const status of statusKeys) {
-            const groups = nextState[status]
-            for (const group of groups) {
-              const orderIndex = group.orders.findIndex(o => o.id === orderId)
-              if (orderIndex !== -1) {
-                foundOrder = group.orders[orderIndex]
-                sourceStatusKey = status
-                sourceGroupTableId = group.tableId
-                break
-              }
-            }
-            if (foundOrder) break
-          }
-
-          if (!foundOrder || !sourceStatusKey || !sourceGroupTableId) continue
-
-          // 1a. Remove from source group
-          const sourceGroups = nextState[sourceStatusKey]
-          const sourceGroupIndex = sourceGroups.findIndex(g => g.tableId === sourceGroupTableId)
-
-          if (sourceGroupIndex !== -1) {
-            const sourceGroup = sourceGroups[sourceGroupIndex]
-            const remainingOrders = sourceGroup.orders.filter(o => o.id !== orderId)
-
-            if (remainingOrders.length === 0) {
-              // Remove the entire group from source status
-              nextState[sourceStatusKey] = sourceGroups.filter((_, i) => i !== sourceGroupIndex)
-            } else {
-              // Update the source group with the remaining orders
-              nextState[sourceStatusKey] = sourceGroups.map((g, i) =>
-                i === sourceGroupIndex
-                  ? recalculateGroupFields({
-                    ...g,
-                    orders: remainingOrders,
-                  })
-                  : g
-              )
-            }
-          }
-
-          // 1b. Add to destination status group
+          const foundOrder = findOrderInState(nextState, orderId)
+          if (!foundOrder) continue
           const updatedOrder: Order = {
             ...foundOrder,
             status: newStatus,
-            items: foundOrder.items?.map(item => {
-              const isCompleted = item.status === OrderStatus.SERVED || item.status === OrderStatus.DELIVERED || item.status === OrderStatus.PAID || item.status === OrderStatus.CANCELLED;
-              return { ...item, status: isCompleted ? item.status : newStatus };
-            })
+            items: foundOrder.items?.map(item => ({
+              ...item,
+              status: shouldUpdateItemForTransition(item.status, newStatus)
+                ? newStatus
+                : item.status,
+            }))
           }
-          const tableId = updatedOrder.tableId || `no-table-${updatedOrder.id}`
-          const destGroups = nextState[newStatusKey]
-          const destGroupIndex = destGroups.findIndex(g => g.tableId === tableId)
-
-          if (destGroupIndex !== -1) {
-            // Destination group for this table already exists — merge
-            const destGroup = destGroups[destGroupIndex]
-            nextState[newStatusKey] = destGroups.map((g, i) =>
-              i === destGroupIndex
-                ? recalculateGroupFields({
-                  ...destGroup,
-                  orders: [...destGroup.orders, updatedOrder],
-                })
-                : g
-            )
-          } else {
-            // Create a new group in the destination status
-            const newGroup: OrderGroup = {
-              tableId,
-              tableName: updatedOrder.table?.name || 'Sipariş',
-              orders: [updatedOrder],
-              totalItems: 0,
-              totalAmount: 0,
-              firstOrderTime: updatedOrder.createdAt || (updatedOrder as any).created_at,
-              lastOrderTime: updatedOrder.createdAt || (updatedOrder as any).created_at,
-              activeWaveTime: updatedOrder.createdAt || (updatedOrder as any).created_at,
-              customerName: updatedOrder.customer?.name,
-              orderType: updatedOrder.type,
-              status: newStatus,
-              activeItems: [],
-              activeWaveItems: [],
-              previousItems: [],
-              servedItems: [],
-            }
-            nextState[newStatusKey] = [
-              ...destGroups,
-              recalculateGroupFields(newGroup)
-            ]
-          }
+          upsertOrder(nextState, updatedOrder, newStatus)
         }
 
+        assertNoDuplicateOrdersDev(nextState, 'optimistic_status_update')
         return nextState
       })
 
@@ -314,212 +469,50 @@ export function useOrdersBoard({
     }
 
     setOrdersByStatus(prev => {
-      const newState = { ...prev }
+      const newState = JSON.parse(JSON.stringify(prev)) as OrdersByStatus
+      const incomingOrder = event.order
+      const localOrder = findOrderInState(newState, incomingOrder.id)
+
+      if (localOrder) {
+        const incomingVersion = getOrderVersionTime(incomingOrder)
+        const localVersion = getOrderVersionTime(localOrder)
+        if (incomingVersion > 0 && localVersion > incomingVersion) {
+          return newState
+        }
+      }
 
       switch (event.type) {
         case 'order_created': {
-          const tableId = event.order.tableId || `no-table-${event.order.id}`
-          const status = event.order.status as keyof OrdersByStatus
-
-          if (newState[status]) {
-            const existingIndex = newState[status].findIndex(
-              (g: OrderGroup) => g.tableId === tableId
-            )
-
-            if (existingIndex !== -1) {
-              newState[status] = newState[status].map((g: OrderGroup, i: number) =>
-                i === existingIndex
-                  ? recalculateGroupFields({
-                    ...g,
-                    orders: [...g.orders, event.order],
-                  })
-                  : g
-              )
-            } else {
-              const newGroup: OrderGroup = {
-                tableId,
-                tableName: event.order.table?.name || 'Yeni Sipariş',
-                orders: [event.order],
-                totalItems: 0,
-                totalAmount: 0,
-                firstOrderTime: event.order.createdAt || (event.order as any).created_at,
-                lastOrderTime: event.order.createdAt || (event.order as any).created_at,
-                activeWaveTime: event.order.createdAt || (event.order as any).created_at,
-                customerName: event.order.customer?.name,
-                orderType: event.order.type,
-                status: event.order.status,
-                activeItems: [],
-                activeWaveItems: [],
-                previousItems: [],
-                servedItems: [],
-              }
-              newState[status] = [
-                ...newState[status],
-                recalculateGroupFields(newGroup)
-              ]
-            }
-          }
+          upsertOrder(newState, incomingOrder, incomingOrder.status as OrderStatus)
           break
         }
 
         case 'order_updated': {
-          const statusKeys = Object.keys(prev) as Array<keyof OrdersByStatus>
-          let found = false
-          let currentStatus: keyof OrdersByStatus | null = null
-          const orderToUpdate = event.order
-
-          for (const status of statusKeys) {
-            const group = newState[status].find(g => g.orders.some(o => o.id === orderToUpdate.id))
-            if (group) {
-              found = true
-              currentStatus = status
-              break
-            }
-          }
-
-          if (found && currentStatus) {
-            const newStatus = orderToUpdate.status as keyof OrdersByStatus
-
-            if (currentStatus === newStatus) {
-              newState[currentStatus] = newState[currentStatus].map(group => {
-                if (group.orders.some(o => o.id === orderToUpdate.id)) {
-                  return recalculateGroupFields({
-                    ...group,
-                    orders: group.orders.map(o => o.id === orderToUpdate.id ? orderToUpdate : o)
-                  })
-                }
-                return group
-              })
-            } else {
-              let extractedGroup: OrderGroup | null = null
-              newState[currentStatus] = newState[currentStatus].filter(group => {
-                if (group.orders.some(o => o.id === orderToUpdate.id)) {
-                  const updated = recalculateGroupFields({
-                    ...group,
-                    orders: group.orders.filter(o => o.id !== orderToUpdate.id)
-                  })
-                  if (updated.orders.length > 0) return true
-                  extractedGroup = group
-                  return false
-                }
-                return true
-              })
-
-              if (newState[newStatus]) {
-                const tableId = orderToUpdate.tableId || `no-table-${orderToUpdate.id}`
-                const existingIndex = newState[newStatus].findIndex(g => g.tableId === tableId)
-
-                if (existingIndex !== -1) {
-                  newState[newStatus] = newState[newStatus].map((g, i) =>
-                    i === existingIndex
-                      ? recalculateGroupFields({ ...g, orders: [...g.orders, orderToUpdate] })
-                      : g
-                  )
-                } else {
-                  const group = extractedGroup || {
-                    tableId,
-                    tableName: orderToUpdate.table?.name || 'Sipariş',
-                    orders: [orderToUpdate],
-                    totalItems: 0,
-                    totalAmount: 0,
-                    firstOrderTime: orderToUpdate.createdAt || (orderToUpdate as any).created_at,
-                    lastOrderTime: orderToUpdate.createdAt || (orderToUpdate as any).created_at,
-                    activeWaveTime: orderToUpdate.createdAt || (orderToUpdate as any).created_at,
-                    customerName: orderToUpdate.customer?.name,
-                    orderType: orderToUpdate.type,
-                    status: orderToUpdate.status,
-                    activeItems: [],
-                    activeWaveItems: [],
-                    previousItems: [],
-                    servedItems: [],
-                  }
-                  newState[newStatus] = [...newState[newStatus], recalculateGroupFields(group)]
-                }
-              }
-            }
-          }
+          upsertOrder(newState, incomingOrder, incomingOrder.status as OrderStatus)
           break
         }
 
         case 'order_status_changed': {
-          if (event.oldStatus && event.newStatus) {
-            const oldStatusKey = event.oldStatus as keyof OrdersByStatus
-            const newStatusKey = event.newStatus as keyof OrdersByStatus
-
-            if (newState[oldStatusKey]) {
-              let movedOrder: Order | undefined = undefined
-              const updatedGroups: OrderGroup[] = []
-
-              for (const group of newState[oldStatusKey]) {
-                const orderIndex = group.orders.findIndex((o: Order) => o.id === event.order.id)
-                if (orderIndex !== -1) {
-                  movedOrder = group.orders[orderIndex]
-                  const updatedGroup = recalculateGroupFields({
-                    ...group,
-                    orders: group.orders.filter((o: Order) => o.id !== event.order.id),
-                  })
-                  if (updatedGroup.orders.length > 0) updatedGroups.push(updatedGroup)
-                } else {
-                  updatedGroups.push(group)
-                }
-              }
-
-              newState[oldStatusKey] = updatedGroups
-
-              if (movedOrder && newState[newStatusKey]) {
-                const tableId = movedOrder.tableId || `no-table-${movedOrder.id}`
-                const existingIndex = newState[newStatusKey].findIndex(g => g.tableId === tableId)
-
-                if (existingIndex !== -1) {
-                  newState[newStatusKey] = newState[newStatusKey].map((g, i) =>
-                    i === existingIndex
-                      ? recalculateGroupFields({
-                        ...g,
-                        orders: [...g.orders, {
-                          ...movedOrder!,
-                          status: event.newStatus as OrderStatus,
-                          items: movedOrder!.items?.map(item => {
-                            const isCompleted = item.status === OrderStatus.SERVED || item.status === OrderStatus.DELIVERED || item.status === OrderStatus.PAID || item.status === OrderStatus.CANCELLED;
-                            return { ...item, status: isCompleted ? item.status : event.newStatus as OrderStatus };
-                          })
-                        }],
-                      })
-                      : g
-                  )
-                } else {
-                  const newGroup: OrderGroup = {
-                    tableId,
-                    tableName: movedOrder.table?.name || 'Sipariş',
-                    orders: [{
-                      ...movedOrder,
-                      status: event.newStatus as OrderStatus,
-                      items: movedOrder.items?.map(item => {
-                        const isCompleted = item.status === OrderStatus.SERVED || item.status === OrderStatus.DELIVERED || item.status === OrderStatus.PAID || item.status === OrderStatus.CANCELLED;
-                        return { ...item, status: isCompleted ? item.status : event.newStatus as OrderStatus };
-                      })
-                    }],
-                    totalItems: 0,
-                    totalAmount: 0,
-                    firstOrderTime: movedOrder.createdAt || (movedOrder as any).created_at,
-                    lastOrderTime: movedOrder.createdAt || (movedOrder as any).created_at,
-                    activeWaveTime: movedOrder.createdAt || (movedOrder as any).created_at,
-                    customerName: movedOrder.customer?.name,
-                    orderType: movedOrder.type,
-                    status: event.newStatus,
-                    activeItems: [],
-                    activeWaveItems: [],
-                    previousItems: [],
-                    servedItems: [],
-                  }
-                  newState[newStatusKey] = [...newState[newStatusKey], recalculateGroupFields(newGroup)]
-                }
-              }
+          const targetStatus = (event.newStatus || incomingOrder.status) as OrderStatus
+          const destinationOrder: Order = targetStatus === incomingOrder.status
+            ? incomingOrder
+            : {
+              ...incomingOrder,
+              status: targetStatus,
+              items: incomingOrder.items?.map((item) => ({
+                ...item,
+                status: shouldUpdateItemForTransition(item.status, targetStatus)
+                  ? targetStatus
+                  : item.status,
+              })),
             }
-          }
+
+          upsertOrder(newState, destinationOrder, targetStatus)
           break
         }
       }
 
+      assertNoDuplicateOrdersDev(newState, `socket_${event.type}`)
       return newState
     })
   }, [])
@@ -553,10 +546,15 @@ export function useOrdersBoard({
     isDetailOpen,
     isLoading,
     isSyncing,
+    archiveOrders,
+    archiveLoading,
+    archiveError,
+    archiveLastFetchedAt,
 
     // Actions
     updateStatus,
     refetch,
+    fetchArchiveOrders,
     handleSocketEvent,
     updateFilters,
     clearFilters,

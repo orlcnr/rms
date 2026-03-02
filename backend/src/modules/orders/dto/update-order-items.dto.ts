@@ -10,7 +10,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderType } from '../enums/order-type.enum';
 
 export class UpdateOrderItemDto {
@@ -56,4 +56,9 @@ export class UpdateOrderItemsDto {
   @IsString()
   @IsOptional()
   transaction_id?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-restaurant' })
+  @IsUUID()
+  @IsOptional()
+  restaurant_id?: string;
 }

@@ -31,27 +31,23 @@ export class CashController {
   constructor(private readonly cashService: CashService) {}
 
   @Get('registers')
-  @ApiOperation({ summary: 'Kasaları listeler' })
+  @ApiOperation({
+    summary: 'Get all cash registers with their current session status',
+  })
   getRegisters(@GetUser() user: any) {
     return this.cashService.getRegisters(user.restaurantId);
   }
 
   @Post('registers')
-  @ApiOperation({ summary: 'Yeni kasa oluşturur' })
+  @ApiOperation({ summary: 'Create a new cash register' })
   createRegister(@GetUser() user: any, @Body() dto: CreateCashRegisterDto) {
-    return this.cashService.createRegister(user.restaurantId, dto.name);
+    return this.cashService.createRegister(user.restaurantId, dto);
   }
 
   @Delete('registers/:registerId')
   @ApiOperation({ summary: 'Kasayı siler' })
   deleteRegister(@Param('registerId') registerId: string) {
     return this.cashService.deleteRegister(registerId);
-  }
-
-  @Get('registers/with-status')
-  @ApiOperation({ summary: 'Kasaları durumlarıyla birlikte listeler' })
-  getRegistersWithStatus(@GetUser() user: any) {
-    return this.cashService.getRegistersWithStatus(user.restaurantId);
   }
 
   @Get('registers/active-sessions')
@@ -100,6 +96,18 @@ export class CashController {
     return this.cashService.getSessionSummary(params.sessionId);
   }
 
+  @Get('sessions/:sessionId/reconciliation')
+  @ApiOperation({ summary: 'Kasa oturum tam mutabakat raporunu getirir' })
+  getReconciliationReport(
+    @GetUser() user: any,
+    @Param() params: SessionIdParamDto,
+  ) {
+    return this.cashService.getReconciliationReport(
+      user.restaurantId,
+      params.sessionId,
+    );
+  }
+
   @Post('sessions/:sessionId/movements')
   @ApiOperation({ summary: 'Manuel kasa hareketi ekler' })
   addMovement(
@@ -119,5 +127,11 @@ export class CashController {
     @Query() filters: GetSessionHistoryDto,
   ) {
     return this.cashService.getSessionHistory(user.restaurantId, filters);
+  }
+
+  @Get('sessions/:sessionId')
+  @ApiOperation({ summary: 'Belirli bir kasa oturumunu ID ile getirir' })
+  getSessionById(@Param() params: SessionIdParamDto) {
+    return this.cashService.getSessionById(params.sessionId);
   }
 }

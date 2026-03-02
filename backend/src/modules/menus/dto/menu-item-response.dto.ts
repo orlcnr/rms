@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { MenuItem } from '../entities/menu-item.entity';
 import { Exclude, Expose, Transform } from 'class-transformer';
+import { MenuItemAvailabilityStatus } from '../enums/menu-item-availability-status.enum';
 
 export class MenuItemResponseDto {
   @ApiProperty()
@@ -36,6 +37,9 @@ export class MenuItemResponseDto {
   @ApiProperty({ required: false })
   recipes: any[];
 
+  @ApiProperty({ enum: MenuItemAvailabilityStatus })
+  availabilityStatus: MenuItemAvailabilityStatus;
+
   constructor(partial: Partial<MenuItem>) {
     Object.assign(this, partial);
     this.transformImageUrl();
@@ -63,7 +67,14 @@ export class MenuItemResponseDto {
     }
   }
 
-  static fromEntity(entity: MenuItem): MenuItemResponseDto {
-    return new MenuItemResponseDto(entity);
+  static fromEntity(
+    entity: MenuItem,
+    availabilityStatus?: MenuItemAvailabilityStatus,
+  ): MenuItemResponseDto {
+    const dto = new MenuItemResponseDto(entity);
+    if (availabilityStatus) {
+      dto.availabilityStatus = availabilityStatus;
+    }
+    return dto;
   }
 }

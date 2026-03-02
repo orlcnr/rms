@@ -5,7 +5,7 @@
 
 'use client'
 
-import { X, Clock, User, MapPin, FileText, Printer, CreditCard } from 'lucide-react'
+import { X, Clock, User, FileText, Printer, CreditCard } from 'lucide-react'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LABELS } from '../types'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { formatDateTime } from '@/modules/shared/utils/date'
@@ -15,19 +15,24 @@ interface OrderDetailDrawerProps {
   isOpen: boolean
   onClose: () => void
   orderGroup: OrderGroup | null
-  onStatusChange: (orderId: string, newStatus: OrderStatus) => void
+  onPrint: (group: OrderGroup) => void
+  onEditOrder: (group: OrderGroup) => void
+  onTakePayment: (group: OrderGroup) => void
 }
 
 export function OrderDetailDrawer({
   isOpen,
   onClose,
   orderGroup,
-  onStatusChange,
+  onPrint,
+  onEditOrder,
+  onTakePayment,
 }: OrderDetailDrawerProps) {
   if (!isOpen || !orderGroup) return null
 
   const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
   const order = latestOrder
+  const hasTable = Boolean(order.tableId)
 
   return (
     <>
@@ -67,6 +72,39 @@ export function OrderDetailDrawer({
             <h3 className="text-sm font-medium text-gray-700 mb-2">Sipariş Durumu</h3>
             <OrderStatusBadge status={order.status} />
           </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => onPrint(orderGroup)}
+              className="flex items-center justify-center gap-1 rounded-sm border border-border-light bg-bg-surface px-2 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Yazdır
+            </button>
+            <button
+              type="button"
+              onClick={() => onEditOrder(orderGroup)}
+              disabled={!hasTable}
+              className="flex items-center justify-center gap-1 rounded-sm border border-border-light bg-bg-surface px-2 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sipariş Güncelle
+            </button>
+            <button
+              type="button"
+              onClick={() => onTakePayment(orderGroup)}
+              disabled={!hasTable}
+              className="flex items-center justify-center gap-1 rounded-sm border border-success-main/30 bg-success-subtle px-2 py-2 text-[10px] font-black uppercase tracking-wider text-success-main hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              Ödeme Al
+            </button>
+          </div>
+          {!hasTable && (
+            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+              Bu siparişte masa olmadığı için güncelleme ve ödeme aksiyonları pasif.
+            </p>
+          )}
 
           {/* Order Info */}
           <div className="grid grid-cols-2 gap-4">
@@ -146,7 +184,10 @@ export function OrderDetailDrawer({
                 </div>
                 <div className="space-y-2">
                   {orderGroup.previousItems.map((item, idx) => {
-                    const isServed = item.status === OrderStatus.SERVED || item.status === OrderStatus.PAID
+                    const isServed =
+                      item.status === OrderStatus.SERVED ||
+                      item.status === OrderStatus.DELIVERED ||
+                      item.status === OrderStatus.PAID
                     return (
                       <div key={idx} className={cn(
                         "flex justify-between items-center p-3 rounded-sm border border-border-light transition-all",
@@ -161,12 +202,16 @@ export function OrderDetailDrawer({
                         </div>
                         <div className="flex flex-col items-end">
                           <span className="text-sm font-bold text-text-primary">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
-                          {!isServed && (
-                            <span className="text-[9px] text-text-muted uppercase font-bold mt-1 border border-border-light px-1.5 py-0.5 rounded-full">{ORDER_STATUS_LABELS[item.status]}</span>
-                          )}
-                          {isServed && (
-                            <span className="text-[9px] text-success-main uppercase font-bold mt-1 bg-success-subtle px-1.5 py-0.5 rounded-full">SERVİS EDİLDİ</span>
-                          )}
+                          <span
+                            className={cn(
+                              'text-[9px] uppercase font-bold mt-1 px-1.5 py-0.5 rounded-full border',
+                              isServed
+                                ? 'text-success-main bg-success-subtle border-success-main/30'
+                                : 'text-text-muted border-border-light'
+                            )}
+                          >
+                            {ORDER_STATUS_LABELS[item.status]}
+                          </span>
                         </div>
                       </div>
                     )

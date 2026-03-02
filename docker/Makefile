@@ -57,7 +57,7 @@ build-frontend:
 
 build-web:
 	@echo "Building Web..."
-	$(COMPOSE_DEV) build web
+	$(COMPOSE_DEV) build --no-cache web
 
 restart-backend:
 	@echo "Restarting Backend..."
@@ -72,7 +72,7 @@ restart-web:
 	$(COMPOSE_DEV) restart web
 
 build-dev:
-	$(COMPOSE_DEV) build
+	$(COMPOSE_DEV) build --no-cache
 
 logs-dev:
 	$(COMPOSE_DEV) logs -f

@@ -8,7 +8,7 @@ import { cn } from '../utils/cn';
 // TYPES
 // ============================================
 
-type InputType = 'text' | 'number' | 'email' | 'password' | 'tel';
+type InputType = 'text' | 'number' | 'email' | 'password' | 'tel' | 'date';
 
 type FontSize = 'base' | 'lg' | 'xl';
 type TextAlign = 'left' | 'right';

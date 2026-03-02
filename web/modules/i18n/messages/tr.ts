@@ -1,22 +1,7 @@
+import common from '../locales/tr/common.json';
+
 export const tr = {
-  // Common
-  common: {
-    loading: 'Yükleniyor...' as string,
-    save: 'Kaydet' as string,
-    cancel: 'İptal' as string,
-    delete: 'Sil' as string,
-    edit: 'Düzenle' as string,
-    add: 'Ekle' as string,
-    search: 'Ara' as string,
-    filter: 'Filtrele' as string,
-    back: 'Geri' as string,
-    next: 'İleri' as string,
-    submit: 'Gönder' as string,
-    confirm: 'Onayla' as string,
-    yes: 'Evet' as string,
-    no: 'Hayır' as string,
-    or: 'Veya' as string,
-  },
+  common,
 
   // Auth
   auth: {
@@ -66,5 +51,49 @@ export const tr = {
     continueWith: 'Veya şununla devam et' as string,
     google: 'Google' as string,
     apple: 'Apple' as string,
+  },
+
+  // Customers (Dummy cast to any to satisfy the complex nested structure for now, 
+  // though a proper interface would be better)
+  customers: {
+    title: "MÜŞTERİ VERİTABANI",
+    description: "Müşteri kayıtlarını yönetin, sadakat puanlarını ve borç geçmişini takip edin.",
+    newCustomer: "YENİ MÜŞTERİ",
+    debtOnly: "SADECE BORÇLULAR",
+    searchPlaceholder: "İSİM VEYA TELEFON İLE ARA...",
+    table: {
+      name: "MÜŞTERİ ADI",
+      phone: "TELEFON",
+      visit_count: "ZİYARET",
+      total_spent: "HARCAMA",
+      current_debt: "BORÇ",
+      creditLimit: "LİMİT",
+      lastVisit: "SON ZİYARET",
+      actions: "İŞLEMLER"
+    },
+    form: {
+      firstName: "AD",
+      lastName: "SOYAD",
+      phone: "TELEFON",
+      email: "E-POSTA",
+      creditLimitEnabled: "VERESİYE LİMİTİ",
+      creditLimit: "LİMİT TUTARI",
+      maxOpenOrders: "MAX. AÇIK SİPARİŞ",
+      notes: "NOTLAR"
+    },
+    details: {
+      title: "MÜŞTERİ DETAYI",
+      stats: "İSTATİSTİKLER",
+      visitCount: "TOPLAM ZİYARET",
+      totalSpent: "TOPLAM HARCAMA",
+      currentDebt: "GÜNCEL BORÇ",
+      orderHistory: "SİPARİŞ GEÇMİŞİ"
+    },
+    messages: {
+      createSuccess: "Müşteri başarıyla oluşturuldu.",
+      updateSuccess: "Müşteri başarıyla güncellendi.",
+      deleteSuccess: "Müşteri başarıyla silindi.",
+      deleteConfirm: "Müşteriyi silmek istediğinize emin misiniz?"
+    }
   },
 } as const;

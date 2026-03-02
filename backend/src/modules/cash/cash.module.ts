@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashService } from './cash.service';
 import { CashController } from './cash.controller';
@@ -6,11 +6,13 @@ import { CashRegister } from './entities/cash-register.entity';
 import { CashSession } from './entities/cash-session.entity';
 import { CashMovement } from './entities/cash-movement.entity';
 import { TablesModule } from '../tables/tables.module';
+import { RulesModule } from '../rules/rules.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CashRegister, CashSession, CashMovement]),
     TablesModule,
+    forwardRef(() => RulesModule),
   ],
   controllers: [CashController],
   providers: [CashService],

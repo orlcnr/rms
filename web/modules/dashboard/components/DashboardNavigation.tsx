@@ -5,16 +5,15 @@ import { Armchair, ClipboardList, Package, Layers, BarChart3, Wallet, ChevronRig
 import Link from 'next/link'
 import { cn } from '@/modules/shared/utils/cn'
 
-const SHORTCUTS = [
-    { id: 1, title: 'MASA YÖNETİMİ', href: '/operations', icon: Armchair, color: 'text-primary-main', bg: 'bg-primary-subtle' },
-    { id: 2, title: 'SİPARİŞ TAKİBİ', href: '/orders', icon: ClipboardList, color: 'text-warning-main', bg: 'bg-warning-bg' },
-    { id: 3, title: 'STOK VE ENVANTER', href: '/inventory', icon: Package, color: 'text-danger-main', bg: 'bg-danger-bg' },
-    { id: 4, title: 'ÜRÜN KATALOĞU', href: '/products', icon: Layers, color: 'text-info-main', bg: 'bg-info-bg' },
-    { id: 5, title: 'GÜNLÜK RAPORLAR', href: '/reports', icon: BarChart3, color: 'text-success-main', bg: 'bg-success-bg' },
-    { id: 6, title: 'KASA İŞLEMLERİ', href: '/cash', icon: Wallet, color: 'text-text-secondary', bg: 'bg-bg-muted' },
-]
-
 export function DashboardNavigation() {
+    const SHORTCUTS = [
+        { id: 1, title: 'MASA YÖNETİMİ', href: '/tables', icon: Armchair, color: 'text-primary-main', bg: 'bg-primary-subtle' },
+        { id: 2, title: 'SİPARİŞ TAKİBİ', href: '/orders', icon: ClipboardList, color: 'text-warning-main', bg: 'bg-warning-bg' },
+        { id: 3, title: 'STOK VE ENVANTER', href: '/inventory', icon: Package, color: 'text-danger-main', bg: 'bg-danger-bg' },
+        { id: 4, title: 'ÜRÜN KATALOĞU', href: '/products', icon: Layers, color: 'text-info-main', bg: 'bg-info-bg' },
+        { id: 5, title: 'GÜNLÜK RAPORLAR', href: '/reports', icon: BarChart3, color: 'text-success-main', bg: 'bg-success-bg' },
+        { id: 6, title: 'KASA İŞLEMLERİ', href: '/cash', icon: Wallet, color: 'text-text-secondary', bg: 'bg-bg-muted' },
+    ]
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {SHORTCUTS.map((item) => (

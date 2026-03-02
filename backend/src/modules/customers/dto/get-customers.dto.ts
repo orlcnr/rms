@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsOptional, IsInt, Min, IsString } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsInt, Min, IsString, IsBoolean } from 'class-validator';
 
 export class GetCustomersDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
@@ -21,4 +21,10 @@ export class GetCustomersDto {
   @IsString()
   @IsOptional()
   search?: string;
+
+  @ApiPropertyOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  @IsOptional()
+  hasDebt?: boolean;
 }

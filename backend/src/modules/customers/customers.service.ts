@@ -10,12 +10,15 @@ import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { paginate, Pagination } from 'nestjs-typeorm-paginate';
 import { GetCustomersDto } from './dto/get-customers.dto';
+import { Order } from '../orders/entities/order.entity';
 
 @Injectable()
 export class CustomersService {
   constructor(
     @InjectRepository(Customer)
     private readonly customerRepository: Repository<Customer>,
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
   ) {}
 
   async create(
@@ -71,6 +74,10 @@ export class CustomersService {
         '(customer.first_name ILIKE :search OR customer.last_name ILIKE :search OR customer.phone ILIKE :search)',
         { search: `%${search}%` },
       );
+    }
+
+    if (queryDto.hasDebt) {
+      queryBuilder.andWhere('customer.current_debt > 0');
     }
 
     queryBuilder
@@ -154,5 +161,21 @@ export class CustomersService {
     customer.total_spent = Number(customer.total_spent) + Number(amountSpent);
     customer.last_visit = new Date();
     await this.customerRepository.save(customer);
+  }
+
+  async remove(id: string, restaurantId: string): Promise<void> {
+    const customer = await this.findOne(id, restaurantId);
+    await this.customerRepository.remove(customer);
+  }
+
+  async getCustomerOrders(id: string, restaurantId: string): Promise<Order[]> {
+    // Validate customer exists
+    await this.findOne(id, restaurantId);
+
+    return this.orderRepository.find({
+      where: { customerId: id, restaurantId },
+      relations: ['items', 'items.menuItem', 'table'],
+      order: { created_at: 'DESC' },
+    });
   }
 }

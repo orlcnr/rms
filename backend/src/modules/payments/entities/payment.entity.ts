@@ -11,6 +11,7 @@ export enum PaymentMethod {
   DIGITAL_WALLET = 'digital_wallet',
   BANK_TRANSFER = 'bank_transfer',
   OPEN_ACCOUNT = 'open_account', // Açık Hesap / Cari
+  MEAL_VOUCHER = 'meal_voucher', // Yemek Çeki
 }
 
 export enum PaymentStatus {

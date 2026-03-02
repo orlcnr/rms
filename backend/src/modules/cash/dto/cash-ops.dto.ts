@@ -1,3 +1,4 @@
+import { IsBoolean } from 'class-validator';
 import {
   IsString,
   IsNumber,
@@ -27,6 +28,11 @@ export class OpenCashSessionDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  notes?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
   transaction_id?: string;
 }
 
@@ -39,9 +45,27 @@ export class CloseCashSessionDto {
   @IsString()
   @IsOptional()
   transaction_id?: string;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @IsOptional()
+  creditCardTotal?: number;
+
+  @ApiProperty({ required: false })
+  @IsBoolean()
+  @IsOptional()
+  distributeCardTips?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @IsOptional()
+  cardTipsToDistribute?: number;
 }
 
 export class CreateCashMovementDto {
+  @ApiProperty()
+  @IsUUID()
+  cash_register_id: string;
   @ApiProperty({ enum: CashMovementType })
   @IsEnum(CashMovementType)
   type: CashMovementType;
@@ -68,6 +92,41 @@ export class CreateCashMovementDto {
   @IsString()
   @IsOptional()
   transaction_id?: string;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isVoid?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isTip?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isOpeningBalance?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isClosingDifference?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isManualCashIn?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  isManualCashOut?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
+  @IsOptional()
+  is_payment?: boolean;
 }
 
 export class RegisterIdParamDto {

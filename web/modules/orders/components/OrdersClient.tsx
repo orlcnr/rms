@@ -58,7 +58,7 @@ export function OrdersClient({
 
   // Wrapper for handleSubmitOrder to update local state
   const handleOrderSubmit = async () => {
-    const result = await hook.handleSubmitOrder()
+    const result = await hook.handleSubmitOrder(localExistingOrder)
     if (result) {
       setLocalExistingOrder(result)
     }
@@ -90,7 +90,7 @@ export function OrdersClient({
         }
       />
 
-      <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-8 lg:px-12 pb-8">
+      <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-8 lg:px-12 pb-6">
         {/* FILTER SECTION */}
         <FilterSection className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-96">
@@ -113,10 +113,10 @@ export function OrdersClient({
         </FilterSection>
 
         {/* BODY SECTION */}
-        <BodySection noPadding className="flex-row gap-0 overflow-hidden">
+        <BodySection noPadding className="mt-2 flex-row gap-0 overflow-hidden rounded-sm">
           {/* Ürün Grid */}
           <div className="flex-1 flex flex-col min-w-0 border-r border-border-light bg-bg-app overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto px-3 pt-3 pb-6 custom-scrollbar">
               <PosProductGrid
                 items={hook.filteredItems}
                 onAddToBasket={hook.handleAddToBasket}
@@ -145,6 +145,7 @@ export function OrdersClient({
               onClear={hook.clearBasket}
               onSubmit={handleOrderSubmit}
               onPay={() => setIsPaymentOpen(true)}
+              onTrackOrder={() => router.push('/orders')}
               isLoading={hook.isSubmitting}
               disabled={hook.isSubmitting}
               className="h-full"

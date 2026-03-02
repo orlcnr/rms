@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull } from 'typeorm';
+import { Repository, DataSource, QueryRunner, QueryFailedError } from 'typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 import { CashRegister } from './entities/cash-register.entity';
 import { CashSession } from './entities/cash-session.entity';
@@ -16,11 +18,17 @@ import {
   OpenCashSessionDto,
   CloseCashSessionDto,
   CreateCashMovementDto,
+  CreateCashRegisterDto,
 } from './dto/cash-ops.dto';
+import { GetSessionHistoryDto } from './dto/get-session-history.dto';
 import { RulesService } from '../rules/rules.service';
 import { TablesService } from '../tables/tables.service';
 import { RuleKey } from '../rules/enums/rule-key.enum';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { SettingsService } from '../settings/settings.service';
+import { ReconciliationReportDto } from './dto/reconciliation-report.dto';
+import { CashSummaryDto } from './dto/cash-summary.dto';
+import { getNow } from '../../common/utils/date.utils';
 
 @Injectable()
 export class CashService {
@@ -34,10 +42,28 @@ export class CashService {
     @InjectRepository(CashMovement)
     private readonly movementRepository: Repository<CashMovement>,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => RulesService))
     private readonly rulesService: RulesService,
     private readonly tablesService: TablesService,
     private readonly notificationsGateway: NotificationsGateway,
+    private readonly settingsService: SettingsService,
   ) {}
+
+  /**
+   * Restoran için aktif kasayı getirir (tek doğru kaynak).
+   */
+  async getActiveRegister(restaurantId: string): Promise<CashRegister> {
+    const register = await this.registerRepository.findOneBy({
+      restaurantId,
+      active: true,
+    });
+
+    if (!register) {
+      throw new NotFoundException('Aktif kasa bulunamadı');
+    }
+
+    return register;
+  }
 
   /**
    * Restoran için varsayılan kasayı döner veya yoksa oluşturur.
@@ -68,36 +94,118 @@ export class CashService {
     userId: string,
     dto: OpenCashSessionDto,
   ): Promise<CashSession> {
-    const register = await this.registerRepository.findOneBy({
-      id: dto.cashRegisterId,
-      restaurantId,
-    });
-    if (!register) throw new NotFoundException('Kasa bulunamadı');
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const activeSession = await this.sessionRepository.findOneBy({
-      cashRegisterId: dto.cashRegisterId,
-      status: CashSessionStatus.OPEN,
-    });
-    if (activeSession)
-      throw new BadRequestException('Bu kasada zaten açık bir oturum var');
+    try {
+      const registerRepository =
+        queryRunner.manager.getRepository(CashRegister);
+      const sessionRepository = queryRunner.manager.getRepository(CashSession);
+      const movementRepository =
+        queryRunner.manager.getRepository(CashMovement);
 
-    const session = this.sessionRepository.create({
-      cashRegisterId: dto.cashRegisterId,
-      openedById: userId,
-      openingBalance: dto.openingBalance,
-      status: CashSessionStatus.OPEN,
-    });
+      // Seçilen kasanın varlığını ve aktifliğini doğrula
+      const register = await registerRepository.findOneBy({
+        id: dto.cashRegisterId,
+        restaurantId,
+        active: true,
+      });
 
-    const savedSession = await this.sessionRepository.save(session);
+      if (!register) {
+        throw new BadRequestException(
+          'Seçilen kasa aktif değil veya bulunamadı',
+        );
+      }
 
-    // Real-time update
-    this.notificationsGateway.notifyCashSessionUpdate(restaurantId, {
-      type: 'session_opened',
-      registerId: dto.cashRegisterId,
-      sessionId: savedSession.id,
-    });
+      // Hedef kasada açık oturum var mı?
+      const existingSession = await sessionRepository.findOneBy({
+        cashRegisterId: register.id,
+        status: CashSessionStatus.OPEN,
+      });
 
-    return savedSession;
+      if (existingSession) {
+        throw new BadRequestException('Bu kasada zaten açık bir oturum var');
+      }
+
+      // Kullanıcının diğer açık oturumlarını kurallı şekilde kapat
+      const userOpenSessions = await this.findUserOpenSessions(
+        restaurantId,
+        userId,
+        register.id,
+        queryRunner,
+      );
+
+      for (const openSession of userOpenSessions) {
+        try {
+          await this.closeSessionBySystemRule(
+            userId,
+            openSession.id,
+            dto.transaction_id,
+            queryRunner,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `[openSession] User ${userId} existing session ${openSession.id} could not be auto-closed: ${(error as Error).message}`,
+          );
+          throw new BadRequestException(
+            'Yeni oturum açılamadı: Kullanıcının mevcut açık oturumu kurallar gereği kapatılamadı. Önce oturumu kapatın.',
+          );
+        }
+      }
+
+      // Yeni oturum oluştur
+      const session = sessionRepository.create({
+        cashRegisterId: register.id,
+        restaurantId,
+        openedById: userId,
+        openingBalance: dto.openingBalance,
+        status: CashSessionStatus.OPEN,
+      });
+
+      const savedSession = await sessionRepository.save(session);
+
+      // Açılış bakiyesi 0'dan büyükse, bunu bir hareket olarak kaydet
+      if (dto.openingBalance > 0) {
+        await movementRepository.save({
+          cashSessionId: savedSession.id,
+          type: CashMovementType.IN,
+          paymentMethod: PaymentMethod.CASH,
+          amount: dto.openingBalance,
+          description: dto.notes || 'Kasa Açılış Bakiyesi',
+          userId,
+          isOpeningBalance: true,
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return savedSession;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      if (error instanceof QueryFailedError) {
+        const dbErrorCode = (
+          error as QueryFailedError & { driverError?: { code?: string } }
+        ).driverError?.code;
+
+        if (dbErrorCode === '23505') {
+          throw new BadRequestException(
+            'Bu kullanıcı için zaten açık kasa oturumu var',
+          );
+        }
+
+        this.logger.error(
+          `[openSession] QueryFailedError (code=${dbErrorCode || 'unknown'}): ${error.message}`,
+        );
+        throw new BadRequestException(
+          'Kasa oturumu açma işlemi başarısız oldu. Lütfen aktif kasaları ve mevcut açık oturumları kontrol edin.',
+        );
+      }
+
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
@@ -107,10 +215,18 @@ export class CashService {
     userId: string,
     sessionId: string,
     dto: CloseCashSessionDto,
+    queryRunner?: QueryRunner,
   ): Promise<CashSession> {
-    const session = await this.sessionRepository.findOne({
+    const sessionRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashSession)
+      : this.sessionRepository;
+    const movementRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashMovement)
+      : this.movementRepository;
+
+    const session = await sessionRepository.findOne({
       where: { id: sessionId },
-      relations: ['movements'],
+      relations: ['movements', 'cashRegister'],
     });
 
     if (!session) throw new NotFoundException('Oturum bulunamadı');
@@ -118,91 +234,246 @@ export class CashService {
       throw new BadRequestException('Oturum zaten kapalı');
 
     // Business Rule Check: Kapatırken Açık Masa Kontrolü
-    const register = await this.registerRepository.findOneBy({
-      id: session.cashRegisterId,
-    });
-    if (register) {
-      await this.rulesService.checkRule(
-        register.restaurantId,
-        RuleKey.CASH_CHECK_OPEN_TABLES,
-        null, // No context needed for this rule as it checks all tables
-        'Kasa kapatılamaz: Hala açık (hesabı ödenmemiş) masalar bulunmaktadır.',
-      );
+    const sessionRestaurantId =
+      session.restaurantId || session.cashRegister?.restaurantId;
+    if (!sessionRestaurantId) {
+      throw new BadRequestException('Oturum için restoran bilgisi bulunamadı');
     }
+    await this.rulesService.checkRule(
+      sessionRestaurantId,
+      RuleKey.CASH_CHECK_OPEN_TABLES,
+      null,
+      'Kasa kapatılamaz: Hala açık (hesabı ödenmemiş) masalar bulunmaktadır.',
+    );
 
-    // Beklenen bakiyeyi hesapla (Açılış + Nakit Girişler - Nakit Çıkışlar)
-    const movements = await this.movementRepository.findBy({
-      cashSessionId: sessionId,
-    });
-
-    // NOT: Sadece CADD/CASH (Nakit) olanlar fiziki kasayı etkiler.
-    // Kart çekimleri 'banka/pos' kalemi olarak raporda görülür.
-    const netCashChange = movements.reduce((acc, mov) => {
-      if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
-      if (mov.type === CashMovementType.OUT) return acc - Number(mov.amount);
-      return acc + Number(mov.amount);
-    }, 0);
-
-    const expectedBalance = Number(session.openingBalance) + netCashChange;
+    const expectedBalance = await this.calculateExpectedBalance(
+      sessionId,
+      queryRunner,
+    );
 
     session.status = CashSessionStatus.CLOSED;
     session.closedById = userId;
-    session.closedAt = new Date();
+    session.closedAt = getNow();
     session.closingBalance = expectedBalance;
     session.countedBalance = dto.countedBalance;
     session.difference = dto.countedBalance - expectedBalance;
 
-    const savedSession = await this.sessionRepository.save(session);
+    const savedSession = await sessionRepository.save(session);
 
-    // Real-time update
-    if (register) {
-      this.notificationsGateway.notifyCashSessionUpdate(register.restaurantId, {
-        type: 'session_closed',
-        registerId: session.cashRegisterId,
-        sessionId: session.id,
+    // Kapanış farkı varsa (eksik/fazla), bunu bir hareket olarak kaydet
+    if (session.difference !== 0) {
+      await movementRepository.save({
+        cashSessionId: savedSession.id,
+        type:
+          session.difference > 0 ? CashMovementType.IN : CashMovementType.OUT,
+        paymentMethod: PaymentMethod.CASH,
+        amount: Math.abs(session.difference),
+        description: `Kasa Kapanış Farkı (${session.difference > 0 ? 'Fazla' : 'Eksik'})`,
+        userId,
+        isClosingDifference: true,
       });
     }
 
     return savedSession;
   }
 
+  private async calculateExpectedBalance(
+    sessionId: string,
+    queryRunner?: QueryRunner,
+  ): Promise<number> {
+    const movementRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashMovement)
+      : this.movementRepository;
+    const sessionRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashSession)
+      : this.sessionRepository;
+
+    const session = await sessionRepository.findOneBy({ id: sessionId });
+    if (!session) {
+      throw new NotFoundException('Oturum bulunamadı');
+    }
+
+    const movements = await movementRepository.findBy({
+      cashSessionId: sessionId,
+    });
+
+    const netCashChange = movements.reduce((acc, mov) => {
+      if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
+      if (mov.type === CashMovementType.OUT) return acc - Number(mov.amount);
+      return acc + Number(mov.amount);
+    }, 0);
+
+    return Number(session.openingBalance) + netCashChange;
+  }
+
+  private async findUserOpenSessions(
+    restaurantId: string,
+    userId: string,
+    excludeRegisterId?: string,
+    queryRunner?: QueryRunner,
+  ): Promise<CashSession[]> {
+    const sessionRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashSession)
+      : this.sessionRepository;
+
+    const query = sessionRepository
+      .createQueryBuilder('session')
+      .leftJoin('session.cashRegister', 'register')
+      .where('session.openedById = :userId', { userId })
+      .andWhere('session.status = :status', { status: CashSessionStatus.OPEN })
+      .andWhere(
+        '(session.restaurantId = :restaurantId OR register.restaurantId = :restaurantId)',
+        { restaurantId },
+      )
+      .orderBy('session.openedAt', 'ASC');
+
+    if (excludeRegisterId) {
+      query.andWhere('session.cashRegisterId != :excludeRegisterId', {
+        excludeRegisterId,
+      });
+    }
+
+    return query.getMany();
+  }
+
+  private async closeSessionBySystemRule(
+    userId: string,
+    sessionId: string,
+    transactionId?: string,
+    queryRunner?: QueryRunner,
+  ): Promise<CashSession> {
+    const expectedBalance = await this.calculateExpectedBalance(
+      sessionId,
+      queryRunner,
+    );
+
+    return this.closeSession(
+      userId,
+      sessionId,
+      {
+        countedBalance: expectedBalance,
+        transaction_id: transactionId,
+      },
+      queryRunner,
+    );
+  }
+
   /**
-   * Manuel kasa hareketi ekler.
+   * Manuel kasa hareketi ekler (Para yatırma / Para çekme).
    */
   async addMovement(
     userId: string,
     sessionId: string,
     dto: CreateCashMovementDto,
+    queryRunner?: QueryRunner, // Add queryRunner as an optional parameter
   ): Promise<CashMovement> {
-    const session = await this.sessionRepository.findOneBy({
-      id: sessionId,
-      status: CashSessionStatus.OPEN,
-    });
-    if (!session)
-      throw new BadRequestException(
-        'Hareket eklemek için açık bir kasa oturumu olmalı',
-      );
+    const repository = queryRunner
+      ? queryRunner.manager.getRepository(CashMovement)
+      : this.movementRepository;
+    const sessionRepository = queryRunner
+      ? queryRunner.manager.getRepository(CashSession)
+      : this.sessionRepository;
 
-    const movement = this.movementRepository.create({
+    const session = await sessionRepository.findOneBy({ id: sessionId });
+
+    if (!session) throw new NotFoundException('Oturum bulunamadı');
+    if (session.status === CashSessionStatus.CLOSED)
+      throw new BadRequestException('Kapalı oturuma hareket eklenemez');
+
+    const movement = repository.create({
       ...dto,
       cashSessionId: sessionId,
       userId,
+      isManualCashIn:
+        dto.type === CashMovementType.IN &&
+        !dto.isTip &&
+        !dto.isOpeningBalance &&
+        !dto.isClosingDifference &&
+        !dto.isVoid,
+      isManualCashOut:
+        dto.type === CashMovementType.OUT &&
+        !dto.isTip &&
+        !dto.isOpeningBalance &&
+        !dto.isClosingDifference &&
+        !dto.isVoid,
     });
 
-    const savedMovement = await this.movementRepository.save(movement);
+    return repository.save(movement);
+  }
 
-    // Real-time update
-    const register = await this.registerRepository.findOneBy({
-      id: session.cashRegisterId,
+  async createRegister(
+    restaurantId: string,
+    dto: CreateCashRegisterDto,
+  ): Promise<CashRegister> {
+    const existingRegister = await this.registerRepository.findOneBy({
+      restaurantId,
+      name: dto.name,
     });
-    if (register) {
-      this.notificationsGateway.notifyCashMovement(register.restaurantId, {
-        sessionId,
-        movement: savedMovement,
-      });
+
+    if (existingRegister) {
+      throw new BadRequestException('Bu isimde bir kasa zaten mevcut.');
     }
 
-    return savedMovement;
+    const register = this.registerRepository.create({
+      ...dto,
+      restaurantId,
+    });
+    return this.registerRepository.save(register);
+  }
+
+  /**
+   * Restoranın tüm kasalarını ve aktif oturum durumlarını getirir.
+   */
+  async getRegisters(restaurantId: string): Promise<any[]> {
+    const registersWithSessions = await this.registerRepository
+      .createQueryBuilder('register')
+      .leftJoinAndSelect(
+        'register.sessions',
+        'session',
+        'session.status = :status',
+        { status: CashSessionStatus.OPEN },
+      )
+      .leftJoinAndSelect('session.openedBy', 'openedBy')
+      .leftJoinAndSelect('session.movements', 'movement')
+      .where('register.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('register.active = :active', { active: true })
+      .getMany();
+
+    const result: any[] = [];
+
+    for (const reg of registersWithSessions) {
+      const activeSession = reg.sessions.length > 0 ? reg.sessions[0] : null;
+
+      if (activeSession) {
+        const netCashChange = activeSession.movements.reduce((acc, mov) => {
+          if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
+          if (mov.type === CashMovementType.OUT)
+            return acc - Number(mov.amount);
+          return acc + Number(mov.amount);
+        }, 0);
+
+        result.push({
+          ...reg,
+          status: 'open',
+          activeSession: {
+            id: activeSession.id,
+            openedAt: activeSession.openedAt,
+            openedBy: activeSession.openedBy,
+            openingBalance: Number(activeSession.openingBalance),
+            currentBalance:
+              Number(activeSession.openingBalance) + netCashChange,
+          },
+        });
+      } else {
+        result.push({
+          ...reg,
+          status: 'closed',
+          activeSession: null,
+        });
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -210,36 +481,35 @@ export class CashService {
    */
   async getSessionHistory(
     restaurantId: string,
-    filters: {
-      startDate?: string;
-      endDate?: string;
-      registerId?: string;
-      status?: CashSessionStatus;
-      openedById?: string;
-    },
-  ): Promise<CashSession[]> {
+    filters: GetSessionHistoryDto,
+  ): Promise<{
+    items: CashSession[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const queryBuilder = this.sessionRepository
       .createQueryBuilder('session')
       .leftJoinAndSelect('session.cashRegister', 'register')
       .leftJoinAndSelect('session.openedBy', 'openedBy')
       .leftJoinAndSelect('session.closedBy', 'closedBy')
-      .where('register.restaurant_id = :restaurantId', { restaurantId })
-      .orderBy('session.opened_at', 'DESC');
+      .where('register.restaurantId = :restaurantId', { restaurantId })
+      .orderBy('session.openedAt', 'DESC');
 
     if (filters.startDate) {
-      queryBuilder.andWhere('session.opened_at >= :startDate', {
+      queryBuilder.andWhere('session.openedAt >= :startDate', {
         startDate: new Date(filters.startDate),
       });
     }
 
     if (filters.endDate) {
-      queryBuilder.andWhere('session.opened_at <= :endDate', {
+      queryBuilder.andWhere('session.openedAt <= :endDate', {
         endDate: new Date(filters.endDate + 'T23:59:59'),
       });
     }
 
     if (filters.registerId) {
-      queryBuilder.andWhere('session.cash_register_id = :registerId', {
+      queryBuilder.andWhere('session.cashRegisterId = :registerId', {
         registerId: filters.registerId,
       });
     }
@@ -251,424 +521,355 @@ export class CashService {
     }
 
     if (filters.openedById) {
-      queryBuilder.andWhere('session.opened_by_id = :openedById', {
+      queryBuilder.andWhere('session.openedById = :openedById', {
         openedById: filters.openedById,
       });
     }
 
-    return queryBuilder.getMany();
-  }
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
+    queryBuilder.skip((page - 1) * limit).take(limit);
 
-  /**
-   * Verilen restoran için aktif (açık) kasa oturumunu döner.
-   * Kullanıcının oturumuna, varsayılan kasaya veya herhangi bir açık oturuma öncelik sırasıyla bakar.
-   */
-  async findActiveSession(
-    restaurantId: string,
-    userId?: string,
-  ): Promise<CashSession | null> {
-    // Priority 1: User's open session
-    if (userId) {
-      const userSession = await this.sessionRepository
-        .createQueryBuilder('session')
-        .innerJoin('session.cashRegister', 'register')
-        .where('register.restaurant_id = :restaurantId', { restaurantId })
-        .andWhere('session.opened_by_id = :userId', { userId })
-        .andWhere('session.status = :status', {
-          status: CashSessionStatus.OPEN,
-        })
-        .getOne();
-      if (userSession) return userSession;
-    }
-
-    // Priority 2: Default register's open session
-    const register = await this.ensureDefaultRegister(restaurantId);
-    const defaultSession = await this.sessionRepository.findOneBy({
-      cashRegisterId: register.id,
-      status: CashSessionStatus.OPEN,
-    });
-    if (defaultSession) return defaultSession;
-
-    // Priority 3: ANY open session in the restaurant
-    return this.dataSource
-      .getRepository(CashSession)
-      .createQueryBuilder('session')
-      .innerJoin('session.cashRegister', 'register')
-      .where('register.restaurant_id = :restaurantId', { restaurantId })
-      .andWhere('session.status = :status', { status: CashSessionStatus.OPEN })
-      .orderBy('session.opened_at', 'ASC')
-      .getOne();
-  }
-
-  /**
-   * Ödeme ve bahşiş hareketlerini verilen EntityManager (queryRunner.manager) ile kaydeder.
-   * PaymentsService'in kendi transaction'ı içinde çağrılır — atomik çalışır.
-   */
-  async recordPaymentMovementsInTransaction(
-    manager: any,
-    session: CashSession,
-    restaurantId: string,
-    payments: Array<{
-      orderId: string;
-      amount: number;
-      paymentMethod: PaymentMethod;
-      tipAmount?: number | null;
-      userId?: string;
-    }>,
-  ): Promise<void> {
-    const movementRepo = manager.getRepository(CashMovement);
-
-    for (const p of payments) {
-      // Sale movement
-      await movementRepo.save({
-        cashSessionId: session.id,
-        type: CashMovementType.SALE,
-        paymentMethod: p.paymentMethod,
-        amount: p.amount,
-        orderId: p.orderId,
-        description: `Sipariş Ödemesi (#${p.orderId.substring(0, 8)})`,
-        userId: p.userId || undefined,
-      });
-
-      // Tip movement (if present)
-      if (p.tipAmount && p.tipAmount > 0) {
-        await movementRepo.save({
-          cashSessionId: session.id,
-          type: CashMovementType.IN,
-          paymentMethod: p.paymentMethod,
-          amount: p.tipAmount,
-          orderId: p.orderId,
-          description: `Bahşiş (#${p.orderId.substring(0, 8)})`,
-          userId: p.userId || undefined,
-        });
-      }
-    }
-
-    // Real-time notification (fire-and-forget, not part of transaction)
-    this.notificationsGateway.notifyCashMovement(restaurantId, {
-      sessionId: session.id,
-      type: 'sale',
-      amount: payments.reduce((sum, p) => sum + p.amount, 0),
-    });
-  }
-
-  @OnEvent('payment.completed')
-  async handlePaymentCompleted(event: {
-    restaurantId: string;
-    orderId: string;
-    amount: number;
-    paymentMethod: any; // Allow 'SPLIT' or PaymentMethod
-    userId?: string;
-    tipAmount?: number;
-    payments?: Array<{
-      method: PaymentMethod;
-      amount: number;
-      tipAmount?: number;
-    }>;
-  }) {
-    // Cash movements are now recorded atomically inside PaymentsService transaction.
-    // This event is kept for other consumers (notifications, cache invalidation, etc.)
-    this.logger.log(
-      `payment.completed event received for order ${event.orderId} (cash already recorded in transaction).`,
-    );
-  }
-
-  /**
-   * Records a sale movement to a session.
-   * Supports both direct repository and transactional manager.
-   */
-  private async recordSaleMovement(
-    session: CashSession,
-    data: {
-      restaurantId: string;
-      orderId: string;
-      amount: number;
-      paymentMethod: PaymentMethod;
-      userId?: string;
-    },
-    manager?: any,
-  ) {
-    const movementRepo = manager
-      ? manager.getRepository(CashMovement)
-      : this.movementRepository;
-
-    const movement = await movementRepo.save({
-      cashSessionId: session.id,
-      type: CashMovementType.SALE,
-      paymentMethod: data.paymentMethod,
-      amount: data.amount,
-      orderId: data.orderId,
-      description: `Sipariş Ödemesi (#${data.orderId.substring(0, 8)})`,
-      userId: data.userId || undefined,
-    });
-
-    // Real-time update for summary and movements
-    this.notificationsGateway.notifyCashMovement(data.restaurantId, {
-      sessionId: session.id,
-      type: 'sale',
-      amount: data.amount,
-      paymentMethod: data.paymentMethod,
-    });
-
-    return movement;
-  }
-
-  /**
-   * Records a tip movement to a session.
-   * Supports both direct repository and transactional manager.
-   */
-  private async recordTipMovement(
-    session: CashSession,
-    data: {
-      restaurantId: string;
-      orderId: string;
-      amount: number;
-      paymentMethod: PaymentMethod;
-      userId?: string;
-    },
-    manager?: any,
-  ) {
-    const movementRepo = manager
-      ? manager.getRepository(CashMovement)
-      : this.movementRepository;
-
-    const movement = await movementRepo.save({
-      cashSessionId: session.id,
-      type: CashMovementType.IN,
-      paymentMethod: data.paymentMethod,
-      amount: data.amount,
-      orderId: data.orderId,
-      description: `Bahşiş (#${data.orderId.substring(0, 8)})`,
-      userId: data.userId || undefined,
-    });
-
-    // Real-time update for summary and movements
-    this.notificationsGateway.notifyCashMovement(data.restaurantId, {
-      sessionId: session.id,
-      type: 'in', // Using 'in' since it's an income, handled specially in cash summary
-      amount: data.amount,
-      paymentMethod: data.paymentMethod,
-    });
-
-    return movement;
-  }
-
-  async getRegisters(restaurantId: string): Promise<CashRegister[]> {
-    return this.registerRepository.find({ where: { restaurantId } });
-  }
-
-  async getSessions(registerId: string): Promise<CashSession[]> {
-    return this.sessionRepository.find({
-      where: { cashRegisterId: registerId },
-      order: { openedAt: 'DESC' } as any,
-      relations: ['openedBy', 'closedBy'],
-    });
-  }
-
-  async getMovements(sessionId: string): Promise<CashMovement[]> {
-    return this.movementRepository.find({
-      where: { cashSessionId: sessionId },
-      order: { created_at: 'ASC' } as any,
-      relations: ['user'],
-    });
-  }
-
-  /**
-   * Session özetini getirir (net sales, tips, etc.)
-   */
-  async getSessionSummary(sessionId: string): Promise<{
-    netSales: number;
-    totalTips: number;
-    totalCash: number;
-    cashTips: number;
-    cardTips: number;
-  }> {
-    const session = await this.sessionRepository.findOneBy({ id: sessionId });
-    if (!session) {
-      throw new NotFoundException('Kasa oturumu bulunamadı');
-    }
-
-    const movements = await this.getMovements(sessionId);
-
-    let netSales = 0;
-    let totalTips = 0;
-    let cashTips = 0;
-    let cardTips = 0;
-
-    for (const movement of movements) {
-      // Sale movements (revenue)
-      if (movement.type === CashMovementType.SALE) {
-        netSales += Number(movement.amount);
-      }
-
-      // Tip movements
-      if (
-        movement.type === CashMovementType.IN &&
-        (movement.description?.includes("Bahşiş") || movement.description?.includes("Tip"))
-      ) {
-        totalTips += Number(movement.amount);
-
-        if (movement.paymentMethod === PaymentMethod.CASH) {
-          cashTips += Number(movement.amount);
-        } else {
-          cardTips += Number(movement.amount);
-        }
-      }
-    }
-
-    // Total cash = opening balance + cash sales + cash tips
-    const cashMovements = movements.filter(
-      (m) => m.paymentMethod === PaymentMethod.CASH,
-    );
-    const totalCashIn = cashMovements
-      .filter(
-        (m) =>
-          m.type === CashMovementType.SALE || m.type === CashMovementType.IN,
-      )
-      .reduce((sum, m) => sum + Number(m.amount), 0);
-    const totalCashOut = cashMovements
-      .filter((m) => m.type === CashMovementType.OUT)
-      .reduce((sum, m) => sum + Number(m.amount), 0);
-
-    const totalCash =
-      Number(session.openingBalance) + totalCashIn - totalCashOut;
+    const [items, total] = await queryBuilder.getManyAndCount();
 
     return {
-      netSales,
-      totalTips,
-      totalCash,
-      cashTips,
-      cardTips,
+      items,
+      total,
+      page,
+      limit,
     };
   }
 
   /**
-   * Yeni kasa oluşturur.
+   * Belirli bir oturumun hareketlerini getirir.
    */
-  async createRegister(
+  async getMovements(sessionId: string): Promise<CashMovement[]> {
+    return this.movementRepository.find({
+      where: { cashSessionId: sessionId },
+      order: { created_at: 'DESC' } as any,
+    });
+  }
+
+  /**
+   * Belirli bir kasanın tüm oturumlarını getirir.
+   */
+  async getSessions(registerId: string): Promise<CashSession[]> {
+    return this.sessionRepository.find({
+      where: { cashRegisterId: registerId },
+      order: { openedAt: 'DESC' },
+      relations: ['openedBy', 'closedBy'],
+    });
+  }
+
+  /**
+   * Belirli bir oturumu ID'sine göre getirir, hareketleri ve ilgili kullanıcı bilgileriyle birlikte.
+   */
+  async getSessionById(sessionId: string): Promise<CashSession> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+      relations: ['movements', 'cashRegister', 'openedBy', 'closedBy'],
+      order: { movements: { created_at: 'DESC' } as any },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Kasa oturumu bulunamadı');
+    }
+
+    return session;
+  }
+
+  /**
+   * Belirli bir oturum için tam mutabakat raporu (Reconciliation Report) oluşturur.
+   */
+  async getReconciliationReport(
     restaurantId: string,
-    name: string,
-  ): Promise<CashRegister> {
-    const register = this.registerRepository.create({
+    sessionId: string,
+  ): Promise<ReconciliationReportDto> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId, cashRegister: { restaurantId } },
+      relations: ['openedBy', 'closedBy', 'cashRegister', 'movements'],
+    });
+
+    if (!session) {
+      throw new NotFoundException('Kasa oturumu bulunamadı');
+    }
+
+    const tipCommissionRate = await this.settingsService.getSetting(
       restaurantId,
-      name,
-      active: true,
-    });
-    return this.registerRepository.save(register);
-  }
-
-  /**
-   * Kasayı siler (soft delete - aktif durumunu false yapar)
-   */
-  async deleteRegister(registerId: string): Promise<void> {
-    const register = await this.registerRepository.findOneBy({
-      id: registerId,
-    });
-    if (!register) {
-      throw new NotFoundException('Kasa bulunamadı');
-    }
-
-    // Aktif oturumu var mı kontrol et
-    const activeSession = await this.sessionRepository.findOne({
-      where: {
-        cashRegisterId: registerId,
-        status: CashSessionStatus.OPEN,
-      },
-    });
-
-    if (activeSession) {
-      throw new BadRequestException('Açık oturumu olan kasa silinemez');
-    }
-
-    // Soft delete - active false yap
-    register.active = false;
-    await this.registerRepository.save(register);
-  }
-
-  /**
-   * Restorandaki tüm kasaları, durumlarıyla birlikte getirir.
-   */
-  async getRegistersWithStatus(restaurantId: string): Promise<any[]> {
-    const registers = await this.registerRepository.find({
-      where: { restaurantId },
-      order: { created_at: 'ASC' } as any,
-    });
-
-    const registersWithStatus = await Promise.all(
-      registers.map(async (reg) => {
-        const activeSession = await this.sessionRepository.findOneBy({
-          cashRegisterId: reg.id,
-          status: CashSessionStatus.OPEN,
-        });
-
-        let currentBalance = 0;
-        if (activeSession) {
-          const movements = await this.movementRepository.findBy({
-            cashSessionId: activeSession.id,
-          });
-          const netCashChange = movements.reduce((acc, mov) => {
-            if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
-            if (mov.type === CashMovementType.OUT)
-              return acc - Number(mov.amount);
-            return acc + Number(mov.amount);
-          }, 0);
-          currentBalance = Number(activeSession.openingBalance) + netCashChange;
-        }
-
-        return {
-          ...reg,
-          status: activeSession ? 'open' : 'closed',
-          activeSession: activeSession
-            ? {
-                id: activeSession.id,
-                openedAt: activeSession.openedAt,
-                openedBy: activeSession.openedBy,
-                openingBalance: activeSession.openingBalance,
-                currentBalance,
-              }
-            : null,
-        };
-      }),
+      'tip_commission_rate',
+      0,
     );
 
-    return registersWithStatus;
-  }
+    const report = new ReconciliationReportDto();
+    report.sessionOpenedAt = session.openedAt;
+    report.sessionClosedAt = session.closedAt;
+    report.openedBy = session.openedBy
+      ? `${session.openedBy.first_name} ${session.openedBy.last_name}`
+      : 'Bilinmiyor';
+    report.closedBy = session.closedBy
+      ? `${session.closedBy.first_name} ${session.closedBy.last_name}`
+      : null;
+    report.cashRegisterName = session.cashRegister.name;
+    report.openingBalance = Number(session.openingBalance);
+    report.actualCash = session.countedBalance
+      ? Number(session.countedBalance)
+      : null;
+    report.difference = session.difference ? Number(session.difference) : null;
+    report.movementCount = session.movements.length;
 
-  /**
-   * Tüm açık kasa oturumlarını getirir (restoran genelinde).
-   */
-  async getAllActiveSessions(restaurantId: string): Promise<any[]> {
-    const registers = await this.registerRepository.find({
-      where: { restaurantId, active: true },
-    });
+    let totalGrossSales = 0;
+    let voidedSales = 0;
+    const salesByMethod: Record<string, number> = {};
+    let totalTip = 0;
+    let tipCommission = 0;
 
-    const activeSessions: any[] = [];
-    for (const reg of registers) {
-      const session = await this.sessionRepository.findOne({
-        where: { cashRegisterId: reg.id, status: CashSessionStatus.OPEN },
-        relations: ['openedBy', 'movements'],
-      });
+    for (const movement of session.movements) {
+      const amount = Number(movement.amount);
 
-      if (session) {
-        const movements = await this.movementRepository.findBy({
-          cashSessionId: session.id,
-        });
-        const netCashChange = movements.reduce((acc, mov) => {
-          if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
-          if (mov.type === CashMovementType.OUT)
-            return acc - Number(mov.amount);
-          return acc + Number(mov.amount);
-        }, 0);
+      if (movement.type === CashMovementType.SALE) {
+        // İptal/Void kontrolü (açıklama üzerinden)
+        if (movement.isVoid) {
+          voidedSales += Math.abs(amount);
+        } else {
+          totalGrossSales += amount;
+          salesByMethod[movement.paymentMethod] =
+            (salesByMethod[movement.paymentMethod] || 0) + amount;
+        }
+      }
 
-        activeSessions.push({
-          register: reg,
-          session,
-          currentBalance: Number(session.openingBalance) + netCashChange,
-          netCashChange,
-        });
+      // Bahşiş kontrolü
+      if (movement.type === CashMovementType.IN && movement.isTip) {
+        totalTip += amount;
+        // Kartlı ödemelerde komisyon hesapla
+        if (movement.paymentMethod !== PaymentMethod.CASH) {
+          // NOT: tipCommissionRate zaten oran (örn: 0.02) olarak saklanıyor, 100'e tekrar bölmeye gerek yok.
+          tipCommission += amount * Number(tipCommissionRate);
+        }
       }
     }
 
-    return activeSessions;
+    report.totalGrossSales = totalGrossSales;
+    report.voidedSales = voidedSales;
+    report.salesByMethod = salesByMethod;
+    report.totalTip = totalTip;
+    report.tipCommission = tipCommission;
+    report.netTip = totalTip - tipCommission;
+
+    // Beklenen Nakit Hesabı: Açılış + Nakit Satışlar + Nakit Girişler - Nakit Çıkışlar
+    // MEAL_VOUCHER ve diğerleri hariç tutulur.
+    const cashSales = salesByMethod[PaymentMethod.CASH] || 0;
+    const cashIn = session.movements
+      .filter(
+        (m) =>
+          m.paymentMethod === PaymentMethod.CASH &&
+          m.type === CashMovementType.IN &&
+          !m.isTip &&
+          !m.isOpeningBalance &&
+          !m.isClosingDifference &&
+          !m.isManualCashIn,
+      )
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+    const cashOut = session.movements
+      .filter(
+        (m) =>
+          m.paymentMethod === PaymentMethod.CASH &&
+          m.type === CashMovementType.OUT &&
+          !m.isClosingDifference &&
+          !m.isManualCashOut,
+      )
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+
+    // Bahşişler nakit ise kasaya girer (eğer öyle işleniyorsa)
+    const cashTips = session.movements
+      .filter(
+        (m) =>
+          m.paymentMethod === PaymentMethod.CASH &&
+          m.type === CashMovementType.IN &&
+          m.isTip,
+      )
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+
+    report.expectedCash =
+      report.openingBalance + cashSales + cashIn + cashTips - cashOut;
+
+    // Bankaya yatacak net miktar (Nakit HARİÇ tüm satışlar - komisyonlar)
+    // Gerçek senaryoda POS komisyonu da olabilir ama şimdilik sadece Vouchers + POS toplamı
+    let netBankTotal = 0;
+    for (const [method, amount] of Object.entries(salesByMethod)) {
+      if (method !== PaymentMethod.CASH) {
+        netBankTotal += amount;
+      }
+    }
+    report.netBankAmount = netBankTotal;
+
+    return report;
+  }
+
+  /**
+   * Restorandaki aktif (açık) olan tüm kasa oturumlarını getirir.
+   * Sipariş ödemeleri alınırken hangi kasaya işleneceğini bulmak için kullanılır.
+   */
+  async getAllActiveSessions(restaurantId: string): Promise<
+    Array<{
+      register: CashRegister;
+      session: CashSession;
+      currentBalance: number;
+      netCashChange: number;
+    }>
+  > {
+    const openSessions = await this.sessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.cashRegister', 'register')
+      .where('register.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('session.status = :status', { status: CashSessionStatus.OPEN })
+      .getMany();
+
+    const result: Array<{
+      register: CashRegister;
+      session: CashSession;
+      currentBalance: number;
+      netCashChange: number;
+    }> = [];
+
+    for (const session of openSessions) {
+      const movements = await this.movementRepository.findBy({
+        cashSessionId: session.id,
+      });
+
+      const netCashChange = movements.reduce((acc, mov) => {
+        if (mov.paymentMethod !== PaymentMethod.CASH) return acc;
+        if (mov.type === CashMovementType.OUT) return acc - Number(mov.amount);
+        return acc + Number(mov.amount);
+      }, 0);
+
+      result.push({
+        register: session.cashRegister,
+        session: session,
+        currentBalance: Number(session.openingBalance) + netCashChange,
+        netCashChange: netCashChange,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Belirli bir oturumun özetini getirir.
+   */
+  async getSessionSummary(sessionId: string): Promise<CashSummaryDto> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+      relations: ['movements', 'cashRegister'],
+    });
+
+    if (!session) {
+      throw new NotFoundException('Kasa oturumu bulunamadı');
+    }
+
+    const summary = new CashSummaryDto();
+    summary.netSales = 0;
+    summary.totalTips = 0;
+    summary.netTip = 0;
+    summary.cashTips = 0;
+    summary.cardTips = 0;
+    summary.paymentBreakdown = {};
+
+    const sessionRestaurantId =
+      session.restaurantId || session.cashRegister?.restaurantId;
+    const tipCommissionRate = sessionRestaurantId
+      ? await this.settingsService.getSetting(
+          sessionRestaurantId,
+          'tip_commission_rate',
+          0,
+        )
+      : 0;
+
+    for (const movement of session.movements) {
+      const amount = Number(movement.amount);
+
+      if (movement.type === CashMovementType.SALE) {
+        if (!movement.isVoid) {
+          summary.netSales += amount;
+          summary.paymentBreakdown[movement.paymentMethod] =
+            (summary.paymentBreakdown[movement.paymentMethod] || 0) + amount;
+        }
+      } else if (movement.type === CashMovementType.IN && movement.isTip) {
+        summary.totalTips += amount;
+        if (movement.paymentMethod === PaymentMethod.CASH) {
+          summary.cashTips += amount;
+          summary.netTip += amount; // Cash tips usually have no commission
+        } else {
+          summary.cardTips += amount;
+          summary.netTip += amount * (1 - Number(tipCommissionRate));
+        }
+      }
+    }
+
+    // Beklenen Nakit Hesabı: Açılış + Nakit Satışlar + Nakit Girişler - Nakit Çıkışlar
+    const cashSales = summary.paymentBreakdown[PaymentMethod.CASH] || 0;
+    const cashIn = session.movements
+      .filter(
+        (m) =>
+          m.paymentMethod === PaymentMethod.CASH &&
+          m.type === CashMovementType.IN &&
+          !m.isTip &&
+          !m.isOpeningBalance &&
+          !m.isClosingDifference &&
+          !m.isManualCashIn,
+      )
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+    const cashOut = session.movements
+      .filter(
+        (m) =>
+          m.paymentMethod === PaymentMethod.CASH &&
+          m.type === CashMovementType.OUT &&
+          !m.isClosingDifference &&
+          !m.isManualCashOut,
+      )
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+
+    const manualCashIn = session.movements
+      .filter((m) => m.isManualCashIn)
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+
+    const manualCashOut = session.movements
+      .filter((m) => m.isManualCashOut)
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+
+    summary.totalCash =
+      Number(session.openingBalance) +
+      cashSales +
+      cashIn +
+      summary.cashTips +
+      manualCashIn -
+      cashOut -
+      manualCashOut;
+
+    return summary;
+  }
+
+  /**
+   * Belirli bir kasa oturumuna ait tüm hareketleri siler.
+   * Genellikle test veya hatalı veri girişi durumlarında kullanılır.
+   * DİKKAT: Bu işlem geri alınamaz.
+   */
+  async deleteMovementsBySession(sessionId: string): Promise<void> {
+    await this.movementRepository.delete({ cashSessionId: sessionId });
+  }
+
+  /**
+   * Belirli bir kasa oturumunu siler.
+   * DİKKAT: Bu işlem geri alınamaz.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.sessionRepository.delete({ id: sessionId });
+  }
+
+  /**
+   * Belirli bir kasa kaydını siler.
+   * DİKKAT: Bu işlem geri alınamaz.
+   */
+  async deleteRegister(registerId: string): Promise<void> {
+    await this.registerRepository.delete({ id: registerId });
   }
 }

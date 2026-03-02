@@ -138,6 +138,10 @@ export interface CostAnalysisSummary {
     food_cost_alerts: FoodCostAlert[]
 }
 
+export interface InventorySummary {
+    criticalStockCount: number
+}
+
 // ============================================
 // API REQUEST PAYLOADS (Transport Layer)
 // ============================================

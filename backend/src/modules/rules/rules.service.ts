@@ -151,6 +151,14 @@ export class RulesService implements OnModuleInit {
       },
       {
         category: RuleCategory.ORDER,
+        key: RuleKey.ORDER_REQUIRE_OPEN_CASH,
+        name: 'Açık Kasa Zorunluluğu',
+        description:
+          'Sipariş alabilmek için açık bir kasa oturumu olmasını zorunlu kılar.',
+        is_enabled: true,
+      },
+      {
+        category: RuleCategory.ORDER,
         key: RuleKey.ORDER_PREVENT_VOID,
         name: 'Onaylı Sipariş İptal Kısıtı',
         description:

@@ -19,15 +19,17 @@ interface OrderBoardToolbarProps {
     }
     summaryDate: string
     socketConnected: boolean
+    actions?: React.ReactNode
 }
 
 export function OrderBoardToolbar({
     filters,
     onFilterChange,
     onClearFilters,
-    stats,
-    summaryDate,
-    socketConnected
+  stats,
+  summaryDate,
+  socketConnected,
+  actions,
 }: OrderBoardToolbarProps) {
     return (
         <FilterSection className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -37,6 +39,11 @@ export function OrderBoardToolbar({
                     onFilterChange={onFilterChange}
                     onClearFilters={onClearFilters}
                 />
+                {actions ? (
+                  <div className="ml-auto flex items-center">
+                    {actions}
+                  </div>
+                ) : null}
 
                 {/* Stats Summary - Matches Reservation Style */}
                 <div className="hidden xl:flex items-center gap-6 ml-auto px-6 border-l border-border-light">
