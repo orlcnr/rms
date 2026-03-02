@@ -12,6 +12,7 @@ interface PaymentStatusBarProps {
   remainingBalance: number;
   discount?: number;
   isComplete: boolean;
+  collectedWithTips?: number;
 }
 
 export function PaymentStatusBar({
@@ -19,9 +20,13 @@ export function PaymentStatusBar({
   remainingBalance,
   discount,
   isComplete,
+  collectedWithTips = 0,
 }: PaymentStatusBarProps) {
+  const diff = Number(collectedWithTips) - Number(finalTotal);
+  const hasOverCollectedMismatch = diff > 0.01;
+
   return (
-    <div className="flex items-center gap-6 px-4 py-3 bg-bg-muted border-b border-border-light">
+    <div className="flex flex-wrap items-center gap-6 px-4 py-3 bg-bg-muted border-b border-border-light">
       {/* Toplam */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
@@ -60,6 +65,25 @@ export function PaymentStatusBar({
         <span className="text-base font-black text-success-main">
           {discount && discount > 0
             ? `-${formatPaymentAmount(discount)}`
+            : '-'}
+        </span>
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-border-light" />
+
+      {/* Tutar Uyuşmazlığı */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+          Tutar Uyuşmazlığı
+        </span>
+        <span
+          className={`text-base font-black ${
+            hasOverCollectedMismatch ? 'text-warning-main' : 'text-success-main'
+          }`}
+        >
+          {hasOverCollectedMismatch
+            ? `${formatPaymentAmount(Math.abs(diff))} fazla`
             : '-'}
         </span>
       </div>

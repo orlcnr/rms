@@ -1,71 +1,274 @@
 'use client'
 
-import React from 'react'
-import { Menu, UtensilsCrossed, Bell, User, ChevronDown } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import {
+  Menu,
+  UtensilsCrossed,
+  Bell,
+  User,
+  ChevronDown,
+  CheckCheck,
+} from 'lucide-react'
 import { useUI } from '@/modules/shared/context/UIContext'
+import { useSocketStore } from '@/modules/shared/api/socket'
+import { http } from '@/modules/shared/api/http'
+import { notificationsService } from '@/modules/notifications/services'
+import { Notification } from '@/modules/notifications/types'
+
+interface CurrentUser {
+  id: string
+  email: string
+  role: string
+  restaurantId?: string
+  restaurant_id?: string
+  first_name?: string
+  last_name?: string
+}
+
+function getRoleLabel(role: string): string {
+  const normalized = role?.toLowerCase() || ''
+  if (normalized === 'super_admin') return 'Sistem Yöneticisi'
+  if (normalized === 'restaurant_owner') return 'İşletme Sahibi'
+  if (normalized === 'manager') return 'Yönetici'
+  if (normalized === 'waiter') return 'Garson'
+  if (normalized === 'chef' || normalized === 'kitchen') return 'Mutfak'
+  if (normalized === 'cashier') return 'Kasiyer'
+  return role || 'Kullanıcı'
+}
+
+function getDisplayName(user: CurrentUser | null): string {
+  if (!user) return 'Kullanıcı'
+  const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim()
+  return fullName || user.email
+}
+
+function formatTime(value: string): string {
+  return new Date(value).toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 export function MainHeader() {
-    const { toggleSidebar } = useUI()
+  const router = useRouter()
+  const { toggleSidebar } = useUI()
+  const connectSocket = useSocketStore((state) => state.connect)
+  const onSocketEvent = useSocketStore((state) => state.on)
+  const offSocketEvent = useSocketStore((state) => state.off)
 
-    return (
-        <header className="fixed top-0 left-0 right-0 z-[90] bg-bg-surface border-b border-border-light h-16 flex items-center justify-between shadow-sm">
-            {/* Left Section: Menu & Logo Alignment */}
-            <div className="flex items-center h-full">
-                {/* Hamburger Area - Matches narrow sidebar width */}
-                <div className="w-20 flex items-center justify-center border-r border-border-light/50 h-full">
-                    <button
-                        onClick={toggleSidebar}
-                        className="p-2.5 hover:bg-bg-app text-text-muted hover:text-primary-main transition-all rounded-sm border border-transparent hover:border-border-light focus-visible:ring-2 focus-visible:ring-primary-main focus-visible:outline-none"
-                        aria-label="Ana Menüyü Aç"
-                    >
-                        <Menu size={24} />
-                    </button>
-                </div>
+  const [user, setUser] = useState<CurrentUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isBellOpen, setIsBellOpen] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
 
-                {/* Brand Area - This is where the left alignment axis starts */}
-                <div className="flex items-center gap-3 px-8">
-                    <div className="w-9 h-9 bg-primary-main rounded-sm flex items-center justify-center shadow-sm">
-                        <UtensilsCrossed size={18} className="text-text-inverse" />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-sm font-black text-text-primary uppercase tracking-tight leading-none">
-                            POSMENUM - RMS
-                        </span>
-                        <span className="text-[8px] font-black text-primary-main uppercase tracking-widest mt-1">
-                            RESTAURANT MANAGEMENT SYSTEM
-                        </span>
-                    </div>
-                </div>
-            </div>
+  const bellRef = useRef<HTMLDivElement | null>(null)
 
-            {/* Right Section: System Status & User Profile */}
-            <div className="flex items-center gap-4 px-6">
-                {/* System Alerts */}
-                <button className="relative p-2.5 hover:bg-bg-app text-text-muted hover:text-text-primary transition-all rounded-sm border border-transparent hover:border-border-light focus-visible:ring-2 focus-visible:ring-primary-main focus-visible:outline-none" aria-label="Bildirimler">
-                    <Bell size={18} />
-                    <span className="absolute top-1 right-1 bg-danger-main text-text-inverse text-xs font-semibold w-4 h-4 flex items-center justify-center rounded-full border-2 border-bg-surface">
-                        3
-                    </span>
-                </button>
+  const loadUserAndNotifications = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const me = await http.get<CurrentUser>('/auth/me')
+      setUser(me)
+      const restaurantId = me.restaurantId || me.restaurant_id
+      if (restaurantId) {
+        connectSocket(restaurantId)
+      }
 
-                <div className="h-8 w-px bg-border-light" />
+      const [listResponse, unread] = await Promise.all([
+        notificationsService.getNotifications({ page: 1, limit: 8 }),
+        notificationsService.getUnreadCount(),
+      ])
+      setNotifications(listResponse.items || [])
+      setUnreadCount(unread)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [connectSocket])
 
-                {/* User Context - ERP Structure */}
-                <div className="flex items-center gap-3 cursor-pointer group">
-                    <div className="hidden md:flex flex-col text-right">
-                        <span className="text-sm font-semibold text-text-primary leading-none">John Doe</span>
-                        <span className="text-xs font-medium text-primary-main mt-1">Sistem Yöneticisi</span>
-                    </div>
+  useEffect(() => {
+    void loadUserAndNotifications()
+  }, [loadUserAndNotifications])
 
-                    {/* User Avatar with Dropdown */}
-                    <div className="flex items-center gap-2 bg-bg-app p-1 pr-3 rounded-sm border border-border-light group-hover:border-primary-main transition-all">
-                        <div className="w-9 h-9 rounded-sm bg-bg-surface flex items-center justify-center border border-border-light overflow-hidden">
-                            <User size={18} className="text-text-muted group-hover:text-primary-main transition-colors" />
-                        </div>
-                        <ChevronDown size={14} className="text-text-muted group-hover:text-primary-main transition-colors" />
-                    </div>
-                </div>
-            </div>
-        </header>
+  useEffect(() => {
+    const handleNewNotification = (payload: unknown) => {
+      const incoming = payload as Notification
+      setUnreadCount((prev) => prev + 1)
+      setNotifications((prev) => {
+        if (prev.some((item) => item.id === incoming.id)) {
+          return prev
+        }
+        return [incoming, ...prev].slice(0, 8)
+      })
+    }
+
+    onSocketEvent('new_notification', handleNewNotification)
+    return () => {
+      offSocketEvent('new_notification', handleNewNotification)
+    }
+  }, [offSocketEvent, onSocketEvent])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!bellRef.current) return
+      if (!bellRef.current.contains(event.target as Node)) {
+        setIsBellOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const userName = useMemo(() => getDisplayName(user), [user])
+  const roleLabel = useMemo(() => getRoleLabel(user?.role || ''), [user?.role])
+
+  async function handleMarkAllAsRead() {
+    await notificationsService.markAllAsRead()
+    setUnreadCount(0)
+    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })))
+  }
+
+  async function handleMarkAsRead(id: string) {
+    await notificationsService.markAsRead(id)
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
     )
+    setUnreadCount((prev) => Math.max(0, prev - 1))
+  }
+
+  return (
+    <header className="fixed top-0 left-0 right-0 z-[90] bg-bg-surface border-b border-border-light h-16 flex items-center justify-between shadow-sm">
+      <div className="flex items-center h-full">
+        <div className="w-20 flex items-center justify-center border-r border-border-light/50 h-full">
+          <button
+            onClick={toggleSidebar}
+            className="p-2.5 hover:bg-bg-app text-text-muted hover:text-primary-main transition-all rounded-sm border border-transparent hover:border-border-light focus-visible:ring-2 focus-visible:ring-primary-main focus-visible:outline-none"
+            aria-label="Ana Menüyü Aç"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 px-8">
+          <div className="w-9 h-9 bg-primary-main rounded-sm flex items-center justify-center shadow-sm">
+            <UtensilsCrossed size={18} className="text-text-inverse" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-black text-text-primary uppercase tracking-tight leading-none">
+              POSMENUM - RMS
+            </span>
+            <span className="text-[8px] font-black text-primary-main uppercase tracking-widest mt-1">
+              RESTAURANT MANAGEMENT SYSTEM
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 px-6">
+        <div className="relative" ref={bellRef}>
+          <button
+            className="relative p-2.5 hover:bg-bg-app text-text-muted hover:text-text-primary transition-all rounded-sm border border-transparent hover:border-border-light focus-visible:ring-2 focus-visible:ring-primary-main focus-visible:outline-none"
+            aria-label="Bildirimler"
+            onClick={() => setIsBellOpen((prev) => !prev)}
+          >
+            <Bell size={18} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 bg-danger-main text-text-inverse text-[10px] font-black min-w-4 h-4 px-1 flex items-center justify-center rounded-full border-2 border-bg-surface">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {isBellOpen && (
+            <div className="absolute right-0 mt-2 w-[360px] bg-bg-surface border border-border-light rounded-sm shadow-xl overflow-hidden z-[120]">
+              <div className="px-4 py-3 border-b border-border-light flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-text-primary">
+                  Bildirimler
+                </span>
+                <button
+                  onClick={() => void handleMarkAllAsRead()}
+                  className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-primary-main hover:underline"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Tümünü Okundu Yap
+                </button>
+              </div>
+
+              <div className="max-h-[360px] overflow-y-auto">
+                {notifications.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-text-muted">
+                    Bildirim bulunamadı.
+                  </div>
+                )}
+                {notifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={`px-4 py-3 border-b border-border-light/60 ${
+                      notification.isRead ? 'bg-bg-surface' : 'bg-primary-main/5'
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-text-primary">
+                      {notification.title}
+                    </p>
+                    <p className="text-xs text-text-secondary mt-1">
+                      {notification.message}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-[10px] text-text-muted">
+                        {formatTime(notification.created_at)}
+                      </span>
+                      {!notification.isRead && (
+                        <button
+                          onClick={() => void handleMarkAsRead(notification.id)}
+                          className="text-[10px] font-black uppercase tracking-wider text-primary-main hover:underline"
+                        >
+                          Okundu
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-4 py-3 border-t border-border-light bg-bg-app/40">
+                <button
+                  onClick={() => {
+                    setIsBellOpen(false)
+                    router.push('/notifications')
+                  }}
+                  className="w-full text-center text-xs font-black uppercase tracking-wider text-primary-main hover:underline"
+                >
+                  Tüm Bildirimleri Gör
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="h-8 w-px bg-border-light" />
+
+        <Link href="/settings?tab=users" className="flex items-center gap-3 cursor-pointer group">
+          <div className="hidden md:flex flex-col text-right">
+            <span className="text-sm font-semibold text-text-primary leading-none">
+              {isLoading ? 'Yükleniyor...' : userName}
+            </span>
+            <span className="text-xs font-medium text-primary-main mt-1">
+              {isLoading ? '' : roleLabel}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-bg-app p-1 pr-3 rounded-sm border border-border-light group-hover:border-primary-main transition-all">
+            <div className="w-9 h-9 rounded-sm bg-bg-surface flex items-center justify-center border border-border-light overflow-hidden">
+              <User size={18} className="text-text-muted group-hover:text-primary-main transition-colors" />
+            </div>
+            <ChevronDown size={14} className="text-text-muted group-hover:text-primary-main transition-colors" />
+          </div>
+        </Link>
+      </div>
+    </header>
+  )
 }
+

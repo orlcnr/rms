@@ -2,6 +2,9 @@ import { getRestaurantContext } from '@/modules/auth/server/getServerUser'
 import { tablesApi } from '@/modules/tables/services/tables.service'
 import { TablesClient } from '@/modules/tables/components/TablesClient'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function TablesPage() {
     const { restaurantId } = await getRestaurantContext()
 

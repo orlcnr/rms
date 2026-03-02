@@ -42,12 +42,18 @@ const mapDiscountTypeToDb = (
 ): string | null => {
   if (!discountType) return null;
 
-  // Map frontend values to database enum values
+  // Frontend sends fixed amount for both "discount" and "complimentary".
+  // Keep semantic labels in DB; only explicit "percentage" should be treated
+  // as percentage discount.
   const mapping: Record<string, string> = {
-    discount: 'percentage',
-    DISCOUNT: 'percentage',
-    complimentary: 'fixed',
-    COMPLIMENTARY: 'fixed',
+    discount: 'discount',
+    DISCOUNT: 'discount',
+    complimentary: 'complimentary',
+    COMPLIMENTARY: 'complimentary',
+    percentage: 'percentage',
+    PERCENTAGE: 'percentage',
+    fixed: 'fixed',
+    FIXED: 'fixed',
   };
 
   return mapping[discountType] || discountType;
@@ -73,11 +79,11 @@ const calculateDiscount = (
     const discountMultiplier = (10000 - discountCents) / 10000; // e.g., for 10% = 0.90
     const resultCents = Math.round(amountCents * discountMultiplier);
     return Math.max(0, resultCents / 100);
-  } else {
-    // Fixed discount (İkram - sabit indirim)
-    const resultCents = Math.max(0, amountCents - discountCents);
-    return resultCents / 100;
   }
+
+  // Fixed amount discount (discount/complimentary/fixed)
+  const resultCents = Math.max(0, amountCents - discountCents);
+  return resultCents / 100;
 };
 
 /**
@@ -158,6 +164,35 @@ export class PaymentsService {
     } as any);
   }
 
+  private async getEnabledPaymentMethods(
+    restaurantId: string,
+  ): Promise<Set<PaymentMethod>> {
+    const fallback = Object.values(PaymentMethod);
+    const settingValue = await this.settingsService.getSetting(
+      restaurantId,
+      'enabled_payment_methods',
+      fallback,
+    );
+
+    const rawMethods = Array.isArray(settingValue) ? settingValue : fallback;
+    const enabled = rawMethods.filter((method): method is PaymentMethod =>
+      Object.values(PaymentMethod).includes(method as PaymentMethod),
+    );
+
+    return new Set(enabled.length > 0 ? enabled : fallback);
+  }
+
+  private validateMethodIsEnabled(
+    method: PaymentMethod,
+    enabledMethods: Set<PaymentMethod>,
+  ): void {
+    if (!enabledMethods.has(method)) {
+      throw new BadRequestException(
+        `Ödeme yöntemi aktif değil: ${method}. Lütfen Ayarlar > Ödeme bölümünden yöntemi aktif edin.`,
+      );
+    }
+  }
+
   async findAll(queryDto: GetPaymentsDto): Promise<Pagination<Payment>> {
     const { page = 1, limit = 10, search } = queryDto;
 
@@ -212,6 +247,11 @@ export class PaymentsService {
       if (order.status === OrderStatus.PAID) {
         throw new BadRequestException('Order is already paid');
       }
+
+      const enabledMethods = await this.getEnabledPaymentMethods(
+        order.restaurantId,
+      );
+      this.validateMethodIsEnabled(payment_method, enabledMethods);
 
       // Calculate Final Amount using precise decimal calculation
       const final_amount = calculateDiscount(
@@ -407,6 +447,13 @@ export class PaymentsService {
 
       if (order.status === OrderStatus.PAID) {
         throw new BadRequestException('Bu sipariş zaten ödenmiş');
+      }
+
+      const enabledMethods = await this.getEnabledPaymentMethods(
+        order.restaurantId,
+      );
+      for (const payment of payments) {
+        this.validateMethodIsEnabled(payment.payment_method, enabledMethods);
       }
 
       // 2. Toplam ödenen miktarı hesapla

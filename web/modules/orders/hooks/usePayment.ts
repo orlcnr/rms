@@ -134,12 +134,8 @@ export function usePayment({
     if (!discount) return serverOrderTotal || orderTotal;
 
     let total = serverOrderTotal || orderTotal;
-    if (discount.type === DiscountType.DISCOUNT) {
-      // İskonto: doğrudan tutardan düş
-      total = total - discount.amount;
-    }
-    // İkram (complimentary) de aynı şekilde hesaplanır, 
-    // ama raporlamada ayrı gösterilir
+    // İskonto ve ikram, ödeme toplamından düşer.
+    total = total - discount.amount;
 
     return Math.max(0, total);
   }, [orderTotal, discount, serverOrderTotal]);
@@ -163,26 +159,23 @@ export function usePayment({
    * Frontend validation: Tüm ödeme satırları için gerekli kontroller
    */
   const canCompletePayment = useMemo(() => {
-    // Temel kontrol: toplam ödeme yeterli mi?
-    if (!isPaymentComplete(finalTotal, payments)) {
+    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
+
+    if (nonZeroPayments.length === 0) {
       return false;
     }
 
-    // Her ödeme satırı için validation
-    for (const payment of payments) {
-      // Ödeme tutarı pozitif olmalı
-      if (payment.amount <= 0) {
-        return false;
-      }
+    // Temel kontrol: toplam ödeme yeterli mi?
+    if (!isPaymentComplete(finalTotal, nonZeroPayments)) {
+      return false;
+    }
 
+    // Yalnız gönderilecek (pozitif) ödeme satırları için validation
+    for (const payment of nonZeroPayments) {
       // Açık hesap için müşteri seçilmeli
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
         return false;
       }
-
-      // Nakit ödeme için para üstü hesaplanabilir (ama gerekli değil)
-      // Nakit ödeme için minimum alınan tutar kontrolü yapılmıyor
-      // (kullanıcı para üstü alabilir)
     }
 
     return true;
@@ -192,16 +185,18 @@ export function usePayment({
    * Ödeme validation hatası - Neden ödeme yapılamayacağını döner
    */
   const paymentValidationError = useMemo((): string | null => {
+    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
+
+    if (nonZeroPayments.length === 0) {
+      return 'En az bir ödeme yöntemi için tutar giriniz';
+    }
+
     // Ödenmemiş tutar var mı?
     if (remainingBalance > 0) {
       return `${formatPaymentAmount(remainingBalance)} ödenmemiş`;
     }
 
-    for (const payment of payments) {
-      if (payment.amount <= 0) {
-        return 'Ödeme tutarı 0\'dan büyük olmalı';
-      }
-
+    for (const payment of nonZeroPayments) {
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
         return 'Açık hesap için müşteri seçmelisiniz';
       }
@@ -225,6 +220,12 @@ export function usePayment({
    * Yeni ödeme satırı ekle
    */
   const addPaymentLine = useCallback((method: PaymentMethod) => {
+    const existingIndex = payments.findIndex((payment) => payment.method === method);
+    if (existingIndex >= 0) {
+      setActivePaymentIndex(existingIndex);
+      return;
+    }
+
     const newLine: PaymentLine = {
       id: crypto.randomUUID(),
       method,
@@ -235,7 +236,7 @@ export function usePayment({
 
     setPayments(prev => [...prev, newLine]);
     setActivePaymentIndex(payments.length);
-  }, [payments.length]);
+  }, [payments]);
 
   /**
    * Ödeme satırını güncelle
@@ -355,15 +356,7 @@ export function usePayment({
 
     const amount = numericPadValue.cents / 100;
 
-    if (activePayment.method === PaymentMethod.CASH) {
-      // Nakit için: hem amount hem cashReceived aynı (veya fazla olabilir)
-      updatePaymentLine(activePayment.id, {
-        amount,
-        cashReceived: amount, // Şimdilik eşit, UI'da ayarlanabilir
-      });
-    } else {
-      updatePaymentLine(activePayment.id, { amount });
-    }
+    updatePaymentLine(activePayment.id, { amount });
 
     clearNumericPad();
   }, [activePaymentIndex, payments, numericPadValue, updatePaymentLine, clearNumericPad]);
@@ -389,13 +382,18 @@ export function usePayment({
     setError(null);
 
     const txId = crypto.randomUUID();
+    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
 
     try {
+      if (nonZeroPayments.length !== payments.length) {
+        setPayments(nonZeroPayments);
+      }
+
       // API isteği için formatla
       const requestData = {
         order_id: orderId,
         transaction_id: txId,
-        payments: payments.map(p => ({
+        payments: nonZeroPayments.map(p => ({
           amount: p.amount,
           payment_method: p.method,
           customer_id: p.customerId || undefined,
@@ -403,9 +401,9 @@ export function usePayment({
           tip_amount: p.tipAmount,
           commission_rate: p.commissionRate,
         })),
-        ...(discount && discount.type && { discount_type: discount.type }),
-        ...(discount && discount.amount && { discount_amount: discount.amount }),
-        ...(discount && discount.reason && { discount_reason: discount.reason }),
+        ...(discount ? { discount_type: discount.type } : {}),
+        ...(discount ? { discount_amount: discount.amount } : {}),
+        ...(discount?.reason ? { discount_reason: discount.reason } : {}),
       };
 
       // Suppression listesine ekle
@@ -440,7 +438,7 @@ export function usePayment({
           module: 'payment',
           endpoint: '/payments/split',
           method: 'POST',
-          payload: { order_id: orderId, payments, discount }
+          payload: { order_id: orderId, payments: nonZeroPayments, discount }
         });
       }
 
@@ -454,10 +452,6 @@ export function usePayment({
     orderId,
     payments,
     discount,
-    finalTotal,
-    restaurantId,
-    isConnected,
-    emit,
     onSuccess,
     onError,
     clearPayments,

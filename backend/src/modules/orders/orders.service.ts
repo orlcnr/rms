@@ -303,8 +303,12 @@ export class OrdersService {
       }
     }
 
-    const updatedOrder = await this.ordersRepository.save(order);
-    const finalOrder = await this.findOne(updatedOrder.id);
+    // IMPORTANT:
+    // Order entity has items relation with cascade enabled. Saving the loaded
+    // order entity can accidentally re-persist stale item snapshots and revert
+    // freshly updated item statuses. Update only the order status column.
+    await this.ordersRepository.update(order.id, { status: order.status });
+    const finalOrder = await this.findOne(order.id);
 
     // Eğer sipariş ödendi veya iptal edildiyse, masa durumunu kontrol et
     if (
@@ -583,9 +587,18 @@ export class OrdersService {
       const protectedItems = existingItems.filter((existingItem) =>
         this._isProtectedItemStatus(existingItem.status),
       );
+      const protectedQtyByMenuId = new Map<string, number>();
       const mutableItems = existingItems.filter(
         (existingItem) => !this._isProtectedItemStatus(existingItem.status),
       );
+
+      protectedItems.forEach((existingItem) => {
+        const currentQty = protectedQtyByMenuId.get(existingItem.menuItemId) ?? 0;
+        protectedQtyByMenuId.set(
+          existingItem.menuItemId,
+          currentQty + Number(existingItem.quantity || 0),
+        );
+      });
 
       mutableItems.forEach((existingItem) => {
         const current = mutableItemsByMenuId.get(existingItem.menuItemId) ?? [];
@@ -600,7 +613,8 @@ export class OrdersService {
       for (const [menuItemId, requestedQty] of requestedQuantities.entries()) {
         handledMenuIds.add(menuItemId);
         const pool = mutableItemsByMenuId.get(menuItemId) ?? [];
-        let remainingRequestedQty = requestedQty;
+        const protectedQty = protectedQtyByMenuId.get(menuItemId) ?? 0;
+        let remainingRequestedQty = Math.max(0, requestedQty - protectedQty);
 
         for (const existingItem of pool) {
           if (remainingRequestedQty <= 0) {
@@ -753,6 +767,7 @@ export class OrdersService {
   ): boolean {
     // Immutable terminal item states must never be rewritten.
     if (
+      itemStatus === OrderStatus.SERVED ||
       itemStatus === OrderStatus.DELIVERED ||
       itemStatus === OrderStatus.PAID ||
       itemStatus === OrderStatus.CANCELLED
@@ -781,8 +796,7 @@ export class OrdersService {
       return (
         itemStatus === OrderStatus.PENDING ||
         itemStatus === OrderStatus.PREPARING ||
-        itemStatus === OrderStatus.READY ||
-        itemStatus === OrderStatus.SERVED
+        itemStatus === OrderStatus.READY
       );
     }
 

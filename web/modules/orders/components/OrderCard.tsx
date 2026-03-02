@@ -14,6 +14,7 @@ import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LAB
 import { getNow, formatTime, parseISO } from '@/modules/shared/utils/date'
 import { ChevronDown, ChevronUp, Layers, AlertCircle, Maximize2 } from 'lucide-react'
 import { cn } from '@/modules/shared/utils/cn'
+import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
 
 interface OrderCardProps {
   orderGroup: OrderGroup
@@ -76,6 +77,18 @@ export function OrderCard({
 
   // New Wave Badge - if activeWaveTime is less than 2 minutes ago
   const isVeryNew = timeElapsed < 2
+  const activeWaveItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
+    [orderGroup.activeWaveItems],
+  )
+  const previousItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.previousItems),
+    [orderGroup.previousItems],
+  )
+  const servedItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.servedItems),
+    [orderGroup.servedItems],
+  )
 
   if (isCompact) {
     return (
@@ -186,14 +199,14 @@ export function OrderCard({
 
       <div className="p-3">
         {/* AKTİF DALGA (Yeni Gelenler - Son Sipariş) */}
-        {orderGroup.activeWaveItems.length > 0 && (
+        {activeWaveItems.length > 0 && (
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-1.5 w-1.5 rounded-full bg-primary-main animate-pulse" />
               <span className="text-[10px] font-bold text-text-primary uppercase tracking-wider">Son İstek (Masadan Yeni)</span>
             </div>
             <div className="space-y-1.5">
-              {orderGroup.activeWaveItems.map((item, idx) => (
+              {activeWaveItems.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center text-xs font-semibold bg-primary-main/5 p-1.5 rounded border border-primary-main/10">
                   <span className="text-text-primary">
                     <span className="text-primary-main mr-1.5 font-black">{item.quantity}x</span>
@@ -207,13 +220,13 @@ export function OrderCard({
         )}
 
         {/* ÖNCEKİ İSTEKLER (Masadaki Diğer Bekleyenler) */}
-        {orderGroup.previousItems.length > 0 && (
+        {previousItems.length > 0 && (
           <div className="mb-3 pt-3 border-t border-gray-50">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-black text-text-muted uppercase tracking-wider px-1">Önceki İstekler</span>
             </div>
             <div className="space-y-1">
-              {orderGroup.previousItems.map((item, idx) => {
+              {previousItems.map((item, idx) => {
                 const isServed =
                   item.status === OrderStatus.SERVED ||
                   item.status === OrderStatus.DELIVERED ||
@@ -240,7 +253,7 @@ export function OrderCard({
         )}
 
         {/* SERVİS EDİLENLER (Arşiv - 30dk Geçenler) */}
-        {orderGroup.servedItems.length > 0 && (
+        {servedItems.length > 0 && (
           <div className="mt-4 pt-3 border-t border-dashed border-border-light">
             <button
               onClick={(e) => {
@@ -251,14 +264,14 @@ export function OrderCard({
             >
               <div className="flex items-center gap-2">
                 <Layers className="w-3 h-3" />
-                <span>Arşiv / Servis Bitenler ({orderGroup.servedItems.length})</span>
+                <span>Arşiv / Servis Bitenler ({servedItems.length})</span>
               </div>
               {isServedExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
 
             {isServedExpanded && (
               <div className="mt-2 space-y-1 opacity-40">
-                {orderGroup.servedItems.map((item, idx) => (
+                {servedItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-[10px] px-1 line-through text-text-muted italic">
                     <span>{item.quantity}x {item.menuItem?.name}</span>
                     <span>{formatTime(item.created_at)}</span>

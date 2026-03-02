@@ -74,6 +74,25 @@ export function OrdersBoardClient({
     void fetchArchiveOrders(true)
   }, [fetchArchiveOrders, isArchiveOpen])
 
+  // Ensure fresh board state when entering page from sidebar/history
+  // and when tab regains focus (covers missed socket events while page was closed).
+  useEffect(() => {
+    void refetch(false)
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refetch(false)
+      }
+    }
+
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+    }
+  }, [refetch])
+
   // Socket connection with sound enabled
   const handleOrderCreated = useCallback((order: Parameters<NonNullable<Parameters<typeof useOrdersSocket>[1]['onOrderCreated']>>[0]) => {
     if (order && order.type && order.type !== OrderType.DINE_IN) return

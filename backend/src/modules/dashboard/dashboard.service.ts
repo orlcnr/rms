@@ -85,12 +85,12 @@ export class DashboardService {
       ),
       sales AS (
         SELECT
-          (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date AS day,
+          (o.created_at AT TIME ZONE 'Europe/Istanbul')::date AS day,
           COALESCE(SUM(o.total_amount), 0) AS amount
         FROM business.orders o
         WHERE o.restaurant_id = $1
           AND o.status::text = 'paid'
-          AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date >=
+          AND (o.created_at AT TIME ZONE 'Europe/Istanbul')::date >=
               ((NOW() AT TIME ZONE 'Europe/Istanbul')::date - ($2::int - 1))
         GROUP BY 1
       )
@@ -150,14 +150,14 @@ export class DashboardService {
       SELECT
         SUM(
           CASE
-            WHEN (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date =
+            WHEN (p.created_at AT TIME ZONE 'Europe/Istanbul')::date =
                  (NOW() AT TIME ZONE 'Europe/Istanbul')::date
             THEN COALESCE(p.final_amount, p.amount, 0) ELSE 0
           END
         )::float AS today_amount,
         SUM(
           CASE
-            WHEN (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date =
+            WHEN (p.created_at AT TIME ZONE 'Europe/Istanbul')::date =
                  ((NOW() AT TIME ZONE 'Europe/Istanbul')::date - INTERVAL '1 day')
             THEN COALESCE(p.final_amount, p.amount, 0) ELSE 0
           END
@@ -165,7 +165,7 @@ export class DashboardService {
       FROM operations.payments p
       WHERE p.restaurant_id = $1
         AND p.status::text = 'completed'
-        AND (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date >=
+        AND (p.created_at AT TIME ZONE 'Europe/Istanbul')::date >=
             ((NOW() AT TIME ZONE 'Europe/Istanbul')::date - INTERVAL '1 day')
       `,
       [restaurantId],
@@ -262,12 +262,12 @@ export class DashboardService {
           p.order_id,
           p.payment_method,
           COALESCE(p.final_amount, p.amount, 0)::numeric AS amount,
-          (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul') AS local_ts
+          (p.created_at AT TIME ZONE 'Europe/Istanbul') AS local_ts
         FROM operations.payments p
         CROSS JOIN params pa
         WHERE p.restaurant_id = $1
           AND p.status::text = 'completed'
-          AND (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')::date = pa.target_date
+          AND (p.created_at AT TIME ZONE 'Europe/Istanbul')::date = pa.target_date
       ),
       paid_orders_count AS (
         SELECT COUNT(DISTINCT order_id)::int AS closed_paid_orders_today

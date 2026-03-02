@@ -5,6 +5,7 @@
 
 'use client'
 
+import { useMemo } from 'react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import {
@@ -17,6 +18,7 @@ import {
 import { Modal } from '@/modules/shared/components/Modal'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS } from '../types'
 import { cn } from '@/modules/shared/utils/cn'
+import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
 
 interface OrderZoomModalProps {
   isOpen: boolean
@@ -51,6 +53,18 @@ export function OrderZoomModal({
     orderGroup.status === OrderStatus.CANCELLED
   const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
   const hasTable = Boolean(latestOrder?.tableId)
+  const activeWaveItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
+    [orderGroup.activeWaveItems],
+  )
+  const previousItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.previousItems),
+    [orderGroup.previousItems],
+  )
+  const servedItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.servedItems),
+    [orderGroup.servedItems],
+  )
 
   return (
     <Modal
@@ -152,14 +166,14 @@ export function OrderZoomModal({
         {/* Grouped Items Content */}
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-8">
           {/* AKTİF DALGA */}
-          {orderGroup.activeWaveItems.length > 0 && (
+          {activeWaveItems.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-3 w-3 rounded-full bg-primary-main animate-pulse" />
                 <h3 className="text-sm font-black text-text-primary uppercase tracking-widest">SON GELEN İSTEKLER</h3>
               </div>
               <div className="grid grid-cols-1 gap-2">
-                {orderGroup.activeWaveItems.map((item, idx) => (
+                {activeWaveItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center bg-primary-main/5 p-4 rounded-sm border border-primary-main/20 hover:bg-primary-main/10 transition-colors">
                     <div className="flex flex-col">
                       <span className="text-base font-black text-text-primary">
@@ -179,13 +193,13 @@ export function OrderZoomModal({
           )}
 
           {/* ÖNCEKİ İSTEKLER */}
-          {orderGroup.previousItems.length > 0 && (
+          {previousItems.length > 0 && (
             <div className="pt-6 border-t border-border-light">
               <div className="flex items-center gap-2 mb-4">
                 <h3 className="text-sm font-black text-text-muted uppercase tracking-widest">ÖNCEKİ İSTEKLER</h3>
               </div>
               <div className="grid grid-cols-1 gap-2">
-                {orderGroup.previousItems.map((item, idx) => {
+                {previousItems.map((item, idx) => {
                   const isServed =
                     item.status === OrderStatus.SERVED ||
                     item.status === OrderStatus.DELIVERED ||
@@ -223,13 +237,13 @@ export function OrderZoomModal({
           )}
 
           {/* ARŞİV */}
-          {orderGroup.servedItems.length > 0 && (
+          {servedItems.length > 0 && (
             <div className="pt-6 border-t border-border-light">
               <div className="flex items-center gap-2 mb-4 opacity-50">
                 <h3 className="text-sm font-black text-text-muted uppercase tracking-widest">ARŞİV / BİTENLER</h3>
               </div>
               <div className="grid grid-cols-1 gap-2 grayscale opacity-40">
-                {orderGroup.servedItems.map((item, idx) => (
+                {servedItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center p-3 rounded-sm border border-dashed border-border-light bg-bg-app">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-text-primary line-through italic">

@@ -1,7 +1,7 @@
 'use client';
 
 import { http } from '@/modules/shared/api/http';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   X,
@@ -24,6 +24,7 @@ import { NewCustomerModal } from './NewCustomerModal';
 import { PaymentLineItem } from './PaymentLineItem';
 import { MobilePaymentSheet } from './MobilePaymentSheet';
 import { DiscountDialog } from './DiscountDialog';
+import { ChangeConfirmationDialog } from './ChangeConfirmationDialog';
 import { Customer } from '@/modules/customers/services/customers.service';
 
 interface PaymentModalProps {
@@ -109,7 +110,7 @@ export function PaymentModal({
 
   const { handleAddNewCustomer, isCreatingCustomer } = customerHook;
 
-  const [showChangeConfirm, setShowChangeConfirm] = useState(false);
+  const [isPaymentConfirmOpen, setIsPaymentConfirmOpen] = useState(false);
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
   const [newCustomerInitialName, setNewCustomerInitialName] = useState<string>('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -197,13 +198,18 @@ export function PaymentModal({
     }
   };
 
-  const handleComplete = async () => {
-    if (hook.totalChange > 0 && !showChangeConfirm) {
-      setShowChangeConfirm(true);
-      return;
-    }
-    setShowChangeConfirm(false);
-    await hook.completePayment();
+  const totalTipAmount = useMemo(
+    () =>
+      hook.payments.reduce(
+        (sum, payment) => sum + Number(payment.tipAmount || 0),
+        0,
+      ),
+    [hook.payments],
+  );
+  const netCollectedAmount = Number(hook.totalPaid) - Number(totalTipAmount);
+
+  const handleComplete = () => {
+    setIsPaymentConfirmOpen(true);
   };
 
   const handleOpenNewCustomerModal = (initialName?: string) => {
@@ -263,6 +269,7 @@ export function PaymentModal({
                 remainingBalance={hook.remainingBalance}
                 discount={hook.discount?.amount}
                 isComplete={hook.canCompletePayment}
+                collectedWithTips={netCollectedAmount}
               />
             </div>
 
@@ -309,12 +316,8 @@ export function PaymentModal({
                           payment={payment}
                           isActive={hook.activePaymentIndex === index}
                           onActivate={() => hook.setActivePaymentIndex(index)}
-                          onUpdate={(updates) => hook.updatePaymentLine(payment.id, updates)}
                           onRemove={() => hook.removePaymentLine(payment.id)}
-                          restaurantId={restaurantId}
                           disabled={hook.isSyncing}
-                          onAddNewCustomer={handleAddNewCustomer}
-                          isCreatingCustomer={isCreatingCustomer}
                         />
                       ))
                     )}
@@ -392,6 +395,21 @@ export function PaymentModal({
         onConfirm={handleDiscountConfirm}
         orderTotal={hook.serverOrderTotal || orderTotal}
       />
+
+      {isPaymentConfirmOpen && (
+        <ChangeConfirmationDialog
+          netAmount={hook.finalTotal}
+          payments={hook.payments}
+          discount={hook.discount}
+          totalPaidAmount={hook.totalPaid}
+          totalTipAmount={totalTipAmount}
+          onCancel={() => setIsPaymentConfirmOpen(false)}
+          onConfirm={async () => {
+            setIsPaymentConfirmOpen(false);
+            await hook.completePayment();
+          }}
+        />
+      )}
     </>
   );
 }

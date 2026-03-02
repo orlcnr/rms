@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList } from 'lucide-react'
+import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList, Bell } from 'lucide-react'
 import { useUI } from '@/modules/shared/context/UIContext'
 import { cn } from '../utils/cn'
 import { usePathname } from 'next/navigation'
@@ -22,6 +22,7 @@ export function Sidebar() {
         { icon: Package, label: 'Stok ve Envanter', href: '/inventory' },
         { icon: Calendar, label: 'Rezervasyonlar', href: '/reservations' },
         { icon: Users, label: 'Müşteriler', href: '/customers' },
+        { icon: Bell, label: 'Bildirimler', href: '/notifications' },
         { icon: Settings, label: 'Sistem Ayarları', href: '/settings' },
     ]
 

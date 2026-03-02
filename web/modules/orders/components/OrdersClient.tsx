@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
@@ -10,6 +10,7 @@ import { PosProductGrid } from './PosProductGrid'
 import { PosBasket } from './PosBasket'
 import { MobileBasketDrawer } from './MobileBasketDrawer'
 import { PaymentModal } from './PaymentModal'
+import { OrderSubmitConfirmationDialog } from './OrderSubmitConfirmationDialog'
 import { Button } from '@/modules/shared/components/Button'
 import { MenuItem } from '@/modules/products/types'
 import { Table } from '@/modules/tables/types'
@@ -39,6 +40,7 @@ export function OrdersClient({
   paginationMeta,
 }: OrdersClientProps) {
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const [isOrderConfirmOpen, setIsOrderConfirmOpen] = useState(false)
   const [localExistingOrder, setLocalExistingOrder] = useState<Order | null>(existingOrder || null)
   const router = useRouter()
   const { isConnected } = useSocketStore()
@@ -57,12 +59,45 @@ export function OrdersClient({
   })
 
   // Wrapper for handleSubmitOrder to update local state
-  const handleOrderSubmit = async () => {
+  const handleOrderSubmit = () => {
+    setIsOrderConfirmOpen(true)
+  }
+
+  const handleConfirmOrderSubmit = async () => {
     const result = await hook.handleSubmitOrder(localExistingOrder)
     if (result) {
       setLocalExistingOrder(result)
+      setIsOrderConfirmOpen(false)
     }
   }
+
+  const confirmItems = useMemo(() => {
+    if (!localExistingOrder) {
+      return hook.basket
+    }
+
+    const existingQtyByMenuItem = new Map<string, number>()
+    localExistingOrder.items.forEach((item) => {
+      const key = item.menuItemId || item.menuItem?.id
+      if (!key) return
+      existingQtyByMenuItem.set(
+        key,
+        (existingQtyByMenuItem.get(key) || 0) + Number(item.quantity || 0),
+      )
+    })
+
+    return hook.basket
+      .map((basketItem) => {
+        const existingQty = existingQtyByMenuItem.get(basketItem.menuItemId) || 0
+        const deltaQty = Number(basketItem.quantity || 0) - existingQty
+        if (deltaQty <= 0) return null
+        return {
+          ...basketItem,
+          quantity: deltaQty,
+        }
+      })
+      .filter((item): item is (typeof hook.basket)[number] => item !== null)
+  }, [hook.basket, localExistingOrder])
 
   if (!hook.mounted) return null
 
@@ -185,6 +220,16 @@ export function OrdersClient({
           hook.clearBasket()
           setLocalExistingOrder(null)
         }}
+      />
+
+      <OrderSubmitConfirmationDialog
+        isOpen={isOrderConfirmOpen}
+        isLoading={hook.isSubmitting}
+        isUpdate={Boolean(localExistingOrder)}
+        tableName={hook.selectedTable?.name}
+        items={confirmItems}
+        onCancel={() => setIsOrderConfirmOpen(false)}
+        onConfirm={handleConfirmOrderSubmit}
       />
     </div>
   )

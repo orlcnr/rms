@@ -5,11 +5,13 @@
 
 'use client'
 
+import { useMemo } from 'react'
 import { X, Clock, User, FileText, Printer, CreditCard } from 'lucide-react'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LABELS } from '../types'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { formatDateTime } from '@/modules/shared/utils/date'
 import { cn } from '@/modules/shared/utils/cn'
+import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
 
 interface OrderDetailDrawerProps {
   isOpen: boolean
@@ -33,6 +35,18 @@ export function OrderDetailDrawer({
   const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
   const order = latestOrder
   const hasTable = Boolean(order.tableId)
+  const activeWaveItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
+    [orderGroup.activeWaveItems],
+  )
+  const previousItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.previousItems),
+    [orderGroup.previousItems],
+  )
+  const servedItems = useMemo(
+    () => aggregateOrderItemsForDisplay(orderGroup.servedItems),
+    [orderGroup.servedItems],
+  )
 
   return (
     <>
@@ -150,14 +164,14 @@ export function OrderDetailDrawer({
           {/* Grouped Items (Matching Card grouping) */}
           <div className="space-y-6">
             {/* AKTİF DALGA */}
-            {orderGroup.activeWaveItems.length > 0 && (
+            {activeWaveItems.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="h-2 w-2 rounded-full bg-primary-main animate-pulse" />
                   <h3 className="text-xs font-black text-text-primary uppercase tracking-widest">Son İstekler (Aktif)</h3>
                 </div>
                 <div className="space-y-2">
-                  {orderGroup.activeWaveItems.map((item, idx) => (
+                  {activeWaveItems.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-center bg-primary-main/5 p-3 rounded-sm border border-primary-main/10 transition-all hover:bg-primary-main/10">
                       <div className="flex flex-col">
                         <span className="text-sm font-black text-text-primary">
@@ -177,13 +191,13 @@ export function OrderDetailDrawer({
             )}
 
             {/* ÖNCEKİ İSTEKLER */}
-            {orderGroup.previousItems.length > 0 && (
+            {previousItems.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3 border-t border-gray-100 pt-4">
                   <h3 className="text-xs font-black text-text-muted uppercase tracking-widest">Önceki İstekler</h3>
                 </div>
                 <div className="space-y-2">
-                  {orderGroup.previousItems.map((item, idx) => {
+                  {previousItems.map((item, idx) => {
                     const isServed =
                       item.status === OrderStatus.SERVED ||
                       item.status === OrderStatus.DELIVERED ||
@@ -221,13 +235,13 @@ export function OrderDetailDrawer({
             )}
 
             {/* ARŞİVLENMİŞ / SERVİS BİTENLER */}
-            {orderGroup.servedItems.length > 0 && (
+            {servedItems.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3 border-t border-gray-100 pt-4">
                   <h3 className="text-xs font-black text-text-muted uppercase tracking-widest opacity-60">Arşiv / Bitenler</h3>
                 </div>
                 <div className="space-y-2 opacity-50 grayscale">
-                  {orderGroup.servedItems.map((item, idx) => (
+                  {servedItems.map((item, idx) => (
                     <div key={idx} className="flex justify-between items-center p-3 rounded-sm border border-dashed border-border-light bg-bg-muted/30">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-text-muted line-through">

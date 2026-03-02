@@ -3,6 +3,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { NotificationsGateway } from './notifications.gateway';
+import { GetNotificationsDto } from './dto/get-notifications.dto';
+
+export interface PaginationMeta {
+  totalItems: number;
+  itemCount: number;
+  itemsPerPage: number;
+  totalPages: number;
+  currentPage: number;
+}
+
+export interface PaginatedNotifications {
+  items: Notification[];
+  meta: PaginationMeta;
+}
 
 export interface CreateNotificationDto {
   restaurantId: string;
@@ -38,26 +52,64 @@ export class NotificationsService {
     return savedNotification;
   }
 
-  async findAll(user: any): Promise<Notification[]> {
-    const restaurantId = user.restaurantId;
+  async findAll(
+    user: any,
+    query: GetNotificationsDto = {},
+  ): Promise<PaginatedNotifications> {
+    const restaurantId = user.restaurantId || user.restaurant_id;
     if (!restaurantId && user.role !== 'super_admin') {
-      return [];
+      return {
+        items: [],
+        meta: {
+          totalItems: 0,
+          itemCount: 0,
+          itemsPerPage: query.limit || 20,
+          totalPages: 0,
+          currentPage: query.page || 1,
+        },
+      };
     }
 
-    const where: any = {};
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+
+    const qb = this.notificationRepository.createQueryBuilder('notification');
+
     if (user.role !== 'super_admin') {
-      where.restaurantId = restaurantId;
+      qb.andWhere('notification.restaurantId = :restaurantId', {
+        restaurantId,
+      });
     }
 
-    return this.notificationRepository.find({
-      where,
-      order: { created_at: 'DESC' },
-      take: 50, // Limit to recent 50
-    });
+    if (query.type) {
+      qb.andWhere('notification.type = :type', { type: query.type });
+    }
+
+    if (query.isRead !== undefined) {
+      qb.andWhere('notification.isRead = :isRead', { isRead: query.isRead });
+    }
+
+    qb.orderBy('notification.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [items, totalItems] = await qb.getManyAndCount();
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return {
+      items,
+      meta: {
+        totalItems,
+        itemCount: items.length,
+        itemsPerPage: limit,
+        totalPages,
+        currentPage: page,
+      },
+    };
   }
 
   async getUnreadCount(user: any): Promise<number> {
-    const restaurantId = user.restaurantId;
+    const restaurantId = user.restaurantId || user.restaurant_id;
     if (!restaurantId && user.role !== 'super_admin') {
       return 0;
     }
@@ -82,7 +134,7 @@ export class NotificationsService {
     // Security check: ensure notification belongs to user's restaurant
     if (
       user.role !== 'super_admin' &&
-      notification.restaurantId !== user.restaurantId
+      notification.restaurantId !== (user.restaurantId || user.restaurant_id)
     ) {
       throw new NotFoundException('Notification not found');
     }
@@ -92,7 +144,7 @@ export class NotificationsService {
   }
 
   async markAllAsRead(user: any): Promise<void> {
-    const restaurantId = user.restaurantId;
+    const restaurantId = user.restaurantId || user.restaurant_id;
     if (!restaurantId && user.role !== 'super_admin') return;
 
     const where: any = { isRead: false };

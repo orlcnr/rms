@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calculator, Wallet, ArrowDown } from 'lucide-react';
-import { PaymentMethod, PaymentLine, formatPaymentAmount } from '../types';
+import { Calculator, Wallet } from 'lucide-react';
+import { PaymentMethod, PaymentLine } from '../types';
 import { CustomerSelector } from './CustomerSelector';
 import { Customer } from '@/modules/customers/services/customers.service';
 
@@ -46,18 +46,11 @@ function CashPaymentForm({
   disabled: boolean;
 }) {
   const [localAmount, setLocalAmount] = useState(payment.amount.toString());
-  const [cashReceived, setCashReceived] = useState(
-    (payment.cashReceived || 0).toString()
-  );
 
   // Payment değiştiğinde local state güncelle
   useEffect(() => {
     setLocalAmount(payment.amount.toString());
   }, [payment.amount]);
-
-  useEffect(() => {
-    setCashReceived((payment.cashReceived || 0).toString());
-  }, [payment.cashReceived]);
 
   const handleAmountChange = (value: string) => {
     setLocalAmount(value);
@@ -65,18 +58,8 @@ function CashPaymentForm({
     onUpdate({ amount: num });
   };
 
-  const handleCashReceivedChange = (value: string) => {
-    setCashReceived(value);
-    const num = parseFloat(value.replace(',', '.')) || 0;
-    onUpdate({ cashReceived: num });
-  };
-
-  const amount = parseFloat(localAmount.replace(',', '.')) || 0;
-  const received = parseFloat(cashReceived.replace(',', '.')) || 0;
-  const change = received > amount ? received - amount : 0;
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Tutar Girişi */}
       <div>
         <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
@@ -95,74 +78,9 @@ function CashPaymentForm({
           <span className="text-lg font-semibold text-text-muted">TL</span>
         </div>
       </div>
-
-      {/* Alınan Tutar */}
-      <div>
-        <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
-          Alınan Tutar
-        </label>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={cashReceived}
-            onChange={(e) => handleCashReceivedChange(e.target.value)}
-            disabled={disabled}
-            className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
-              focus:outline-none focus:border-primary-main"
-            placeholder="0,00"
-          />
-          <span className="text-lg font-semibold text-text-muted">TL</span>
-        </div>
-      </div>
-
-      {/* PARA ÜSTÜ - Büyük Yeşil Kutu */}
-      {change > 0 && (
-        <div className="p-4 bg-success-main/10 border border-success-main/30 rounded-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ArrowDown className="h-5 w-5 text-success-main" />
-              <span className="text-sm font-semibold text-success-main">
-                Para Üstü
-              </span>
-            </div>
-            <span className="text-2xl font-black text-success-main">
-              ₺{formatPaymentAmount(change)}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Kısayol Butonları */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => handleCashReceivedChange((amount * 1).toString().replace('.', ','))}
-          disabled={disabled}
-          className="flex-1 py-2 text-xs font-medium bg-bg-muted hover:bg-bg-hover rounded-sm transition-colors"
-        >
-          Tam Tutar
-        </button>
-        <button
-          onClick={() => handleCashReceivedChange((amount + 10).toString().replace('.', ','))}
-          disabled={disabled}
-          className="flex-1 py-2 text-xs font-medium bg-bg-muted hover:bg-bg-hover rounded-sm transition-colors"
-        >
-          +10 TL
-        </button>
-        <button
-          onClick={() => handleCashReceivedChange((amount + 20).toString().replace('.', ','))}
-          disabled={disabled}
-          className="flex-1 py-2 text-xs font-medium bg-bg-muted hover:bg-bg-hover rounded-sm transition-colors"
-        >
-          +20 TL
-        </button>
-        <button
-          onClick={() => handleCashReceivedChange((amount + 50).toString().replace('.', ','))}
-          disabled={disabled}
-          className="flex-1 py-2 text-xs font-medium bg-bg-muted hover:bg-bg-hover rounded-sm transition-colors"
-        >
-          +50 TL
-        </button>
-      </div>
+      <p className="text-[11px] text-text-muted">
+        Nakit için sadece ödeme tutarı girilir.
+      </p>
     </div>
   );
 }

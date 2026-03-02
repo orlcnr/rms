@@ -3,34 +3,38 @@ import {
   Get,
   Patch,
   Param,
-  UseGuards,
-  Request,
+  Query,
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { GetUser } from '../../common/decorators/get-user.decorator';
+import { User } from '../users/entities/user.entity';
+import { GetNotificationsDto } from './dto/get-notifications.dto';
 
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  async findAll(@Request() req) {
-    return this.notificationsService.findAll(req.user);
+  async findAll(
+    @Query() query: GetNotificationsDto,
+    @GetUser() user: User,
+  ) {
+    return this.notificationsService.findAll(user, query);
   }
 
   @Get('unread-count')
-  async getUnreadCount(@Request() req) {
-    return { count: await this.notificationsService.getUnreadCount(req.user) };
+  async getUnreadCount(@GetUser() user: User) {
+    return { count: await this.notificationsService.getUnreadCount(user) };
   }
 
   @Patch(':id/read')
-  async markAsRead(@Param('id') id: string, @Request() req) {
-    return this.notificationsService.markAsRead(id, req.user);
+  async markAsRead(@Param('id') id: string, @GetUser() user: User) {
+    return this.notificationsService.markAsRead(id, user);
   }
 
   @Patch('read-all')
-  async markAllAsRead(@Request() req) {
-    await this.notificationsService.markAllAsRead(req.user);
+  async markAllAsRead(@GetUser() user: User) {
+    await this.notificationsService.markAllAsRead(user);
     return { success: true };
   }
 }

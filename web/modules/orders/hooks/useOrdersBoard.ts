@@ -50,10 +50,16 @@ function getIstanbulTodayKey(date: Date): string {
 function filterOrdersByIstanbulToday(orders: Order[]): Order[] {
   const todayKey = getIstanbulTodayKey(getNow())
   return orders.filter((order) => {
-    const rawCreatedAt =
-      (order as unknown as { created_at?: string }).created_at || order.createdAt
-    if (!rawCreatedAt) return false
-    const key = getIstanbulTodayKey(new Date(ensureISO(rawCreatedAt)))
+    // Archive list should reflect "closed today", not "created today".
+    // Closed orders are updated when status becomes paid/cancelled, so we use
+    // updated_at as primary timestamp and fallback to created_at.
+    const rawClosedAt =
+      (order as unknown as { updated_at?: string }).updated_at ||
+      order.updatedAt ||
+      (order as unknown as { created_at?: string }).created_at ||
+      order.createdAt
+    if (!rawClosedAt) return false
+    const key = getIstanbulTodayKey(new Date(ensureISO(rawClosedAt)))
     return key === todayKey
   })
 }
@@ -72,6 +78,7 @@ function getOrderVersionTime(order: Order | null | undefined): number {
 
 function shouldUpdateItemForTransition(itemStatus: OrderStatus, targetOrderStatus: OrderStatus): boolean {
   if (
+    itemStatus === OrderStatus.SERVED ||
     itemStatus === OrderStatus.DELIVERED ||
     itemStatus === OrderStatus.PAID ||
     itemStatus === OrderStatus.CANCELLED
@@ -99,8 +106,7 @@ function shouldUpdateItemForTransition(itemStatus: OrderStatus, targetOrderStatu
     return (
       itemStatus === OrderStatus.PENDING ||
       itemStatus === OrderStatus.PREPARING ||
-      itemStatus === OrderStatus.READY ||
-      itemStatus === OrderStatus.SERVED
+      itemStatus === OrderStatus.READY
     )
   }
 
@@ -310,8 +316,8 @@ export function useOrdersBoard({
   }, [allOrders, filters])
 
   // Siparişleri yeniden fetch et
-  const refetch = useCallback(async () => {
-    setIsLoading(true)
+  const refetch = useCallback(async (withLoader = true) => {
+    if (withLoader) setIsLoading(true)
     try {
       try { revalidateTag(ORDERS_CACHE_TAGS.BOARD) } catch (e) { }
 
@@ -328,7 +334,7 @@ export function useOrdersBoard({
     } catch (error) {
       console.error('Refetch failed:', error)
     } finally {
-      setIsLoading(false)
+      if (withLoader) setIsLoading(false)
     }
   }, [restaurantId])
 

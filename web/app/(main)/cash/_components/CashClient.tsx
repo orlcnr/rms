@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, Search, Wallet, TrendingUp, Banknote, History } from 'lucide-react'
 import { useCash } from '@/modules/cash/hooks/useCash'
 import {
@@ -174,6 +174,41 @@ export default function CashClient({
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const refreshCashData = useCallback(async () => {
+    try {
+      await fetchRegistersWithStatus()
+      const sessions = await fetchActiveSessions()
+      const sessionId = sessions?.[0]?.session?.id
+      if (sessionId) {
+        await fetchSessionSummary(sessionId)
+      }
+    } catch (error) {
+      // Silent refresh: do not interrupt user with toast noise.
+      console.error('[CashClient] Silent refresh failed:', error)
+    }
+  }, [fetchActiveSessions, fetchRegistersWithStatus, fetchSessionSummary])
+
+  // Ensure fresh data when entering cash page and when tab regains focus.
+  useEffect(() => {
+    if (!mounted) return
+
+    void refreshCashData()
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshCashData()
+      }
+    }
+
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+    }
+  }, [mounted, refreshCashData])
 
   const summaryDate = mounted ? format(getNow(), 'dd MMMM yyyy EEEE', { locale: tr }) : ''
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Plus, Search, Filter, Loader2, Package, ArrowRight, X, LayoutGrid, List } from 'lucide-react'
 import { Category, MenuItem, PaginatedResponse, CreateMenuItemInput, ProductFilters, StockStatus, SalesStatus, FILTER_OPTIONS } from '../types'
 import { CategoryTabs } from './CategoryTabs'
@@ -27,6 +27,8 @@ interface ProductsClientProps {
     initialProductsResponse: PaginatedResponse<MenuItem>
 }
 
+const PRODUCTS_PAGE_LIMIT = 12
+
 export function ProductsClient({ restaurantId, initialCategories, initialProductsResponse }: ProductsClientProps) {
     const { isConnected: socketConnected } = useSocketStore()
     const [mounted, setMounted] = useState(false)
@@ -51,6 +53,10 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
     const [page, setPage] = useState(1)
     const [hasMore, setHasMore] = useState(initialProductsResponse.meta.currentPage < initialProductsResponse.meta.totalPages)
     const [isLoading, setIsLoading] = useState(false)
+    const pageRef = useRef(1)
+    const hasMoreRef = useRef(initialProductsResponse.meta.currentPage < initialProductsResponse.meta.totalPages)
+    const isLoadingRef = useRef(false)
+    const requestIdRef = useRef(0)
 
     // Form States
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -79,14 +85,36 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
         fetchIngredients()
     }, [])
 
+    useEffect(() => {
+        pageRef.current = page
+    }, [page])
+
+    useEffect(() => {
+        hasMoreRef.current = hasMore
+    }, [hasMore])
+
+    useEffect(() => {
+        isLoadingRef.current = isLoading
+    }, [isLoading])
+
+    const hasAnyFilter = useMemo(() => {
+        return debouncedSearch !== ''
+            || activeCategoryId !== null
+            || filters.stockStatus !== 'all'
+            || filters.salesStatus !== 'all'
+            || filters.minPrice !== undefined
+            || filters.maxPrice !== undefined
+    }, [debouncedSearch, activeCategoryId, filters])
+
     // Reset list when filters change
     useEffect(() => {
         const refreshData = async () => {
+            const requestId = ++requestIdRef.current
             setIsLoading(true)
             try {
                 const response = await productsApi.getProducts(restaurantId, {
                     page: 1,
-                    limit: 12,
+                    limit: PRODUCTS_PAGE_LIMIT,
                     search: debouncedSearch,
                     categoryId: activeCategoryId || undefined,
                     // New filters
@@ -95,34 +123,44 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
                     minPrice: filters.minPrice,
                     maxPrice: filters.maxPrice,
                 })
+                if (requestId !== requestIdRef.current) return
                 setProducts(response.items)
                 setPage(1)
                 setHasMore(response.meta.currentPage < response.meta.totalPages)
+                pageRef.current = 1
+                hasMoreRef.current = response.meta.currentPage < response.meta.totalPages
             } catch (error) {
                 console.error('Failed to filter products:', error)
             } finally {
-                setIsLoading(false)
+                if (requestId === requestIdRef.current) {
+                    setIsLoading(false)
+                }
             }
         }
 
-        if (debouncedSearch !== '' || activeCategoryId !== null || filters.stockStatus !== 'all' || filters.salesStatus !== 'all' || filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+        if (hasAnyFilter) {
             refreshData()
         } else {
             setProducts(initialProductsResponse.items)
             setPage(1)
             setHasMore(initialProductsResponse.meta.currentPage < initialProductsResponse.meta.totalPages)
+            pageRef.current = 1
+            hasMoreRef.current = initialProductsResponse.meta.currentPage < initialProductsResponse.meta.totalPages
+            setIsLoading(false)
         }
-    }, [debouncedSearch, activeCategoryId, restaurantId, initialProductsResponse, filters])
+    }, [hasAnyFilter, debouncedSearch, activeCategoryId, restaurantId, initialProductsResponse, filters])
 
     const loadMore = useCallback(async () => {
-        if (isLoading || !hasMore) return
+        if (isLoadingRef.current || !hasMoreRef.current) return
 
+        const requestId = ++requestIdRef.current
+        isLoadingRef.current = true
         setIsLoading(true)
-        const nextPage = page + 1
+        const nextPage = pageRef.current + 1
         try {
             const response = await productsApi.getProducts(restaurantId, {
                 page: nextPage,
-                limit: 12,
+                limit: PRODUCTS_PAGE_LIMIT,
                 search: debouncedSearch,
                 categoryId: activeCategoryId || undefined,
                 stockStatus: filters.stockStatus !== 'all' ? filters.stockStatus : undefined,
@@ -130,16 +168,25 @@ export function ProductsClient({ restaurantId, initialCategories, initialProduct
                 minPrice: filters.minPrice,
                 maxPrice: filters.maxPrice,
             })
-
-            setProducts(prev => [...prev, ...response.items])
+            if (requestId !== requestIdRef.current) return
+            setProducts(prev => {
+                const existingIds = new Set(prev.map((item) => item.id))
+                const newItems = response.items.filter((item) => !existingIds.has(item.id))
+                return [...prev, ...newItems]
+            })
             setPage(nextPage)
             setHasMore(response.meta.currentPage < response.meta.totalPages)
+            pageRef.current = nextPage
+            hasMoreRef.current = response.meta.currentPage < response.meta.totalPages
         } catch (error) {
             console.error('Failed to load more products:', error)
         } finally {
-            setIsLoading(false)
+            if (requestId === requestIdRef.current) {
+                isLoadingRef.current = false
+                setIsLoading(false)
+            }
         }
-    }, [page, isLoading, hasMore, restaurantId, debouncedSearch, activeCategoryId, filters])
+    }, [restaurantId, debouncedSearch, activeCategoryId, filters])
 
     const observerTarget = useIntersectionObserver(loadMore, [loadMore])
 

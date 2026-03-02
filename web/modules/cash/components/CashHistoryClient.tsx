@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   SubHeaderSection,
@@ -18,6 +18,8 @@ import { cashApi } from '../services'
 import { Button } from '@/modules/shared/components/Button'
 import { History, Search } from 'lucide-react'
 import { FormInput } from '@/modules/shared/components/FormInput'
+import { DateTimePicker } from '@/modules/shared/components/DateTimePicker'
+import { toInputDateString } from '@/modules/shared/utils/date'
 
 interface CashHistoryClientProps {
   initialData: PaginatedResponse<CashSession> | CashSession[]
@@ -52,6 +54,28 @@ export function CashHistoryClient({
   const [isLoading, setIsLoading] = useState(false)
   const [filters, setFilters] = useState(initialFilters)
 
+  const normalizeDateFilter = (value?: string): string | undefined => {
+    if (!value) return undefined
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return undefined
+    return toInputDateString(parsed)
+  }
+
+  const toPickerValue = (value?: string): string => {
+    if (!value) return ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return new Date(`${value}T00:00:00`).toISOString()
+    }
+    return value
+  }
+
+  const normalizeFilters = (raw: CashSessionHistoryFilters): CashSessionHistoryFilters => ({
+    ...raw,
+    startDate: normalizeDateFilter(raw.startDate),
+    endDate: normalizeDateFilter(raw.endDate),
+  })
+
   const updateQueryParams = (newFilters: Partial<CashSessionHistoryFilters>) => {
     const params = new URLSearchParams(searchParams.toString())
 
@@ -66,8 +90,21 @@ export function CashHistoryClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
+  const fetchHistory = useCallback(async (nextFilters: CashSessionHistoryFilters) => {
+    setIsLoading(true)
+    try {
+      const response = await cashApi.getSessionHistory(nextFilters)
+      setData(response)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
   const handlePageChange = (page: number) => {
-    updateQueryParams({ page })
+    const nextFilters = normalizeFilters({ ...filters, page })
+    setFilters(nextFilters)
+    void fetchHistory(nextFilters)
+    updateQueryParams(nextFilters)
   }
 
   const handleFilterChange = (key: keyof CashSessionHistoryFilters, value: any) => {
@@ -77,8 +114,16 @@ export function CashHistoryClient({
   }
 
   const applyFilters = () => {
-    updateQueryParams(filters)
+    const normalized = normalizeFilters(filters)
+    setFilters(normalized)
+    void fetchHistory(normalized)
+    updateQueryParams(normalized)
   }
+
+  useEffect(() => {
+    setData(normalizedData)
+    setFilters(initialFilters)
+  }, [initialData, initialFilters])
 
   return (
     <div className="flex flex-col min-h-screen bg-bg-app">
@@ -111,25 +156,23 @@ export function CashHistoryClient({
               />
             </div>
             <div className="w-[200px]">
-              <FormInput
-                id="startDate"
-                name="startDate"
+              <DateTimePicker
+                id="startDatePicker"
                 label="BAŞLANGIÇ TARİHİ"
-                type="date"
-                placeholder="YYYY-MM-DD"
-                value={filters.startDate || ''}
+                showTime={false}
+                value={toPickerValue(filters.startDate)}
                 onChange={(val) => handleFilterChange('startDate', val)}
+                placeholder="Tarih seçin"
               />
             </div>
             <div className="w-[200px]">
-              <FormInput
-                id="endDate"
-                name="endDate"
+              <DateTimePicker
+                id="endDatePicker"
                 label="BİTİŞ TARİHİ"
-                type="date"
-                placeholder="YYYY-MM-DD"
-                value={filters.endDate || ''}
+                showTime={false}
+                value={toPickerValue(filters.endDate)}
                 onChange={(val) => handleFilterChange('endDate', val)}
+                placeholder="Tarih seçin"
               />
             </div>
             <Button

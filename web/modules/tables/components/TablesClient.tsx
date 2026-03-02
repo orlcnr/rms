@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Download, LayoutGrid, Loader2, RefreshCcw } from 'lucide-react'
 import { Area, Table, CreateAreaInput, CreateTableInput, TableQrData } from '../types'
@@ -53,6 +53,22 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     const [qrData, setQrData] = useState<TableQrData | null>(null)
     const [isLoadingQr, setIsLoadingQr] = useState(false)
 
+    const refreshData = useCallback(async (withLoader = true) => {
+        if (withLoader) setIsLoading(true)
+        try {
+            const [newAreas, newTables] = await Promise.all([
+                tablesApi.getAreas(restaurantId),
+                tablesApi.getTables(restaurantId)
+            ])
+            setAreas(newAreas)
+            setTables(newTables)
+        } catch (error) {
+            toast.error('Veriler güncellenirken hata oluştu')
+        } finally {
+            if (withLoader) setIsLoading(false)
+        }
+    }, [restaurantId])
+
     // Polling for operation mode - refresh data every 30 seconds
     useEffect(() => {
         if (isAdminMode) return // No polling in admin mode
@@ -84,6 +100,10 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     useEffect(() => {
         // Skip socket connection if not mounted yet
         if (!mounted) return
+
+        // Ensure freshest state when page is opened from menu/history.
+        // This covers missed updates while the page was not active.
+        void refreshData(false)
 
         // Connect to socket when component mounts
         connect(restaurantId)
@@ -121,7 +141,25 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
             off('new_order')
             disconnect()
         }
-    }, [restaurantId, mounted])
+    }, [restaurantId, mounted, refreshData])
+
+    // Refresh when user comes back to this tab or window regains focus.
+    useEffect(() => {
+        if (!mounted) return
+
+        const handleVisibilityOrFocus = () => {
+            if (document.visibilityState === 'visible') {
+                void refreshData(false)
+            }
+        }
+
+        window.addEventListener('focus', handleVisibilityOrFocus)
+        document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+        return () => {
+            window.removeEventListener('focus', handleVisibilityOrFocus)
+            document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+        }
+    }, [mounted, refreshData])
 
     // Filtered Tables - memoized
     const filteredTables = useMemo(() => {
@@ -154,23 +192,6 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-main" />
             </div>
         )
-    }
-
-    // Refresh Data
-    const refreshData = async () => {
-        setIsLoading(true)
-        try {
-            const [newAreas, newTables] = await Promise.all([
-                tablesApi.getAreas(restaurantId),
-                tablesApi.getTables(restaurantId)
-            ])
-            setAreas(newAreas)
-            setTables(newTables)
-        } catch (error) {
-            toast.error('Veriler güncellenirken hata oluştu')
-        } finally {
-            setIsLoading(false)
-        }
     }
 
     // Area Handlers
