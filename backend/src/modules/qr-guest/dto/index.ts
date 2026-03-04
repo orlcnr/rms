@@ -6,4 +6,5 @@ export * from './approve-guest-order.dto';
 export * from './guest-request.dto';
 export * from './uuid-param.dto';
 export * from './restaurant-id-param.dto';
+export * from './update-session-profile.dto';
 export * from './enums';

@@ -20,15 +20,21 @@ export function middleware(request: NextRequest) {
 
     // 1. Giriş yapmış (ve geçerli tokenı olan) kullanıcı giriş sayfasına gitmeye çalışırsa dashboard'a yönlendir
     if (isTokenValid && pathname === '/login') {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+        const nextPath = request.nextUrl.searchParams.get('next')
+        const safeNextPath = nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard'
+        return NextResponse.redirect(new URL(safeNextPath, request.url))
     }
 
     // 2. Token yoksa (veya geçersiz/süresi dolmuşsa) ve korunan bir sayfaya gitmeye çalışıyorsa login'e yönlendir
     const isAuthRoute = pathname === '/login'
+    const isGuestRoute = pathname === '/guest' || pathname.startsWith('/guest/')
     const isPublicFile = pathname.includes('.') || pathname.startsWith('/_next') || pathname.startsWith('/api')
 
-    if (!isTokenValid && !isAuthRoute && !isPublicFile) {
-        const response = NextResponse.redirect(new URL('/login', request.url))
+    if (!isTokenValid && !isAuthRoute && !isGuestRoute && !isPublicFile) {
+        const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`
+        const loginUrl = new URL('/login', request.url)
+        loginUrl.searchParams.set('next', nextPath)
+        const response = NextResponse.redirect(loginUrl)
         // Geçersiz tokenı temizle
         if (token) {
             response.cookies.delete('access_token')

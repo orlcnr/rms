@@ -12,7 +12,10 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmail(email, [
+      'restaurant',
+      'restaurant.brand',
+    ]);
     if (user && (await bcrypt.compare(pass, user.password_hash))) {
       const { password_hash, ...result } = user;
       return result;
@@ -21,11 +24,16 @@ export class AuthService {
   }
 
   async login(user: any) {
+    const branchId = user.restaurant_id || null;
+    const brandId = user.restaurant?.brand_id || null;
+
     const payload = {
       email: user.email,
       sub: user.id,
       role: user.role,
       restaurantId: user.restaurant_id,
+      branchId,
+      brandId,
       first_name: user.first_name,
       last_name: user.last_name,
     };

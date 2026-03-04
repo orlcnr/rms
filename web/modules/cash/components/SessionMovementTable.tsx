@@ -5,9 +5,10 @@ import { format } from 'date-fns'
 import {
   CashMovement,
   CashMovementType,
+  CashMovementSubtype,
   CASH_MOVEMENT_TYPE_LABELS
 } from '../types'
-import { PaymentMethod, PAYMENT_METHOD_LABELS } from '@/modules/orders/types'
+import { getPaymentMethodLabel } from '@/modules/orders/types'
 import { cn } from '@/modules/shared/utils/cn'
 import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { ArrowDownRight, ArrowUpRight, ShoppingCart, Wallet } from 'lucide-react'
@@ -37,6 +38,46 @@ export function SessionMovementTable({
     )
   }
 
+  const getMovementLabel = (movement: CashMovement) => {
+    if (movement.subtype === CashMovementSubtype.EXPENSE) {
+      return 'Masraf'
+    }
+
+    if (
+      movement.subtype === CashMovementSubtype.ADJUSTMENT &&
+      movement.type === CashMovementType.IN
+    ) {
+      return 'Düzeltme (Giriş)'
+    }
+
+    if (
+      movement.subtype === CashMovementSubtype.ADJUSTMENT &&
+      movement.type === CashMovementType.OUT
+    ) {
+      return 'Düzeltme (Çıkış)'
+    }
+
+    if (movement.isTip && movement.type === CashMovementType.OUT) {
+      return 'Bahşiş Dağıtımı'
+    }
+
+    if (
+      movement.isManualCashIn &&
+      movement.subtype !== CashMovementSubtype.ADJUSTMENT
+    ) {
+      return 'Kasa Girişi'
+    }
+
+    if (
+      movement.isManualCashOut &&
+      movement.subtype !== CashMovementSubtype.ADJUSTMENT
+    ) {
+      return 'Kasa Çıkışı'
+    }
+
+    return CASH_MOVEMENT_TYPE_LABELS[movement.type]
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto">
@@ -51,7 +92,10 @@ export function SessionMovementTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border-light">
-            {(movements || []).map((movement) => (
+            {(movements || []).map((movement) => {
+              const movementLabel = getMovementLabel(movement)
+
+              return (
               <tr key={movement.id} className="hover:bg-bg-app/30 transition-colors group">
                 <td className="px-4 py-3">
                   <span suppressHydrationWarning className="text-xs font-mono font-bold text-text-muted">
@@ -71,7 +115,7 @@ export function SessionMovementTable({
                           <ArrowDownRight size={12} />}
                     </div>
                     <span className="text-xs font-black uppercase tracking-tighter text-text-primary">
-                      {CASH_MOVEMENT_TYPE_LABELS[movement.type]}
+                      {movementLabel}
                     </span>
                   </div>
                 </td>
@@ -79,7 +123,7 @@ export function SessionMovementTable({
                   <div className="flex items-center gap-1.5">
                     <Wallet size={12} className="text-text-muted" />
                     <span className="text-xs font-bold uppercase tracking-tighter text-text-muted">
-                      {PAYMENT_METHOD_LABELS[movement.paymentMethod as PaymentMethod]}
+                      {getPaymentMethodLabel(String(movement.paymentMethod))}
                     </span>
                   </div>
                 </td>
@@ -97,7 +141,7 @@ export function SessionMovementTable({
                   </span>
                 </td>
               </tr>
-            ))}
+            )})}
             {movements.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-12 text-center text-text-muted font-medium">

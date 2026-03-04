@@ -115,14 +115,21 @@ export function SessionHistoryTable({
                   )}
                 </td>
                 <td className="px-4 py-4 text-center">
-                  <span className={cn(
-                    "px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter",
-                    session.status === CashSessionStatus.OPEN
-                      ? "bg-success-main/10 text-success-main"
-                      : "bg-bg-muted text-text-muted"
-                  )}>
-                    {CASH_SESSION_STATUS_LABELS[session.status]}
-                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={cn(
+                      "px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                      session.status === CashSessionStatus.OPEN
+                        ? "bg-success-main/10 text-success-main"
+                        : "bg-bg-muted text-text-muted"
+                    )}>
+                      {CASH_SESSION_STATUS_LABELS[session.status]}
+                    </span>
+                    {session.status === CashSessionStatus.CLOSED && session.closedWithOpenTables && (
+                      <span className="px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter bg-warning-main/10 text-warning-main">
+                        Açık Masayla Kapatıldı
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-4 text-right">
                   <Link

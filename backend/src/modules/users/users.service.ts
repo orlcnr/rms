@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { paginate } from 'nestjs-typeorm-paginate';
 import { User } from './entities/user.entity';
+import { UserBranchRole } from './entities/user-branch-role.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ActivateDeactivateUserDto } from './dto/activate-deactivate-user.dto';
@@ -34,6 +35,10 @@ export type PaginatedUsers<T> = {
 // Role hierarchy (higher number = higher privilege)
 const ROLE_HIERARCHY: Record<Role, number> = {
   [Role.SUPER_ADMIN]: 100,
+  [Role.BRAND_OWNER]: 90,
+  [Role.BRANCH_MANAGER]: 70,
+  [Role.BRANCH_WAITER]: 45,
+  [Role.BRANCH_CHEF]: 35,
   [Role.RESTAURANT_OWNER]: 80,
   [Role.MANAGER]: 60,
   [Role.WAITER]: 40,
@@ -46,8 +51,35 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(UserBranchRole)
+    private userBranchRoleRepository: Repository<UserBranchRole>,
     private restaurantsService: RestaurantsService,
   ) {}
+
+  async getScopedRoles(
+    userId: string,
+    brandId?: string | null,
+    branchId?: string | null,
+  ): Promise<Role[]> {
+    const query = this.userBranchRoleRepository
+      .createQueryBuilder('ubr')
+      .select('ubr.role', 'role')
+      .where('ubr.user_id = :userId', { userId });
+
+    if (brandId) {
+      query.andWhere('ubr.brand_id = :brandId', { brandId });
+    }
+
+    if (branchId) {
+      query.andWhere(
+        '(ubr.branch_id = :branchId OR ubr.branch_id IS NULL)',
+        { branchId },
+      );
+    }
+
+    const roles = await query.getRawMany<{ role: Role }>();
+    return roles.map((row) => row.role);
+  }
 
   /**
    * Check if the requester can create users with the specified role
@@ -64,6 +96,17 @@ export class UsersService {
     // Manager can create waiter, chef, customer
     if (requesterRole === Role.MANAGER) {
       return [Role.WAITER, Role.CHEF, Role.CUSTOMER].includes(targetRole);
+    }
+    if (requesterRole === Role.BRAND_OWNER) {
+      return (
+        ROLE_HIERARCHY[targetRole] < ROLE_HIERARCHY[requesterRole] &&
+        targetRole !== Role.SUPER_ADMIN
+      );
+    }
+    if (requesterRole === Role.BRANCH_MANAGER) {
+      return [Role.BRANCH_WAITER, Role.BRANCH_CHEF, Role.CUSTOMER].includes(
+        targetRole,
+      );
     }
     // Others cannot create users
     return false;
@@ -84,6 +127,17 @@ export class UsersService {
     // Manager can update to waiter, chef, customer
     if (requesterRole === Role.MANAGER) {
       return [Role.WAITER, Role.CHEF, Role.CUSTOMER].includes(targetRole);
+    }
+    if (requesterRole === Role.BRAND_OWNER) {
+      return (
+        ROLE_HIERARCHY[targetRole] < ROLE_HIERARCHY[requesterRole] &&
+        targetRole !== Role.SUPER_ADMIN
+      );
+    }
+    if (requesterRole === Role.BRANCH_MANAGER) {
+      return [Role.BRANCH_WAITER, Role.BRANCH_CHEF, Role.CUSTOMER].includes(
+        targetRole,
+      );
     }
     return false;
   }
@@ -187,8 +241,26 @@ export class UsersService {
       .addSelect('u.password_hash')
       .where('u.email = :email', { email });
 
-    relations.forEach((relation) => {
-      queryBuilder.leftJoinAndSelect(`u.${relation}`, relation);
+    const joinedAliases = new Set<string>();
+
+    relations.forEach((relationPath) => {
+      const parts = relationPath.split('.');
+      let parentAlias = 'u';
+      let currentPath = '';
+
+      parts.forEach((part, index) => {
+        currentPath = currentPath ? `${currentPath}.${part}` : part;
+        const joinAlias = currentPath.replace(/\./g, '_');
+
+        if (!joinedAliases.has(joinAlias)) {
+          const joinSource =
+            index === 0 ? `u.${part}` : `${parentAlias}.${part}`;
+          queryBuilder.leftJoinAndSelect(joinSource, joinAlias);
+          joinedAliases.add(joinAlias);
+        }
+
+        parentAlias = joinAlias;
+      });
     });
 
     return queryBuilder.getOne();

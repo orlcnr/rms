@@ -10,35 +10,26 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GuestOrdersService } from '../services/guest-orders.service';
 import { GuestAuthGuard } from '../guards/guest-auth.guard';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../common/guards/roles.guard';
-import { Roles } from '../../../common/decorators/roles.decorator';
-import { Role } from '../../../common/enums/role.enum';
 import {
   CreateDraftOrderDto,
   UpdateDraftOrderDto,
   SubmitOrderDto,
-  ApproveGuestOrderDto,
-  RejectGuestOrderDto,
   UuidParamDto,
 } from '../dto';
 import type { Request } from 'express';
-import { GuestSession } from '../interfaces';
-import { GetUser } from '../../../common/decorators/get-user.decorator';
+import { GuestGateway } from '../gateways/guest.gateway';
 
 @ApiTags('Guest Orders')
 @Controller('guest/orders')
 export class GuestOrdersController {
-  constructor(private guestOrdersService: GuestOrdersService) {}
+  constructor(
+    private guestOrdersService: GuestOrdersService,
+    private guestGateway: GuestGateway,
+  ) {}
 
   // ===== Guest Endpoints =====
 
@@ -88,11 +79,31 @@ export class GuestOrdersController {
     @Body() dto: SubmitOrderDto,
     @Req() req: Request,
   ) {
-    return await this.guestOrdersService.submitOrder(
+    const order = await this.guestOrdersService.submitOrder(
       params.id,
       req.guestSession!,
       dto,
     );
+
+    this.guestGateway.notifyOrderSubmitted(req.guestSession!.restaurantId, {
+      orderId: order.id,
+      tableId: req.guestSession!.tableId,
+      sessionId: req.guestSession!.id,
+      totalAmount: Number(order.totalAmount),
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyOrderStatusChange(req.guestSession!.id, {
+      orderId: order.id,
+      status: order.status,
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyTableRefresh(req.guestSession!.tableId, {
+      reason: 'submitted',
+      guestOrderId: order.id,
+      timestamp: new Date(),
+    });
+
+    return order;
   }
 
   @UseGuards(GuestAuthGuard)

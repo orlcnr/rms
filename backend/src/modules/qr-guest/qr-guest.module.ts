@@ -7,6 +7,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GuestOrder, GuestOrderEvent } from './entities';
 import { Table } from '../tables/entities/table.entity';
 import { MenuItem } from '../menus/entities/menu-item.entity';
+import { Category } from '../menus/entities/category.entity';
 import { Order } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Restaurant } from '../restaurants/entities/restaurant.entity';
@@ -21,6 +22,7 @@ import {
 // Controllers
 import {
   GuestSessionsController,
+  GuestPublicController,
   GuestOrdersController,
   GuestOrdersStaffController,
   GuestRequestsController,
@@ -46,6 +48,7 @@ import { TableEventsListener } from './listeners';
       GuestOrderEvent,
       Table,
       MenuItem,
+      Category,
       Order,
       OrderItem,
       Restaurant,
@@ -66,6 +69,7 @@ import { TableEventsListener } from './listeners';
   ],
   controllers: [
     GuestSessionsController,
+    GuestPublicController,
     GuestOrdersController,
     GuestOrdersStaffController,
     GuestRequestsController,

@@ -37,8 +37,6 @@ export function OrderZoomModal({
   onEditOrder,
   onTakePayment,
 }: OrderZoomModalProps) {
-  if (!orderGroup) return null
-
   // Format dates
   const formatDate = (dateStr: string) => {
     return format(new Date(dateStr), 'dd MMM yyyy, HH:mm', { locale: tr })
@@ -48,23 +46,27 @@ export function OrderZoomModal({
     return format(new Date(dateStr), 'HH:mm', { locale: tr })
   }
 
-  const isCompleted = orderGroup.status === OrderStatus.SERVED ||
-    orderGroup.status === OrderStatus.PAID ||
-    orderGroup.status === OrderStatus.CANCELLED
-  const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
+  const latestOrder = orderGroup ? orderGroup.orders[orderGroup.orders.length - 1] : null
+  const isCompleted = orderGroup
+    ? orderGroup.status === OrderStatus.SERVED ||
+      orderGroup.status === OrderStatus.PAID ||
+      orderGroup.status === OrderStatus.CANCELLED
+    : false
   const hasTable = Boolean(latestOrder?.tableId)
   const activeWaveItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
-    [orderGroup.activeWaveItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.activeWaveItems ?? []),
+    [orderGroup?.activeWaveItems],
   )
   const previousItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.previousItems),
-    [orderGroup.previousItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.previousItems ?? []),
+    [orderGroup?.previousItems],
   )
   const servedItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.servedItems),
-    [orderGroup.servedItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.servedItems ?? []),
+    [orderGroup?.servedItems],
   )
+
+  if (!orderGroup || !latestOrder) return null
 
   return (
     <Modal

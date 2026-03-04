@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class SyncPaymentMethodEnumsForCashMovements1772417000000
-  implements MigrationInterface
-{
+export class SyncPaymentMethodEnumsForCashMovements1772417000000 implements MigrationInterface {
   name = 'SyncPaymentMethodEnumsForCashMovements1772417000000';
 
   private readonly paymentMethods = [
@@ -52,4 +50,3 @@ export class SyncPaymentMethodEnumsForCashMovements1772417000000
     // Enum değerlerini güvenli şekilde geri almak mümkün değildir.
   }
 }
-

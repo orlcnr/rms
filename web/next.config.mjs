@@ -10,10 +10,15 @@ const nextConfig = {
   },
 };
 
+const hasSentryAuthToken = Boolean(process.env.SENTRY_AUTH_TOKEN);
+const shouldEnableSentryWebpackPlugin =
+  process.env.NODE_ENV === 'production' && hasSentryAuthToken;
+
 const SentryWebpackPluginOptions = {
-  silent: process.env.NODE_ENV !== 'production',
-  disableServerWebpackPlugin: process.env.NODE_ENV !== 'production',
-  disableClientWebpackPlugin: process.env.NODE_ENV !== 'production',
+  silent: true,
+  telemetry: false,
+  disableServerWebpackPlugin: !shouldEnableSentryWebpackPlugin,
+  disableClientWebpackPlugin: !shouldEnableSentryWebpackPlugin,
   org: 'posmenum',
   project: 'javascript-nextjs',
 };

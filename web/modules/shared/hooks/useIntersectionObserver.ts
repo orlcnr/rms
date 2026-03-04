@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-export function useIntersectionObserver(callback: () => void, dependencies: any[] = []) {
+export function useIntersectionObserver(callback: () => void, _dependencies: any[] = []) {
     const observerRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -25,7 +25,7 @@ export function useIntersectionObserver(callback: () => void, dependencies: any[
                 observer.unobserve(currentRef)
             }
         }
-    }, [callback, ...dependencies])
+    }, [callback])
 
     return observerRef
 }

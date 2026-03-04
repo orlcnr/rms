@@ -182,7 +182,6 @@ export function SearchableSelect({
                     onClick={(e) => e.stopPropagation()}
                     autoComplete="off"
                     aria-haspopup="listbox"
-                    aria-expanded={isOpen}
                 />
                 {searchQuery ? (
                     <button
@@ -238,6 +237,7 @@ export function SearchableSelect({
                             {shouldShowAddNew && (
                                 <li
                                     role="option"
+                                    aria-selected={false}
                                     onClick={handleAddNew}
                                     className={cn(
                                         'px-3 py-2 cursor-pointer transition-colors border-t border-border-light',
@@ -246,7 +246,7 @@ export function SearchableSelect({
                                 >
                                     <div className="text-base font-semibold flex items-center gap-2">
                                         <Plus size={16} />
-                                        "{searchQuery}" yeni malzeme olarak ekle
+                                        <span>&quot;{searchQuery}&quot; yeni malzeme olarak ekle</span>
                                     </div>
                                 </li>
                             )}
@@ -261,7 +261,7 @@ export function SearchableSelect({
                                     className="text-success-main hover:underline text-sm font-semibold flex items-center justify-center gap-1"
                                 >
                                     <Plus size={14} />
-                                    "{searchQuery}" yeni malzeme olarak ekle
+                                    <span>&quot;{searchQuery}&quot; yeni malzeme olarak ekle</span>
                                 </button>
                             )}
                         </div>

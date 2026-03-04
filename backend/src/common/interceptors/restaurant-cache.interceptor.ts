@@ -4,15 +4,23 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Request } from 'express';
+
+interface CachedRequest extends Request {
+  user?: {
+    restaurantId?: string;
+    restaurant_id?: string;
+  };
+}
 
 @Injectable()
 export class RestaurantCacheInterceptor extends CacheInterceptor {
   trackBy(context: ExecutionContext): string | undefined {
-    const request = context.switchToHttp().getRequest();
-    const { httpAdapter } = this.httpAdapterHost;
+    const request = context.switchToHttp().getRequest<CachedRequest>();
+    const httpAdapter = this.httpAdapterHost.httpAdapter;
 
     const isHttpApp = httpAdapter && !!httpAdapter.getRequestMethod;
-    const cacheMetadata = this.reflector.get(
+    const cacheMetadata = this.reflector.get<string | undefined>(
       'cache_metadata',
       context.getHandler(),
     );
@@ -22,7 +30,7 @@ export class RestaurantCacheInterceptor extends CacheInterceptor {
     }
 
     const { user } = request;
-    const restaurantId = user?.restaurantId || 'global';
+    const restaurantId = user?.restaurantId || user?.restaurant_id || 'global';
 
     if (!restaurantId) {
       throw new UnauthorizedException(

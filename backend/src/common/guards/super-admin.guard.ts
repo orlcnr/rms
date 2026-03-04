@@ -56,6 +56,14 @@ export class SuperAdminGuard implements CanActivate {
       throw new ForbiddenException('Invalid super admin account');
     }
 
+    if (
+      user.must_change_password &&
+      request.path !== '/api/v1/super-admin/auth/change-password' &&
+      request.path !== '/api/v1/super-admin/auth/me'
+    ) {
+      throw new ForbiddenException('Password change required');
+    }
+
     // 3. IP Whitelist kontrolü (opsiyonel)
     const allowedIPs = process.env.SUPER_ADMIN_ALLOWED_IPS?.split(',').map(
       (ip) => ip.trim(),

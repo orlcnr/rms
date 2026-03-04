@@ -17,7 +17,7 @@ export function ReservationMonthlyView({
   selectedDate,
   onDateSelect,
 }: ReservationMonthlyViewProps) {
-  const currentDate = new Date(selectedDate)
+  const currentDate = useMemo(() => new Date(selectedDate), [selectedDate])
 
   const days = useMemo(() => {
     const monthStart = startOfMonth(currentDate)

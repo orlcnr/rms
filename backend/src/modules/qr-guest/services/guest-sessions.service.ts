@@ -25,6 +25,8 @@ export class GuestSessionsService {
   private readonly redis: Redis;
   private readonly SESSION_TTL_SECONDS = 5 * 60 * 60; // 3 hours - session stored in Redis
   private readonly ACCESS_TOKEN_EXPIRY = '5h'; // 1 hour - JWT token expiry
+  private readonly SERVICE_CYCLE_CACHE_TTL_SECONDS = 24 * 60 * 60;
+  private readonly RECENT_PAYMENT_CLOSE_TTL_SECONDS = 30;
 
   constructor(
     private configService: ConfigService,
@@ -79,7 +81,11 @@ export class GuestSessionsService {
     const session: GuestSession = {
       id: sessionId,
       restaurantId: payload.restaurantId,
+      restaurantName: table.restaurant?.name,
       tableId: payload.tableId,
+      serviceCycleVersion: this.normalizeServiceCycleVersion(
+        table.serviceCycleVersion,
+      ),
       tableName: table.name,
       googleCommentUrl: table.restaurant?.google_comment_url,
       deviceFingerprintHash,
@@ -92,6 +98,11 @@ export class GuestSessionsService {
     // Store session in Redis
     await this.saveSession(session);
 
+    await this.setServiceCycleVersionCache(
+      payload.tableId,
+      session.serviceCycleVersion,
+    );
+
     // Add session to table's session set
     await this.redis.sadd(`table:${payload.tableId}:sessions`, sessionId);
 
@@ -99,6 +110,23 @@ export class GuestSessionsService {
     const guestAccessToken = this.generateAccessToken(session);
 
     return { guestAccessToken, session };
+  }
+
+  async updateProfile(
+    sessionId: string,
+    dto: { displayName?: string },
+  ): Promise<GuestSession> {
+    const session = await this.getSession(sessionId);
+
+    if (!session || session.status !== GuestSessionStatus.ACTIVE) {
+      throw new UnauthorizedException('Session expired or revoked');
+    }
+
+    session.displayName = dto.displayName?.trim() || undefined;
+    session.lastActivityAt = new Date();
+    await this.saveSession(session);
+
+    return session;
   }
 
   /**
@@ -160,6 +188,69 @@ export class GuestSessionsService {
     return createHash('sha256').update(fingerprint).digest('hex');
   }
 
+  private getServiceCycleVersionCacheKey(tableId: string): string {
+    return `table:${tableId}:serviceCycleVersion`;
+  }
+
+  private getRecentPaymentCloseKey(tableId: string): string {
+    return `table:${tableId}:recentPaymentClose`;
+  }
+
+  normalizeServiceCycleVersion(
+    value: string | number | bigint | null | undefined,
+  ): string {
+    if (value === undefined || value === null) {
+      return '1';
+    }
+
+    return String(value);
+  }
+
+  async setServiceCycleVersionCache(
+    tableId: string,
+    version: string | number | bigint,
+  ): Promise<void> {
+    await this.redis.setex(
+      this.getServiceCycleVersionCacheKey(tableId),
+      this.SERVICE_CYCLE_CACHE_TTL_SECONDS,
+      this.normalizeServiceCycleVersion(version),
+    );
+  }
+
+  async getCurrentServiceCycleVersion(tableId: string): Promise<string | null> {
+    const cached = await this.redis.get(this.getServiceCycleVersionCacheKey(tableId));
+
+    if (cached) {
+      return this.normalizeServiceCycleVersion(cached);
+    }
+
+    const table = await this.tableRepository.findOne({
+      where: { id: tableId },
+      select: ['id', 'serviceCycleVersion'],
+    });
+
+    if (!table) {
+      return null;
+    }
+
+    const normalized = this.normalizeServiceCycleVersion(table.serviceCycleVersion);
+    await this.setServiceCycleVersionCache(tableId, normalized);
+    return normalized;
+  }
+
+  async markRecentPaymentClose(tableId: string): Promise<void> {
+    await this.redis.setex(
+      this.getRecentPaymentCloseKey(tableId),
+      this.RECENT_PAYMENT_CLOSE_TTL_SECONDS,
+      '1',
+    );
+  }
+
+  async hasRecentPaymentClose(tableId: string): Promise<boolean> {
+    const value = await this.redis.get(this.getRecentPaymentCloseKey(tableId));
+    return value === '1';
+  }
+
   /**
    * Save session to Redis
    */
@@ -201,6 +292,12 @@ export class GuestSessionsService {
     }
 
     const session: GuestSession = JSON.parse(data);
+
+    if (!session.serviceCycleVersion) {
+      const currentVersion = await this.getCurrentServiceCycleVersion(session.tableId);
+      session.serviceCycleVersion = currentVersion || '1';
+      await this.saveSession(session);
+    }
 
     // Auto-heal: If tableName is missing, fetch it from the database
     if (!session.tableName) {
@@ -287,7 +384,8 @@ export class GuestSessionsService {
       | 'table_reset'
       | 'staff_action'
       | 'expired'
-      | 'table_changed',
+      | 'table_changed'
+      | 'payment_completed',
   ): Promise<void> {
     const session = await this.getSession(sessionId);
 

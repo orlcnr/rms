@@ -166,11 +166,9 @@ export function useOrdersLogic({
           posMode: true
         })
 
-        if ('items' in response) {
-          setAllItems(response.items)
-          setPage(1)
-          setTotalPages(response.meta.totalPages)
-        }
+        setAllItems(response.items)
+        setPage(1)
+        setTotalPages(response.meta.totalPages)
       } catch (error) {
         console.error('Error fetching products:', error)
       } finally {
@@ -205,7 +203,7 @@ export function useOrdersLogic({
           existingOrder.createdAt,
       })
     }
-  }, [existingOrder, selectedTable?.id, setBasketForTable])
+  }, [existingOrder, selectedTable, setBasketForTable])
 
   // Active Monitoring: Periyodik olarak süresi dolan sepetleri temizle
   useEffect(() => {
@@ -234,10 +232,8 @@ export function useOrdersLogic({
         search: debouncedSearchQuery || undefined,
         posMode: true
       }).then((response) => {
-        if ('items' in response) {
-          setAllItems(response.items)
-          setTotalPages(response.meta.totalPages)
-        }
+        setAllItems(response.items)
+        setTotalPages(response.meta.totalPages)
       })
     },
   })
@@ -303,7 +299,7 @@ export function useOrdersLogic({
       off('new_order', handleOrderUpdate as any)
       disconnect()
     }
-  }, [restaurantId, selectedTable?.id, connect, disconnect, on, off, setBasketForTable])
+  }, [restaurantId, selectedTable, connect, disconnect, on, off, clearBasket, setBasketForTable])
 
   // ============ LOAD MORE (PAGINATION) ============
   const loadMoreRef = useRef<HTMLDivElement>(null)
@@ -322,14 +318,12 @@ export function useOrdersLogic({
         posMode: true
       })
 
-      if ('items' in response) {
-        if (response.items.length > 0) {
-          setAllItems((prev) => [...prev, ...response.items])
-          setPage(nextPageNum)
-          setTotalPages(response.meta.totalPages)
-        } else {
-          setTotalPages(page)
-        }
+      if (response.items.length > 0) {
+        setAllItems((prev) => [...prev, ...response.items])
+        setPage(nextPageNum)
+        setTotalPages(response.meta.totalPages)
+      } else {
+        setTotalPages(page)
       }
     } catch (error) {
       console.error('Error loading more products:', error)

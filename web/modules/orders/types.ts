@@ -59,6 +59,16 @@ export enum PaymentMethod {
   MEAL_VOUCHER = 'meal_voucher', // Yemek Çeki
 }
 
+export enum MealVoucherType {
+  MULTINET = 'multinet',
+  SODEXO = 'sodexo',
+  EDENRED = 'edenred',
+  SETCARD = 'setcard',
+  METROPOL = 'metropol',
+  DIGITAL = 'digital',
+  OTHER = 'other',
+}
+
 /**
  * Discount Type Enum - İskonto vs İkram ayrımı
  * Backend: backend/src/modules/payments/entities/payment.entity.ts
@@ -116,6 +126,16 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   [PaymentMethod.BANK_TRANSFER]: 'Havale/EFT',
   [PaymentMethod.OPEN_ACCOUNT]: 'Açık Hesap',
   [PaymentMethod.MEAL_VOUCHER]: 'Yemek Çeki',
+}
+
+export const MEAL_VOUCHER_TYPE_LABELS: Record<MealVoucherType, string> = {
+  [MealVoucherType.MULTINET]: 'Multinet',
+  [MealVoucherType.SODEXO]: 'Sodexo',
+  [MealVoucherType.EDENRED]: 'Edenred',
+  [MealVoucherType.SETCARD]: 'Setcard',
+  [MealVoucherType.METROPOL]: 'Metropol',
+  [MealVoucherType.DIGITAL]: 'Dijital',
+  [MealVoucherType.OTHER]: 'Diğer',
 }
 
 export const DISCOUNT_TYPE_LABELS: Record<DiscountType, string> = {
@@ -310,6 +330,17 @@ export const PAYMENT_METHOD_OPTIONS = [
   { value: PaymentMethod.DIGITAL_WALLET, label: PAYMENT_METHOD_LABELS[PaymentMethod.DIGITAL_WALLET] },
   { value: PaymentMethod.BANK_TRANSFER, label: PAYMENT_METHOD_LABELS[PaymentMethod.BANK_TRANSFER] },
   { value: PaymentMethod.OPEN_ACCOUNT, label: PAYMENT_METHOD_LABELS[PaymentMethod.OPEN_ACCOUNT] },
+  { value: PaymentMethod.MEAL_VOUCHER, label: PAYMENT_METHOD_LABELS[PaymentMethod.MEAL_VOUCHER] },
+] as const
+
+export const MEAL_VOUCHER_TYPE_OPTIONS = [
+  { value: MealVoucherType.MULTINET, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.MULTINET] },
+  { value: MealVoucherType.SODEXO, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.SODEXO] },
+  { value: MealVoucherType.EDENRED, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.EDENRED] },
+  { value: MealVoucherType.SETCARD, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.SETCARD] },
+  { value: MealVoucherType.METROPOL, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.METROPOL] },
+  { value: MealVoucherType.DIGITAL, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.DIGITAL] },
+  { value: MealVoucherType.OTHER, label: MEAL_VOUCHER_TYPE_LABELS[MealVoucherType.OTHER] },
 ] as const
 
 export const DISCOUNT_TYPE_OPTIONS = [
@@ -330,7 +361,8 @@ export interface PaymentLine {
   method: PaymentMethod
   amount: number // In cents for precision
   cashReceived?: number // For CASH payments
-  customerId?: string // For OPEN_ACCOUNT
+  customerId?: string | null // For OPEN_ACCOUNT
+  mealVoucherType?: MealVoucherType | null // For MEAL_VOUCHER
   tipAmount?: number // Gross tip (brüt bahşiş)
   commissionRate?: number // Commission percentage (e.g. 0.02)
 }
@@ -355,6 +387,7 @@ export interface SplitPaymentRequest {
     amount: number
     payment_method: PaymentMethod
     customer_id?: string
+    meal_voucher_type?: MealVoucherType
     cash_received?: number
     tip_amount?: number
     commission_rate?: number
@@ -373,6 +406,7 @@ export interface Payment extends BaseEntity {
   customer_id: string | null
   amount: number
   payment_method: PaymentMethod
+  meal_voucher_type?: MealVoucherType | null
   cash_received: number | null
   change_given: number | null
   discount_type: DiscountType | null
@@ -530,6 +564,23 @@ export function formatPaymentAmount(amount: number): string {
     style: 'currency',
     currency: 'TRY',
   }).format(amount)
+}
+
+function humanizePaymentMethodKey(method: string): string {
+  return method
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
+export function getPaymentMethodLabel(method: PaymentMethod | string): string {
+  return PAYMENT_METHOD_LABELS[method as PaymentMethod] || humanizePaymentMethodKey(method)
+}
+
+export function getMealVoucherTypeLabel(type?: MealVoucherType | null): string | null {
+  if (!type) return null
+  return MEAL_VOUCHER_TYPE_LABELS[type] || type
 }
 
 /**

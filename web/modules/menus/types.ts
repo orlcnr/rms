@@ -1,4 +1,5 @@
 import { BaseEntity } from '@/modules/shared/types'
+export type { PaginatedResponse } from '@/modules/shared/types'
 
 export interface Category extends BaseEntity {
     name: string
@@ -32,15 +33,4 @@ export interface CreateMenuItemInput {
     is_available?: boolean
     track_inventory?: boolean
     category_id: string
-}
-
-export interface PaginatedResponse<T> {
-    items: T[]
-    meta: {
-        totalItems: number
-        itemCount: number
-        itemsPerPage: number
-        totalPages: number
-        currentPage: number
-    }
 }

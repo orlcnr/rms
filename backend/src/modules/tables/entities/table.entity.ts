@@ -28,6 +28,9 @@ export class Table extends BaseEntity {
   @Column({ name: 'qr_version', type: 'int', default: 1 })
   qrVersion: number;
 
+  @Column({ name: 'service_cycle_version', type: 'bigint', default: 1 })
+  serviceCycleVersion: string;
+
   @Column()
   restaurant_id: string;
 

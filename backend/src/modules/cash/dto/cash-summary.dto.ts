@@ -22,6 +22,15 @@ export class CashSummaryDto {
   @ApiProperty({ description: 'Kart Bahşiş' })
   cardTips: number;
 
+  @ApiProperty({ description: 'Kasadan dağıtılan bahşiş' })
+  cashTipDistributed: number;
+
+  @ApiProperty({ description: 'Manuel kasa girişi toplamı' })
+  manualCashInTotal: number;
+
+  @ApiProperty({ description: 'Manuel kasa çıkışı toplamı' })
+  manualCashOutTotal: number;
+
   @ApiProperty({ description: 'Ödeme yöntemi kırılımı', required: false })
   paymentBreakdown?: Record<string, number>;
 }

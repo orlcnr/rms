@@ -30,23 +30,24 @@ export function OrderDetailDrawer({
   onEditOrder,
   onTakePayment,
 }: OrderDetailDrawerProps) {
-  if (!isOpen || !orderGroup) return null
-
-  const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
-  const order = latestOrder
-  const hasTable = Boolean(order.tableId)
+  const latestOrder = orderGroup ? orderGroup.orders[orderGroup.orders.length - 1] : null
   const activeWaveItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
-    [orderGroup.activeWaveItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.activeWaveItems ?? []),
+    [orderGroup?.activeWaveItems],
   )
   const previousItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.previousItems),
-    [orderGroup.previousItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.previousItems ?? []),
+    [orderGroup?.previousItems],
   )
   const servedItems = useMemo(
-    () => aggregateOrderItemsForDisplay(orderGroup.servedItems),
-    [orderGroup.servedItems],
+    () => aggregateOrderItemsForDisplay(orderGroup?.servedItems ?? []),
+    [orderGroup?.servedItems],
   )
+
+  if (!isOpen || !orderGroup || !latestOrder) return null
+
+  const order = latestOrder
+  const hasTable = Boolean(order.tableId)
 
   return (
     <>

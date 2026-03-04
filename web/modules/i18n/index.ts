@@ -7,8 +7,10 @@ export type { Language };
 export { i18nConfig };
 export { tr, en };
 
+export type TranslationDictionary = typeof tr | typeof en;
+
 // Translation dictionary
-export const translations = {
+export const translations: Record<Language, TranslationDictionary> = {
   tr,
   en,
-} as const;
+};

@@ -3,6 +3,9 @@ import { SalesReportService } from './services/sales-report.service';
 import { InventoryReportService } from './services/inventory-report.service';
 import { FinanceReportService } from './services/finance-report.service';
 import { DateRangeDto } from './dto/date-range.dto';
+import { AuditReportsService } from './services/audit-reports.service';
+import { GetAuditLogsDto } from '../audit/dto/get-audit-logs.dto';
+import { ExportAuditLogsDto } from '../audit/dto/export-audit-logs.dto';
 
 @Injectable()
 export class ReportsService {
@@ -10,6 +13,7 @@ export class ReportsService {
     private readonly salesReportService: SalesReportService,
     private readonly inventoryReportService: InventoryReportService,
     private readonly financeReportService: FinanceReportService,
+    private readonly auditReportsService: AuditReportsService,
   ) {}
 
   async getDailySales(restaurantId: string, query: DateRangeDto) {
@@ -48,5 +52,13 @@ export class ReportsService {
 
   async getDiscountStats(restaurantId: string, query: DateRangeDto) {
     return this.financeReportService.getDiscountStats(restaurantId, query);
+  }
+
+  async getAuditLogs(restaurantId: string, query: GetAuditLogsDto) {
+    return this.auditReportsService.getAuditLogs(restaurantId, query);
+  }
+
+  async exportAuditLogsCsv(restaurantId: string, query: ExportAuditLogsDto) {
+    return this.auditReportsService.exportAuditLogsCsv(restaurantId, query);
   }
 }

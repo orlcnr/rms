@@ -13,7 +13,7 @@ import { AuditInterceptor } from './interceptors/audit.interceptor';
   imports: [
     ElasticsearchModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         node: configService.get<string>('ELASTICSEARCH_NODE'),
         // Sunucu v7 ise v8 istemcisinin v7 gibi davranmasını sağlar
         enableCompatibilityMode: true,
@@ -30,6 +30,6 @@ import { AuditInterceptor } from './interceptors/audit.interceptor';
     },
   ],
   controllers: [AuditConsumer, AuditController],
-  exports: [AuditService],
+  exports: [AuditService, AuditSearchService],
 })
 export class AuditModule {}

@@ -77,6 +77,29 @@ export class GuestAuthGuard implements CanActivate {
         throw new UnauthorizedException('Session expired or revoked');
       }
 
+      const currentServiceCycleVersion =
+        await this.guestSessionsService.getCurrentServiceCycleVersion(
+          session.tableId,
+        );
+
+      if (!currentServiceCycleVersion) {
+        throw new UnauthorizedException('Session expired or revoked');
+      }
+
+      if (
+        this.guestSessionsService.normalizeServiceCycleVersion(
+          session.serviceCycleVersion,
+        ) !== currentServiceCycleVersion
+      ) {
+        console.log('[DEBUG Guard] Service cycle mismatch:', {
+          sessionId: session.id,
+          tableId: session.tableId,
+          sessionVersion: session.serviceCycleVersion,
+          currentServiceCycleVersion,
+        });
+        throw new UnauthorizedException('Session expired or revoked');
+      }
+
       console.log('[DEBUG Guard] Session found and valid:', session.id);
 
       // Attach session to request

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useSocketStore } from '@/modules/shared/api/socket'
+import { playNotificationAudio } from '@/modules/shared/utils/notification-sound'
 import { Order, OrderStatus, OrderItem } from '../types'
 
 interface OrderSocketEvents {
@@ -36,20 +37,8 @@ const SOCKET_EVENTS = {
   ORDER_ITEM_ADDED: 'order_item_added',
 } as const
 
-// Audio player reference
-let audioPlayer: HTMLAudioElement | null = null
-
 const playNotificationSound = () => {
-  try {
-    if (!audioPlayer) {
-      audioPlayer = new Audio('/sounds/new-order.mp3')
-      audioPlayer.volume = 0.5
-    }
-    audioPlayer.currentTime = 0
-    audioPlayer.play().catch(() => { })
-  } catch {
-    // Ignore audio errors
-  }
+  playNotificationAudio('/sounds/new-order.mp3', { volume: 0.5 })
 }
 
 export function useOrdersSocket(

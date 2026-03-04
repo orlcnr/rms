@@ -20,13 +20,11 @@ interface UseCashOptions {
   restaurantId?: string
   initialRegisters?: CashRegisterWithStatus[]
   initialSessions?: ActiveSessionWrapper[]
-  initialSummary?: CashSummaryData | null
 }
 
 export function useCash(options?: UseCashOptions) {
   const initialRegisters = options?.initialRegisters
   const initialSessions = options?.initialSessions
-  const initialSummary = options?.initialSummary
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [registersWithStatus, setRegistersWithStatus] = useState<CashRegisterWithStatus[]>(
@@ -34,7 +32,7 @@ export function useCash(options?: UseCashOptions) {
   )
   const [activeSessions, setActiveSessions] = useState<ActiveSessionWrapper[]>(initialSessions || [])
   const [movements, setMovements] = useState<CashMovement[]>([])
-  const [summary, setSummary] = useState<CashSummaryData | null>(initialSummary || null)
+  const [summary, setSummary] = useState<CashSummaryData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -49,17 +47,6 @@ export function useCash(options?: UseCashOptions) {
       connect(options.restaurantId)
     }
   }, [options?.restaurantId, connect])
-
-  // --------------------------------------------
-  // Mount: Client-side fresh summary fetch
-  // --------------------------------------------
-  useEffect(() => {
-    const sessionId = initialSessions?.[0]?.session?.id
-    if (sessionId) {
-      fetchSessionSummary(sessionId)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // --------------------------------------------
   // Register Operations

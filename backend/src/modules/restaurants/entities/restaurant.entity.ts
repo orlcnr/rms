@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
+import { Brand } from '../../brands/entities/brand.entity';
 
 @Entity('restaurants', { schema: 'business' })
 export class Restaurant extends BaseEntity {
@@ -49,6 +50,16 @@ export class Restaurant extends BaseEntity {
 
   @OneToMany(() => User, (user) => user.restaurant)
   users: User[];
+
+  @Column({ nullable: true })
+  brand_id: string;
+
+  @ManyToOne(() => Brand, (brand) => brand.branches, { nullable: true })
+  @JoinColumn({ name: 'brand_id' })
+  brand: Brand;
+
+  @Column({ default: true })
+  is_branch: boolean;
 
   @Column({ default: true })
   is_active: boolean;

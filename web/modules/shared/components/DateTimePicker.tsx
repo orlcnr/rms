@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, X, Check } from 'lucide-react'
 import { cn } from '@/modules/shared/utils/cn'
 
@@ -146,7 +146,7 @@ export function DateTimePicker({
     }
   }, [isOpen, selectedDate])
 
-  const updateValue = (date: Date, timeStr?: string) => {
+  const updateValue = useCallback((date: Date, timeStr?: string) => {
     const newDate = new Date(date)
     if (timeStr) {
       const [hours, minutes] = timeStr.split(':').map(Number)
@@ -157,7 +157,7 @@ export function DateTimePicker({
       newDate.setHours(19, 0, 0, 0) // Default 19:00
     }
     onChange(newDate.toISOString())
-  }
+  }, [onChange, selectedDate])
 
   // Quick Handlers
   const handleQuickSelect = (type: 'today' | 'tomorrow' | 'weekend') => {
@@ -211,7 +211,7 @@ export function DateTimePicker({
       )
     }
     return days
-  }, [currentMonth, selectedDate, minDate, maxDate])
+  }, [currentMonth, daysInMonth, firstDay, maxDate, minDate, selectedDate, updateValue])
 
   return (
     <div ref={containerRef} className="relative w-full">

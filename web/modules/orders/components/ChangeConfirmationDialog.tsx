@@ -3,8 +3,10 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import {
   Discount,
+  getMealVoucherTypeLabel,
+  getPaymentMethodLabel,
   PaymentLine,
-  PAYMENT_METHOD_LABELS,
+  PaymentMethod,
   formatPaymentAmount,
 } from '../types';
 
@@ -60,20 +62,34 @@ export function ChangeConfirmationDialog({
             {paymentLines.length === 0 ? (
               <p className="text-sm text-text-muted">Ödeme satırı bulunamadı.</p>
             ) : (
-              <div className="space-y-1.5">
-                {paymentLines.map((payment) => (
-                  <div
-                    key={payment.id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="text-text-secondary font-semibold">
-                      {PAYMENT_METHOD_LABELS[payment.method]}
-                    </span>
-                    <span className="text-text-primary font-bold">
-                      {formatPaymentAmount(payment.amount)}
-                    </span>
-                  </div>
-                ))}
+                <div className="space-y-1.5">
+                  {paymentLines.map((payment, index) => {
+                    const methodSequence = paymentLines
+                      .slice(0, index + 1)
+                      .filter((line) => line.method === payment.method).length;
+                    const voucherTypeLabel = getMealVoucherTypeLabel(payment.mealVoucherType);
+
+                    return (
+                      <div
+                        key={payment.id}
+                        className="flex items-start justify-between gap-3 text-sm"
+                      >
+                        <div>
+                          <span className="text-text-secondary font-semibold">
+                            {getPaymentMethodLabel(payment.method as PaymentMethod)} #{methodSequence}
+                          </span>
+                          {payment.method === PaymentMethod.MEAL_VOUCHER && voucherTypeLabel && (
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                              Çek Tipi: {voucherTypeLabel}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-text-primary font-bold">
+                          {formatPaymentAmount(payment.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>

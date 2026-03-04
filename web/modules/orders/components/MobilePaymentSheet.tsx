@@ -3,7 +3,14 @@
 import { useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { usePayment } from '../hooks/usePayment';
-import { PaymentMethod, formatPaymentAmount } from '../types';
+import {
+  getMealVoucherTypeLabel,
+  getPaymentMethodLabel,
+  MealVoucherType,
+  MEAL_VOUCHER_TYPE_OPTIONS,
+  PaymentMethod,
+  formatPaymentAmount,
+} from '../types';
 import { PaymentSummaryCard } from './PaymentSummaryCard';
 import { CustomerSelector } from './CustomerSelector';
 import { QuickNumPad } from './QuickNumPad';
@@ -32,29 +39,7 @@ export function MobilePaymentSheet({
   onAddNewCustomer,
   isCreatingCustomer,
 }: MobilePaymentSheetProps) {
-  const [showNumpad, setShowNumpad] = useState(false);
-
-  // Get method label helper
-  const getMethodLabel = (method: string) => {
-    switch (method) {
-      case 'cash':
-        return 'Nakit';
-      case 'credit_card':
-        return 'Kart';
-      case 'debit_card':
-        return 'Banka Kartı';
-      case 'digital_wallet':
-        return 'Dijital Cüzdan';
-      case 'bank_transfer':
-        return 'Havale/EFT';
-      case 'open_account':
-        return 'Cari';
-      case 'meal_voucher':
-        return 'Yemek Çeki';
-      default:
-        return method;
-    }
-  };
+  const [, setShowNumpad] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 bg-bg-app flex flex-col">
@@ -97,7 +82,7 @@ export function MobilePaymentSheet({
                 className="flex flex-col items-center gap-1 p-3 bg-bg-surface border border-border-light rounded-sm"
               >
                 <Icon className="h-5 w-5 text-primary-main" />
-                <span className="text-xs">{getMethodLabel(method)}</span>
+                <span className="text-xs">{getPaymentMethodLabel(method)}</span>
               </button>
             );
           })}
@@ -107,14 +92,33 @@ export function MobilePaymentSheet({
         {hook.payments.map((payment, index) => (
           <div
             key={payment.id}
+            onClick={() => {
+              hook.setActivePaymentIndex(index);
+              setShowNumpad(true);
+            }}
             className="flex items-center justify-between p-3 bg-bg-surface border border-border-light rounded-sm"
           >
             <div>
-              <span className="text-sm font-medium">{getMethodLabel(payment.method)}</span>
+              <span className="text-sm font-medium">
+                {getPaymentMethodLabel(payment.method)} #
+                {
+                  hook.payments
+                    .slice(0, index + 1)
+                    .filter((line) => line.method === payment.method).length
+                }
+              </span>
               <span className="text-lg font-bold ml-2">{formatPaymentAmount(payment.amount)}</span>
+              {payment.method === PaymentMethod.MEAL_VOUCHER && payment.mealVoucherType && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  Çek Tipi: {getMealVoucherTypeLabel(payment.mealVoucherType)}
+                </p>
+              )}
             </div>
             <button
-              onClick={() => hook.removePaymentLine(payment.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                hook.removePaymentLine(payment.id);
+              }}
               className="p-2 text-danger-main"
             >
               <Trash2 className="h-4 w-4" />
@@ -126,7 +130,7 @@ export function MobilePaymentSheet({
         {hook.activePaymentIndex !== null && hook.payments[hook.activePaymentIndex] && (
           <div className="p-4 bg-primary-main/5 border border-primary-main rounded-sm">
             <p className="text-xs text-primary-main mb-2">
-              {hook.payments[hook.activePaymentIndex].method} için tutar girin
+              {getPaymentMethodLabel(hook.payments[hook.activePaymentIndex].method)} için tutar girin
             </p>
 
             {/* Quick NumPad */}
@@ -147,19 +151,51 @@ export function MobilePaymentSheet({
                 <div className="mt-3">
                   <CustomerSelector
                     restaurantId={restaurantId}
-                    value={hook.payments[hook.activePaymentIndex]?.customerId}
+                    value={hook.payments[hook.activePaymentIndex]?.customerId ?? undefined}
                     onChange={(customer) => {
                       const idx = hook.activePaymentIndex;
                       const payment = idx !== null ? hook.payments[idx] : null;
                       if (payment) {
                         hook.updatePaymentLine(payment.id, {
-                          customerId: customer?.id,
+                          customerId: customer?.id ?? null,
                         });
                       }
                     }}
                     onAddNew={onAddNewCustomer}
                     disabled={isCreatingCustomer}
                   />
+                </div>
+              )}
+
+            {hook.activePaymentIndex !== null &&
+              hook.payments[hook.activePaymentIndex]?.method === PaymentMethod.MEAL_VOUCHER && (
+                <div className="mt-3">
+                  <label className="text-[11px] font-semibold text-primary-main uppercase block mb-2">
+                    Çek Tipi
+                  </label>
+                  <select
+                    value={hook.payments[hook.activePaymentIndex]?.mealVoucherType ?? ''}
+                    onChange={(e) => {
+                      const idx = hook.activePaymentIndex;
+                      const payment = idx !== null ? hook.payments[idx] : null;
+                      if (payment) {
+                        hook.updatePaymentLine(payment.id, {
+                          mealVoucherType: e.target.value
+                            ? (e.target.value as MealVoucherType)
+                            : null,
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-3 text-sm font-semibold bg-bg-surface border border-primary-main/30 rounded-sm
+                      focus:outline-none focus:border-primary-main text-text-primary"
+                  >
+                    <option value="">Çek tipi seçin</option>
+                    {MEAL_VOUCHER_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
           </div>

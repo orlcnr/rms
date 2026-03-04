@@ -23,14 +23,19 @@ export class SentryExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
-      message = typeof res === 'object' ? (res as any).message : res;
+      const responseBody = typeof res === 'object' ? (res as any) : null;
+      message = responseBody ? responseBody.message : res;
 
       if (status >= 400 && status < 500) {
         return response.status(status).json({
           success: false,
+          data: null,
           statusCode: status,
           message,
           timestamp: new Date().toISOString(),
+          ...(responseBody?.message && responseBody?.error
+            ? { errors: responseBody }
+            : {}),
         });
       }
     }
@@ -55,6 +60,7 @@ export class SentryExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       success: false,
+      data: null,
       statusCode: status,
       message,
       timestamp: new Date().toISOString(),

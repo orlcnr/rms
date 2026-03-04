@@ -44,16 +44,11 @@ export class GuestGateway
     this.logger.log('GuestGateway constructed');
   }
 
-  afterInit(server: Server) {
+  afterInit() {
     this.logger.log('GuestGateway afterInit - Server initialized');
-    // @ts-ignore - accessing internal Socket.IO property for debugging
-    const namespaces = Array.from((server as any).io?.nspaces?.keys() || []);
-    this.logger.log(
-      `Registered namespaces: ${namespaces.join(', ') || 'root only'}`,
-    );
   }
 
-  handleConnection(client: Socket, ...args: any[]) {
+  handleConnection(client: Socket) {
     this.logger.log(`Guest client connected: ${client.id}`);
   }
 
@@ -66,16 +61,16 @@ export class GuestGateway
    */
   @UseGuards(GuestWsGuard)
   @SubscribeMessage('guest:join')
-  async handleGuestJoin(@ConnectedSocket() client: Socket) {
+  handleGuestJoin(@ConnectedSocket() client: Socket) {
     const data = client.data as GuestSocketData;
     const { session } = data;
 
     // Join guest's personal room
-    client.join(`guestSession:${session.id}`);
+    void client.join(`guestSession:${session.id}`);
     // Join table room for table-wide updates
-    client.join(`table:${session.tableId}`);
+    void client.join(`table:${session.tableId}`);
     // Join restaurant room for broadcasts
-    client.join(`restaurant:${session.restaurantId}`);
+    void client.join(`restaurant:${session.restaurantId}`);
 
     this.logger.log(
       `Guest ${client.id} joined session ${session.id}, table ${session.tableId}`,
@@ -157,7 +152,9 @@ export class GuestGateway
 
       return { event: 'guest:order:submitted', data: order };
     } catch (error) {
-      return { event: 'guest:order:error', data: { message: error.message } };
+      const message =
+        error instanceof Error ? error.message : 'Unknown guest order error';
+      return { event: 'guest:order:error', data: { message } };
     }
   }
 
@@ -166,7 +163,7 @@ export class GuestGateway
    */
   @UseGuards(GuestWsGuard)
   @SubscribeMessage('guest:request:waiter')
-  async handleWaiterCall(
+  handleWaiterCall(
     @MessageBody()
     data: { reason?: string; urgency?: 'low' | 'medium' | 'high' },
     @ConnectedSocket() client: Socket,
@@ -200,7 +197,7 @@ export class GuestGateway
    */
   @UseGuards(GuestWsGuard)
   @SubscribeMessage('guest:request:bill')
-  async handleBillRequest(
+  handleBillRequest(
     @MessageBody()
     data: { paymentMethod?: 'cash' | 'card' | 'split'; notes?: string },
     @ConnectedSocket() client: Socket,
@@ -242,7 +239,7 @@ export class GuestGateway
     @MessageBody() data: { restaurantId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    client.join(`restaurant:${data.restaurantId}`);
+    void client.join(`restaurant:${data.restaurantId}`);
     this.logger.log(
       `Staff ${client.id} joined restaurant ${data.restaurantId}`,
     );
@@ -260,7 +257,7 @@ export class GuestGateway
     @MessageBody() data: { tableId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    client.join(`table:${data.tableId}`);
+    void client.join(`table:${data.tableId}`);
     this.logger.log(`Staff ${client.id} joined table ${data.tableId}`);
     return { event: 'staff:joined_table', data: { tableId: data.tableId } };
   }
@@ -287,6 +284,32 @@ export class GuestGateway
       .emit('ops:bill_request', request);
   }
 
+  notifyOrderSubmitted(
+    restaurantId: string,
+    data: {
+      orderId: string;
+      tableId: string;
+      sessionId: string;
+      totalAmount: number;
+      timestamp: Date;
+    },
+  ): void {
+    this.server
+      .to(`restaurant:${restaurantId}`)
+      .emit('ops:guest_order_submitted', data);
+  }
+
+  notifyTableRefresh(
+    tableId: string,
+    data: {
+      reason: 'submitted' | 'approved' | 'rejected' | 'converted' | 'refresh';
+      guestOrderId?: string;
+      timestamp: Date;
+    },
+  ): void {
+    this.server.to(`table:${tableId}`).emit('guest:table:refresh', data);
+  }
+
   /**
    * Notify guest about order status change
    */
@@ -295,6 +318,7 @@ export class GuestGateway
     data: {
       orderId: string;
       status: string;
+      message?: string;
       timestamp: Date;
     },
   ): void {
@@ -321,7 +345,7 @@ export class GuestGateway
   /**
    * Notify specific guest
    */
-  notifyGuest(sessionId: string, event: string, data: any): void {
+  notifyGuest(sessionId: string, event: string, data: unknown): void {
     this.server.to(`guestSession:${sessionId}`).emit(event, data);
   }
 

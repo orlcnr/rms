@@ -62,6 +62,11 @@ export class CreateMenuItemDto {
   @IsNotEmpty()
   category_id: string;
 
+  @ApiPropertyOptional({ example: 'uuid-of-branch' })
+  @IsUUID()
+  @IsOptional()
+  branch_id?: string;
+
   /**
    * Toplam ürün maliyeti (recipes'ten otomatik hesaplanabilir veya manuel girilebilir)
    * Food cost hesaplaması için kullanılır

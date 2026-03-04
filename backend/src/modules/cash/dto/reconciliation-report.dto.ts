@@ -37,6 +37,21 @@ export class ReconciliationReportDto {
   @ApiProperty({ description: 'Net dağıtılacak bahşiş' })
   netTip: number;
 
+  @ApiProperty({ description: 'Kasadan dağıtılan bahşiş' })
+  cashTipDistributed: number;
+
+  @ApiProperty({ description: 'Manuel kasa girişi toplamı' })
+  manualCashInTotal: number;
+
+  @ApiProperty({ description: 'Masraf / gider toplamı' })
+  expenseTotal: number;
+
+  @ApiProperty({ description: 'Düzeltme giriş toplamı' })
+  adjustmentInTotal: number;
+
+  @ApiProperty({ description: 'Düzeltme çıkış toplamı' })
+  adjustmentOutTotal: number;
+
   @ApiProperty({ description: 'Sistemdeki beklenen nakit' })
   expectedCash: number;
 

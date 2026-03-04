@@ -1,4 +1,5 @@
 import { http } from '@/modules/shared/api/http'
+import { normalizePaginatedEnvelope } from '@/modules/shared/api/normalize-paginated-envelope'
 import { Category, MenuItem, CreateCategoryInput, CreateMenuItemInput, PaginatedResponse, StockStatus, SalesStatus } from '../types'
 
 export interface GetProductsParams {
@@ -28,12 +29,13 @@ export const productsApi = {
     },
 
     deleteCategory: async (id: string) => {
-        return http.delete<void>(`/menus/categories/${id}`)
+        await http.deleteEnvelope<null>(`/menus/categories/${id}`)
     },
 
     // Products (Menu Items)
     getProducts: async (restaurantId: string, params: GetProductsParams = {}) => {
-        return http.get<PaginatedResponse<MenuItem>>(`/menus/restaurants/${restaurantId}/items`, { params })
+        const response = await http.getEnvelope<MenuItem[]>(`/menus/restaurants/${restaurantId}/items`, { params })
+        return normalizePaginatedEnvelope(response)
     },
 
     getProductById: async (id: string) => {
@@ -49,7 +51,7 @@ export const productsApi = {
     },
 
     deleteProduct: async (id: string) => {
-        return http.delete<void>(`/menus/items/${id}`)
+        await http.deleteEnvelope<null>(`/menus/items/${id}`)
     },
 
     uploadImage: async (file: File) => {

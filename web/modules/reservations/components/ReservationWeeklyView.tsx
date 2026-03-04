@@ -18,7 +18,7 @@ export function ReservationWeeklyView({
   selectedDate,
   onReservationClick,
 }: ReservationWeeklyViewProps) {
-  const currentDate = new Date(selectedDate)
+  const currentDate = useMemo(() => new Date(selectedDate), [selectedDate])
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(currentDate, { weekStartsOn: 1 })

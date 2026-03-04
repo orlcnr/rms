@@ -3,9 +3,10 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, Not } from 'typeorm';
 import {
   GuestOrder,
   GuestOrderStatus,
@@ -22,6 +23,7 @@ import {
   RejectGuestOrderDto,
 } from '../dto';
 import { MenuItem } from '../../menus/entities/menu-item.entity';
+import { Category } from '../../menus/entities/category.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { OrderStatus } from '../../orders/enums/order-status.enum';
 import { OrderItem } from '../../orders/entities/order-item.entity';
@@ -37,6 +39,8 @@ export class GuestOrdersService {
     private guestOrderEventRepository: Repository<GuestOrderEvent>,
     @InjectRepository(MenuItem)
     private menuItemRepository: Repository<MenuItem>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
@@ -52,14 +56,26 @@ export class GuestOrdersService {
   async createDraftOrder(
     session: GuestSession,
     dto: CreateDraftOrderDto,
-  ): Promise<GuestOrder> {
+  ): Promise<GuestOrder & { reusedDraft?: boolean }> {
+    const activeDraft = await this.getActiveDraftOrder(session);
+
+    if (activeDraft) {
+      return {
+        ...activeDraft,
+        reusedDraft: true,
+      };
+    }
+
     // Check for idempotency if clientRequestId provided
     if (dto.clientRequestId) {
       const existingOrder = await this.guestOrderRepository.findOne({
         where: { clientRequestId: dto.clientRequestId },
       });
       if (existingOrder) {
-        return existingOrder;
+        return {
+          ...existingOrder,
+          reusedDraft: false,
+        };
       }
     }
 
@@ -89,7 +105,10 @@ export class GuestOrdersService {
       totalAmount,
     });
 
-    return savedOrder;
+    return {
+      ...savedOrder,
+      reusedDraft: false,
+    };
   }
 
   /**
@@ -253,6 +272,158 @@ export class GuestOrdersService {
     });
   }
 
+  async getVisibleOrdersForGuest(
+    session: GuestSession,
+  ): Promise<Array<GuestOrder & { linkedOrderStatus?: OrderStatus | null }>> {
+    const orders = await this.guestOrderRepository.find({
+      where: {
+        restaurantId: session.restaurantId,
+        tableId: session.tableId,
+        status: In([
+          GuestOrderStatus.SUBMITTED,
+          GuestOrderStatus.APPROVED,
+          GuestOrderStatus.CONVERTED,
+          GuestOrderStatus.REJECTED,
+        ]),
+      },
+      order: {
+        submittedAt: 'DESC',
+      },
+    });
+
+    return this.attachLinkedOrderStatuses(orders);
+  }
+
+  async getActiveDraftOrder(session: GuestSession): Promise<GuestOrder | null> {
+    return this.guestOrderRepository.findOne({
+      where: {
+        sessionId: session.id,
+        status: GuestOrderStatus.DRAFT,
+      },
+      order: {
+        created_at: 'DESC',
+      },
+    });
+  }
+
+  async getCatalog(session: GuestSession) {
+    const categories = await this.categoryRepository.find({
+      where: {
+        restaurant_id: session.restaurantId,
+      },
+      relations: ['items'],
+      order: {
+        name: 'ASC',
+      },
+    });
+
+    return categories
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        items: (category.items || [])
+          .filter((item) => item.is_available)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            price: Number(item.price),
+            image_url: item.image_url,
+            is_available: item.is_available,
+            popularity: Number(item.popularity || 0),
+          })),
+      }))
+      .filter((category) => category.items.length > 0);
+  }
+
+  async getTableOrderedMenuItemIds(session: GuestSession): Promise<string[]> {
+    const orders = await this.guestOrderRepository.find({
+      where: {
+        restaurantId: session.restaurantId,
+        tableId: session.tableId,
+        status: In([
+          GuestOrderStatus.SUBMITTED,
+          GuestOrderStatus.APPROVED,
+          GuestOrderStatus.CONVERTED,
+        ]),
+      },
+    });
+
+    const menuItemIds = new Set<string>();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (item.menuItemId) {
+          menuItemIds.add(item.menuItemId);
+        }
+      }
+    }
+
+    return [...menuItemIds];
+  }
+
+  async getTableGuestOrderSummary(session: GuestSession) {
+    const otherOrders = await this.guestOrderRepository.find({
+      where: {
+        restaurantId: session.restaurantId,
+        tableId: session.tableId,
+        sessionId: Not(session.id),
+        status: In([
+          GuestOrderStatus.SUBMITTED,
+          GuestOrderStatus.APPROVED,
+          GuestOrderStatus.CONVERTED,
+        ]),
+      },
+      order: {
+        submittedAt: 'DESC',
+      },
+    });
+
+    const previewMap = new Map<
+      string,
+      { name: string; quantity: number; subtotal: number }
+    >();
+    let otherSessionsTotalAmount = 0;
+    let otherSessionsItemCount = 0;
+    let lastUpdatedAt: string | undefined;
+
+    for (const order of otherOrders) {
+      const updatedAt = order.updated_at?.toISOString?.();
+      if (updatedAt && (!lastUpdatedAt || updatedAt > lastUpdatedAt)) {
+        lastUpdatedAt = updatedAt;
+      }
+
+      for (const item of order.items) {
+        otherSessionsTotalAmount += Number(item.subtotal);
+        otherSessionsItemCount += Number(item.quantity);
+
+        const existing = previewMap.get(item.menuItemId);
+        if (existing) {
+          existing.quantity += Number(item.quantity);
+          existing.subtotal += Number(item.subtotal);
+        } else {
+          previewMap.set(item.menuItemId, {
+            name: item.name,
+            quantity: Number(item.quantity),
+            subtotal: Number(item.subtotal),
+          });
+        }
+      }
+    }
+
+    return {
+      otherSessionsTotalAmount,
+      otherSessionsItemCount,
+      otherSessionsOrdersCount: otherOrders.length,
+      previewItems: [...previewMap.values()]
+        .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name))
+        .slice(0, 5),
+      ...(lastUpdatedAt ? { lastUpdatedAt } : {}),
+    };
+  }
+
   /**
    * Get total bill for the table (includes other guests and staff orders)
    */
@@ -337,6 +508,7 @@ export class GuestOrdersService {
     try {
       const guestOrder = await queryRunner.manager.findOne(GuestOrder, {
         where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!guestOrder) {
@@ -344,9 +516,7 @@ export class GuestOrdersService {
       }
 
       if (guestOrder.status !== GuestOrderStatus.SUBMITTED) {
-        throw new BadRequestException(
-          `Cannot approve order with status: ${guestOrder.status}`,
-        );
+        throw new ConflictException('Guest order already processed');
       }
 
       // Check if there's already an active order for this table
@@ -374,9 +544,7 @@ export class GuestOrdersService {
         order.status = OrderStatus.PENDING;
         order.totalAmount = 0;
         order.notes = guestOrder.notes;
-        order.orderNumber = await this.generateOrderNumber(
-          guestOrder.restaurantId,
-        );
+        order.orderNumber = this.generateOrderNumber();
         order = await queryRunner.manager.save(order);
         isNewOrder = true;
       } else {
@@ -510,47 +678,57 @@ export class GuestOrdersService {
     dto: RejectGuestOrderDto,
     staffUserId: string,
   ): Promise<GuestOrder> {
-    const order = await this.guestOrderRepository.findOne({
-      where: { id: orderId },
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!order) {
-      throw new NotFoundException('Guest order not found');
-    }
-
-    if (order.status !== GuestOrderStatus.SUBMITTED) {
-      throw new BadRequestException(
-        `Cannot reject order with status: ${order.status}`,
-      );
-    }
-
-    order.status = GuestOrderStatus.REJECTED;
-    order.rejectedAt = new Date();
-    order.rejectedReason = dto.reason;
-
-    const savedOrder = await this.guestOrderRepository.save(order);
-
-    // Create audit event
-    await this.createOrderEvent(
-      order.id,
-      GuestOrderEventType.REJECTED,
-      {
-        reason: dto.reason,
-        rejectedBy: staffUserId,
-      },
-      staffUserId,
-    );
-
-    // Also notify that this guest order is no longer pending
-    this.notificationsGateway.server
-      .to(order.restaurantId)
-      .emit('guest_order_processed', {
-        id: order.id,
-        status: GuestOrderStatus.REJECTED,
-        reason: dto.reason,
+    try {
+      const order = await queryRunner.manager.findOne(GuestOrder, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
       });
 
-    return savedOrder;
+      if (!order) {
+        throw new NotFoundException('Guest order not found');
+      }
+
+      if (order.status !== GuestOrderStatus.SUBMITTED) {
+        throw new ConflictException('Guest order already processed');
+      }
+
+      order.status = GuestOrderStatus.REJECTED;
+      order.rejectedAt = new Date();
+      order.rejectedReason = dto.reason;
+
+      const savedOrder = await queryRunner.manager.save(order);
+
+      await queryRunner.manager.save(GuestOrderEvent, {
+        guestOrderId: order.id,
+        type: GuestOrderEventType.REJECTED,
+        payload: {
+          reason: dto.reason,
+          rejectedBy: staffUserId,
+        },
+        createdBy: staffUserId,
+      });
+
+      await queryRunner.commitTransaction();
+
+      this.notificationsGateway.server
+        .to(order.restaurantId)
+        .emit('guest_order_processed', {
+          id: order.id,
+          status: GuestOrderStatus.REJECTED,
+          reason: dto.reason,
+        });
+
+      return savedOrder;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
@@ -560,12 +738,10 @@ export class GuestOrdersService {
     restaurantId: string,
     status?: GuestOrderStatus,
   ): Promise<GuestOrder[]> {
-    const where: any = { restaurantId };
-    if (status) {
-      where.status = status;
-    } else {
-      where.status = GuestOrderStatus.SUBMITTED;
-    }
+    const where: { restaurantId: string; status: GuestOrderStatus } = {
+      restaurantId,
+      status: status || GuestOrderStatus.SUBMITTED,
+    };
 
     return this.guestOrderRepository.find({
       where,
@@ -664,7 +840,7 @@ export class GuestOrdersService {
   /**
    * Generate unique order number
    */
-  private async generateOrderNumber(restaurantId: string): Promise<string> {
+  private generateOrderNumber(): string {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.floor(Math.random() * 10000)
@@ -696,5 +872,37 @@ export class GuestOrdersService {
     }
 
     return orders.length;
+  }
+
+  private async attachLinkedOrderStatuses(
+    orders: GuestOrder[],
+  ): Promise<Array<GuestOrder & { linkedOrderStatus?: OrderStatus | null }>> {
+    const convertedOrderIds = orders
+      .map((order) => order.convertedOrderId)
+      .filter((value): value is string => Boolean(value));
+
+    if (!convertedOrderIds.length) {
+      return orders.map((order) => ({
+        ...order,
+        linkedOrderStatus: null,
+      }));
+    }
+
+    const relatedOrders = await this.orderRepository.find({
+      where: {
+        id: In(convertedOrderIds),
+      },
+    });
+
+    const statusByOrderId = new Map(
+      relatedOrders.map((order) => [order.id, order.status]),
+    );
+
+    return orders.map((order) => ({
+      ...order,
+      linkedOrderStatus: order.convertedOrderId
+        ? (statusByOrderId.get(order.convertedOrderId) ?? null)
+        : null,
+    }));
   }
 }

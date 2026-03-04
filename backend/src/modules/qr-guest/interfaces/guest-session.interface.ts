@@ -1,9 +1,12 @@
 export interface GuestSession {
   id: string;
   restaurantId: string;
+  restaurantName?: string;
   tableId: string;
+  serviceCycleVersion: string;
   tableName?: string;
   googleCommentUrl?: string;
+  displayName?: string;
   deviceFingerprintHash?: string;
   status: GuestSessionStatus;
   createdAt: Date;

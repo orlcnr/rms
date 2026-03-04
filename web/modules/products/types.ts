@@ -1,4 +1,5 @@
 import { BaseEntity } from '@/modules/shared/types'
+export type { PaginatedResponse } from '@/modules/shared/types'
 import { handleNumericInput as sharedHandleNumericInput, formatNumericDisplay as sharedFormatNumericDisplay } from '@/modules/shared/utils/numeric'
 
 // ============================================
@@ -109,17 +110,6 @@ export interface CreateMenuItemInput {
         ingredient_id: string
         quantity: number
     }>
-}
-
-export interface PaginatedResponse<T> {
-    items: T[]
-    meta: {
-        totalItems: number
-        itemCount: number
-        itemsPerPage: number
-        totalPages: number
-        currentPage: number
-    }
 }
 
 // ============================================

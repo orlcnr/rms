@@ -5,10 +5,17 @@ import { LoginInput } from '../validations/login.schema';
 
 export const authService = {
   login: async (data: LoginInput): Promise<LoginResponse> => {
-    const response = await http.post<LoginResponse>('/auth/login', data);
+    const { rememberMe = false, ...credentials } = data;
+    const response = await http.post<LoginResponse>('/auth/login', credentials);
 
     if (response.access_token) {
-      setCookie('access_token', response.access_token, { maxAge: 60 * 60 * 24 * 7 });
+      setCookie('access_token', response.access_token, rememberMe
+        ? { maxAge: 60 * 60 * 24 * 7 }
+        : undefined);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth:state-change'));
+      }
     }
 
     return response;
@@ -17,6 +24,7 @@ export const authService = {
   logout: () => {
     deleteCookie('access_token');
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('auth:state-change'));
       window.location.href = '/login';
     }
   },

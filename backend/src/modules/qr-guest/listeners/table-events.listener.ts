@@ -52,14 +52,24 @@ export class TableEventsListener {
         'Table is out of service',
       );
     } else if (event.newStatus === 'available') {
-      // Small delay for 'available' to allow other events to process
-      setTimeout(async () => {
-        await this.revokeTableSessions(
-          event.tableId,
-          event.restaurantId,
-          'Table is now available - session ended',
+      const hasRecentPaymentClose =
+        await this.guestSessionsService.hasRecentPaymentClose(event.tableId);
+
+      if (hasRecentPaymentClose) {
+        this.logger.debug(
+          `Skipping fallback revoke for table ${event.tableId}; payment completion already handled it recently.`,
         );
-      }, 5000); // 5 seconds
+        return;
+      }
+
+      this.logger.warn(
+        `Table ${event.tableId} became available. Applying fallback guest session revoke.`,
+      );
+      await this.revokeTableSessions(
+        event.tableId,
+        event.restaurantId,
+        'Table is now available - session ended',
+      );
     }
   }
 
@@ -95,6 +105,8 @@ export class TableEventsListener {
       `Payment completed for table ${tableId}, order ${event.orderId}`,
     );
 
+    await this.guestSessionsService.markRecentPaymentClose(tableId);
+
     // Get all sessions for this table
     const sessionIds =
       await this.guestSessionsService.getTableSessions(tableId);
@@ -108,15 +120,12 @@ export class TableEventsListener {
       });
     }
 
-    // Revoke sessions after a short delay
-    // This gives guests time to see the confirmation
-    setTimeout(async () => {
-      await this.revokeTableSessions(
-        tableId,
-        restaurantId,
-        'Payment completed - session ended',
-      );
-    }, 5000); // 5 seconds
+    await this.revokeTableSessions(
+      tableId,
+      restaurantId,
+      'Payment completed - session ended',
+      'payment_completed',
+    );
   }
 
   /**
@@ -148,6 +157,11 @@ export class TableEventsListener {
     tableId: string,
     restaurantId: string,
     reason: string,
+    revokeReason:
+      | 'table_reset'
+      | 'staff_action'
+      | 'table_changed'
+      | 'payment_completed' = 'table_reset',
   ): Promise<void> {
     const sessionIds =
       await this.guestSessionsService.getTableSessions(tableId);
@@ -162,7 +176,7 @@ export class TableEventsListener {
 
     for (const sessionId of sessionIds) {
       // Revoke session
-      await this.guestSessionsService.revokeSession(sessionId, 'table_reset');
+      await this.guestSessionsService.revokeSession(sessionId, revokeReason);
 
       // Disconnect socket
       await this.guestGateway.revokeSession(sessionId, reason);

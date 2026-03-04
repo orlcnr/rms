@@ -8,3 +8,11 @@ export enum CashMovementType {
   IN = 'in',
   OUT = 'out',
 }
+
+export enum CashMovementSubtype {
+  REGULAR = 'regular',
+  TIP = 'tip',
+  REFUND = 'refund',
+  EXPENSE = 'expense',
+  ADJUSTMENT = 'adjustment',
+}

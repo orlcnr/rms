@@ -22,6 +22,14 @@ export class RolesGuard implements CanActivate {
     // Super Admin her yere erişebilir (Opsiyonel, ama genelde istenir)
     if (user.role === Role.SUPER_ADMIN) return true;
 
-    return requiredRoles.some((role) => user.role === role);
+    if (requiredRoles.some((role) => user.role === role)) {
+      return true;
+    }
+
+    if (Array.isArray(user.roles)) {
+      return requiredRoles.some((role) => user.roles.includes(role));
+    }
+
+    return false;
   }
 }

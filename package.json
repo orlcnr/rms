@@ -1,5 +1,17 @@
 {
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "contracts:generate": "node scripts/generate-contracts.mjs",
+    "contracts:check": "node scripts/check-contracts.mjs"
+  },
   "dependencies": {
     "chrome-remote-interface": "^0.34.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1"
   }
 }

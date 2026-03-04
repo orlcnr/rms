@@ -593,7 +593,8 @@ export class OrdersService {
       );
 
       protectedItems.forEach((existingItem) => {
-        const currentQty = protectedQtyByMenuId.get(existingItem.menuItemId) ?? 0;
+        const currentQty =
+          protectedQtyByMenuId.get(existingItem.menuItemId) ?? 0;
         protectedQtyByMenuId.set(
           existingItem.menuItemId,
           currentQty + Number(existingItem.quantity || 0),

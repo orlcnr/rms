@@ -13,7 +13,11 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { PaymentMethod, DiscountType } from '../entities/payment.entity';
+import {
+  PaymentMethod,
+  DiscountType,
+  MealVoucherType,
+} from '../entities/payment.entity';
 
 export class PaymentTransactionDto {
   @ApiProperty({ example: 500 })
@@ -29,6 +33,14 @@ export class PaymentTransactionDto {
   @IsUUID()
   @IsOptional()
   customer_id?: string;
+
+  @ApiPropertyOptional({
+    enum: MealVoucherType,
+    example: MealVoucherType.MULTINET,
+  })
+  @IsEnum(MealVoucherType)
+  @IsOptional()
+  meal_voucher_type?: MealVoucherType;
 
   @ApiPropertyOptional({ example: 1000 })
   @IsNumber()

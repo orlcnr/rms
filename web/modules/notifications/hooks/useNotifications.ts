@@ -9,6 +9,14 @@ import {
   NotificationType,
   NotificationsMeta,
 } from '../types'
+import {
+  emitNotificationRead,
+  emitNotificationsReadAll,
+  NOTIFICATION_READ_EVENT,
+  NOTIFICATIONS_READ_ALL_EVENT,
+} from '../utils'
+
+const NOTIFICATIONS_HOOK_SOURCE = 'notifications-hook'
 
 interface UseNotificationsOptions {
   initialPage?: number
@@ -31,8 +39,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     realtime = true,
   } = options
 
-  const onSocketEvent = useSocketStore((state) => state.on)
-  const offSocketEvent = useSocketStore((state) => state.off)
+  const socket = useSocketStore((state) => state.socket)
 
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [meta, setMeta] = useState<NotificationsMeta>({
@@ -77,6 +84,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const markAsRead = useCallback(async (id: string) => {
     setIsMutating(true)
     try {
+      const target = notifications.find((notification) => notification.id === id)
       await notificationsService.markAsRead(id)
       setNotifications((prev) =>
         prev.map((notification) =>
@@ -85,11 +93,14 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
             : notification,
         ),
       )
-      setUnreadCount((prev) => Math.max(0, prev - 1))
+      if (!target?.isRead) {
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      }
+      emitNotificationRead(id, NOTIFICATIONS_HOOK_SOURCE)
     } finally {
       setIsMutating(false)
     }
-  }, [])
+  }, [notifications])
 
   const markAllAsRead = useCallback(async () => {
     setIsMutating(true)
@@ -99,6 +110,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         prev.map((notification) => ({ ...notification, isRead: true })),
       )
       setUnreadCount(0)
+      emitNotificationsReadAll(NOTIFICATIONS_HOOK_SOURCE)
     } finally {
       setIsMutating(false)
     }
@@ -117,7 +129,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   }, [fetchUnreadCount])
 
   useEffect(() => {
-    if (!realtime) return
+    if (!realtime || !socket) return
 
     const handleNewNotification = (payload: unknown) => {
       const incoming = payload as Notification
@@ -151,11 +163,85 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       }))
     }
 
-    onSocketEvent('new_notification', handleNewNotification)
+    socket.on('new_notification', handleNewNotification)
     return () => {
-      offSocketEvent('new_notification', handleNewNotification)
+      socket.off('new_notification', handleNewNotification)
     }
-  }, [isReadFilter, limit, offSocketEvent, onSocketEvent, page, realtime, typeFilter])
+  }, [isReadFilter, limit, page, realtime, socket, typeFilter])
+
+  useEffect(() => {
+    if (!realtime) return
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh()
+      }
+    }
+
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+    }
+  }, [realtime, refresh])
+
+  useEffect(() => {
+    const handleNotificationRead = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; source?: string }>).detail
+
+      if (!detail?.id || detail.source === NOTIFICATIONS_HOOK_SOURCE) {
+        return
+      }
+
+      let shouldDecrement = false
+
+      setNotifications((prev) =>
+        prev.map((notification) => {
+          if (notification.id !== detail.id || notification.isRead) {
+            return notification
+          }
+
+          shouldDecrement = true
+          return { ...notification, isRead: true }
+        }),
+      )
+
+      if (shouldDecrement) {
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      }
+    }
+
+    const handleNotificationsReadAll = (event: Event) => {
+      const detail = (event as CustomEvent<{ source?: string }>).detail
+      if (detail?.source === NOTIFICATIONS_HOOK_SOURCE) {
+        return
+      }
+
+      setNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, isRead: true })),
+      )
+      setUnreadCount(0)
+    }
+
+    window.addEventListener(NOTIFICATION_READ_EVENT, handleNotificationRead as EventListener)
+    window.addEventListener(
+      NOTIFICATIONS_READ_ALL_EVENT,
+      handleNotificationsReadAll as EventListener,
+    )
+
+    return () => {
+      window.removeEventListener(
+        NOTIFICATION_READ_EVENT,
+        handleNotificationRead as EventListener,
+      )
+      window.removeEventListener(
+        NOTIFICATIONS_READ_ALL_EVENT,
+        handleNotificationsReadAll as EventListener,
+      )
+    }
+  }, [])
 
   return {
     notifications,
@@ -178,4 +264,3 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     refresh,
   }
 }
-

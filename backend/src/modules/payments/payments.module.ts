@@ -8,6 +8,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { ConfigModule } from '@nestjs/config';
 import { SettingsModule } from '../settings/settings.module';
 import { CashModule } from '../cash/cash.module';
+import { QrGuestModule } from '../qr-guest/qr-guest.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { CashModule } from '../cash/cash.module';
     ConfigModule,
     SettingsModule,
     CashModule,
+    QrGuestModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService],

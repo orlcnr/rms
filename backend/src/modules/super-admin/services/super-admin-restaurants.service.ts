@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 import { User } from '../../users/entities/user.entity';
+import { Brand } from '../../brands/entities/brand.entity';
 import { CreateSA_RestaurantDto } from '../dto/create-restaurant.dto';
 import { UpdateSA_RestaurantDto } from '../dto/update-restaurant.dto';
 import { PasswordService } from '../../../common/services/password.service';
@@ -120,6 +121,14 @@ export class SuperAdminRestaurantsService {
 
         const savedOwner = await transactionalEntityManager.save(owner);
 
+        // 1.5 Create brand
+        const brand = transactionalEntityManager.create(Brand, {
+          name: createRestaurantDto.name,
+          owner_id: savedOwner.id,
+          is_active: true,
+        });
+        const savedBrand = await transactionalEntityManager.save(brand);
+
         // 2. Create restaurant with owner_id
         const restaurant = transactionalEntityManager.create(Restaurant, {
           name: createRestaurantDto.name,
@@ -130,6 +139,8 @@ export class SuperAdminRestaurantsService {
           contact_phone: createRestaurantDto.contact_phone,
           google_comment_url: createRestaurantDto.google_comment_url,
           owner_id: savedOwner.id,
+          brand_id: savedBrand.id,
+          is_branch: true,
         });
 
         const savedRestaurant =
@@ -187,13 +198,25 @@ export class SuperAdminRestaurantsService {
   }
 
   async remove(id: string) {
+    return this.suspend(id);
+  }
+
+  async suspend(id: string) {
     const restaurant = await this.findOne(id);
 
-    // Soft delete - just deactivate
     restaurant.is_active = false;
     await this.restaurantRepository.save(restaurant);
 
     return { message: 'Restaurant deactivated successfully' };
+  }
+
+  async activate(id: string) {
+    const restaurant = await this.findOne(id);
+
+    restaurant.is_active = true;
+    await this.restaurantRepository.save(restaurant);
+
+    return { message: 'Restaurant activated successfully' };
   }
 
   async getStats() {
@@ -208,5 +231,14 @@ export class SuperAdminRestaurantsService {
       active: activeRestaurants,
       inactive: totalRestaurants - activeRestaurants,
     };
+  }
+
+  async getRecent(limit = 5) {
+    return this.restaurantRepository
+      .createQueryBuilder('restaurant')
+      .leftJoinAndSelect('restaurant.owner', 'owner')
+      .orderBy('restaurant.created_at', 'DESC')
+      .take(limit)
+      .getMany();
   }
 }

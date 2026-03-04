@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { MenuItem } from '../entities/menu-item.entity';
-import { Exclude, Expose, Transform } from 'class-transformer';
 import { MenuItemAvailabilityStatus } from '../enums/menu-item-availability-status.enum';
+import { normalizeImageUrl } from '../utils/image-url.transformer';
 
 export class MenuItemResponseDto {
   @ApiProperty()
@@ -40,41 +40,18 @@ export class MenuItemResponseDto {
   @ApiProperty({ enum: MenuItemAvailabilityStatus })
   availabilityStatus: MenuItemAvailabilityStatus;
 
-  constructor(partial: Partial<MenuItem>) {
-    Object.assign(this, partial);
-    this.transformImageUrl();
-  }
-
-  private transformImageUrl() {
-    if (!this.image_url) return;
-
-    const domain = process.env.FILE_DOMAIN || 'https://api.localhost';
-
-    if (this.image_url.startsWith('http')) {
-      // Eğer URL http://api.localhost ile başlıyorsa ve domain https ise güncelle
-      if (
-        this.image_url.includes('api.localhost') &&
-        !this.image_url.startsWith(domain)
-      ) {
-        this.image_url = this.image_url.replace(
-          /https?:\/\/api\.localhost/,
-          domain,
-        );
-      }
-    } else {
-      // Göreceli path ise domain'i başına ekle
-      this.image_url = `${domain}${this.image_url.startsWith('/') ? '' : '/'}${this.image_url}`;
-    }
-  }
-
   static fromEntity(
     entity: MenuItem,
     availabilityStatus?: MenuItemAvailabilityStatus,
+    customPrice?: number | null,
   ): MenuItemResponseDto {
-    const dto = new MenuItemResponseDto(entity);
-    if (availabilityStatus) {
-      dto.availabilityStatus = availabilityStatus;
-    }
-    return dto;
+    return {
+      ...entity,
+      ...(customPrice !== undefined && customPrice !== null
+        ? { price: Number(customPrice) }
+        : {}),
+      image_url: normalizeImageUrl(entity.image_url),
+      ...(availabilityStatus ? { availabilityStatus } : {}),
+    } as MenuItemResponseDto;
   }
 }

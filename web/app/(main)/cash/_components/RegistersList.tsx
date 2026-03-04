@@ -4,20 +4,20 @@
 
 import { Plus, Pencil, Wallet } from 'lucide-react'
 import { Button } from '@/modules/shared/components/Button'
-import type { CashRegisterWithStatus, ActiveSessionWrapper } from '@/modules/cash/types'
+import type { CashRegisterWithStatus } from '@/modules/cash/types'
 
 interface RegistersListProps {
   registers: CashRegisterWithStatus[] | null
-  currentSession: ActiveSessionWrapper | null
   onEdit: (register: { id: string; name: string }) => void
   onSelectRegister: (register: { id: string; name: string }) => void
+  onSelectSessionToClose: (session: { id: string; name: string }) => void
 }
 
 export function RegistersList({
   registers,
-  currentSession,
   onEdit,
   onSelectRegister,
+  onSelectSessionToClose,
 }: RegistersListProps) {
   return (
     <div className="bg-bg-surface border border-border-light rounded-sm">
@@ -63,7 +63,7 @@ export function RegistersList({
                   <Pencil className="h-4 w-4 text-text-muted" />
                 </button>
                 {/* Open Session Button */}
-                {item?.status === 'closed' && !currentSession && (
+                {item?.status === 'closed' && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -73,9 +73,23 @@ export function RegistersList({
                         name: item.name,
                       })
                     }
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Oturum Aç
+                    </Button>
+                )}
+                {item?.status === 'open' && item.activeSession && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() =>
+                      onSelectSessionToClose({
+                        id: item.activeSession!.id,
+                        name: item.name,
+                      })
+                    }
                   >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Oturum Aç
+                    Kasayı Kapat
                   </Button>
                 )}
               </div>

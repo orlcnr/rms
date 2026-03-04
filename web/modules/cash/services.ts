@@ -105,7 +105,11 @@ export const addMovement = async (
   sessionId: string,
   data: CreateMovementData
 ): Promise<CashMovement> => {
-  return await http.post<CashMovement>(`/cash/sessions/${sessionId}/movements`, data)
+  const { isLiquid, isRevenue, ...payload } = data
+  void isLiquid
+  void isRevenue
+
+  return await http.post<CashMovement>(`/cash/sessions/${sessionId}/movements`, payload)
 }
 
 /**

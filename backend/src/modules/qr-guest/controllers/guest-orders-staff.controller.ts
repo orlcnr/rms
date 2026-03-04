@@ -21,13 +21,17 @@ import {
   RestaurantIdParamDto,
 } from '../dto';
 import { GetUser } from '../../../common/decorators/get-user.decorator';
+import { GuestGateway } from '../gateways/guest.gateway';
 
 @ApiTags('Guest Orders Management')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('orders/guest-approvals')
 export class GuestOrdersStaffController {
-  constructor(private guestOrdersService: GuestOrdersService) {}
+  constructor(
+    private guestOrdersService: GuestOrdersService,
+    private guestGateway: GuestGateway,
+  ) {}
 
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER)
   @Get('restaurant/:restaurantId/pending')
@@ -51,7 +55,41 @@ export class GuestOrdersStaffController {
     @Body() dto: ApproveGuestOrderDto,
     @GetUser() user: { id: string },
   ) {
-    return await this.guestOrdersService.approveOrder(params.id, dto, user.id);
+    const result = await this.guestOrdersService.approveOrder(
+      params.id,
+      dto,
+      user.id,
+    );
+
+    this.guestGateway.notifyOrderStatusChange(result.guestOrder.sessionId, {
+      orderId: result.guestOrder.id,
+      status: result.guestOrder.status,
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyGuest(
+      result.guestOrder.sessionId,
+      'guest:order:approved',
+      {
+        guestOrderId: result.guestOrder.id,
+        orderId: result.order.id,
+        status: result.guestOrder.status,
+        message: 'Siparişiniz onaylandı ve hazırlanmaya alındı.',
+        timestamp: new Date(),
+      },
+    );
+    this.guestGateway.notifyOrderConverted(result.guestOrder.restaurantId, {
+      guestOrderId: result.guestOrder.id,
+      orderId: result.order.id,
+      tableId: result.guestOrder.tableId,
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyTableRefresh(result.guestOrder.tableId, {
+      reason: 'converted',
+      guestOrderId: result.guestOrder.id,
+      timestamp: new Date(),
+    });
+
+    return result;
   }
 
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER)
@@ -63,6 +101,30 @@ export class GuestOrdersStaffController {
     @Body() dto: RejectGuestOrderDto,
     @GetUser() user: { id: string },
   ) {
-    return await this.guestOrdersService.rejectOrder(params.id, dto, user.id);
+    const order = await this.guestOrdersService.rejectOrder(
+      params.id,
+      dto,
+      user.id,
+    );
+
+    this.guestGateway.notifyOrderStatusChange(order.sessionId, {
+      orderId: order.id,
+      status: order.status,
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyGuest(order.sessionId, 'guest:order:rejected', {
+      orderId: order.id,
+      status: order.status,
+      rejectedReason: order.rejectedReason,
+      message: 'Siparişiniz reddedildi.',
+      timestamp: new Date(),
+    });
+    this.guestGateway.notifyTableRefresh(order.tableId, {
+      reason: 'rejected',
+      guestOrderId: order.id,
+      timestamp: new Date(),
+    });
+
+    return order;
   }
 }

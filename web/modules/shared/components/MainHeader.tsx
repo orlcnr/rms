@@ -8,14 +8,24 @@ import {
   UtensilsCrossed,
   Bell,
   User,
-  ChevronDown,
   CheckCheck,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useUI } from '@/modules/shared/context/UIContext'
 import { useSocketStore } from '@/modules/shared/api/socket'
+import { playNotificationAudio } from '@/modules/shared/utils/notification-sound'
 import { http } from '@/modules/shared/api/http'
 import { notificationsService } from '@/modules/notifications/services'
 import { Notification } from '@/modules/notifications/types'
+import {
+  emitNotificationRead,
+  emitNotificationsReadAll,
+  getNotificationActionHref,
+  NOTIFICATION_READ_EVENT,
+  NOTIFICATIONS_READ_ALL_EVENT,
+} from '@/modules/notifications/utils'
+
+const MAIN_HEADER_SOURCE = 'main-header'
 
 interface CurrentUser {
   id: string
@@ -53,12 +63,24 @@ function formatTime(value: string): string {
   })
 }
 
+function getNotificationSound(type: Notification['type']): string | null {
+  switch (type) {
+    case 'waiter_call':
+      return '/guest.mp3'
+    case 'bill_request':
+      return '/payment.mp3'
+    case 'guest_order':
+      return '/orders.mp3'
+    default:
+      return null
+  }
+}
+
 export function MainHeader() {
   const router = useRouter()
   const { toggleSidebar } = useUI()
   const connectSocket = useSocketStore((state) => state.connect)
-  const onSocketEvent = useSocketStore((state) => state.on)
-  const offSocketEvent = useSocketStore((state) => state.off)
+  const socket = useSocketStore((state) => state.socket)
 
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -94,6 +116,10 @@ export function MainHeader() {
   }, [loadUserAndNotifications])
 
   useEffect(() => {
+    if (!socket) {
+      return
+    }
+
     const handleNewNotification = (payload: unknown) => {
       const incoming = payload as Notification
       setUnreadCount((prev) => prev + 1)
@@ -103,13 +129,24 @@ export function MainHeader() {
         }
         return [incoming, ...prev].slice(0, 8)
       })
+
+      const sound = getNotificationSound(incoming.type)
+      if (sound) {
+        playNotificationAudio(sound)
+      }
+
+      if (incoming.type === 'waiter_call' || incoming.type === 'bill_request') {
+        toast.success(incoming.title, {
+          description: incoming.message,
+        })
+      }
     }
 
-    onSocketEvent('new_notification', handleNewNotification)
+    socket.on('new_notification', handleNewNotification)
     return () => {
-      offSocketEvent('new_notification', handleNewNotification)
+      socket.off('new_notification', handleNewNotification)
     }
-  }, [offSocketEvent, onSocketEvent])
+  }, [socket])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -122,6 +159,60 @@ export function MainHeader() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    const handleNotificationRead = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: string; source?: string }>).detail
+
+      if (!detail?.id || detail.source === MAIN_HEADER_SOURCE) {
+        return
+      }
+
+      let shouldDecrement = false
+
+      setNotifications((prev) =>
+        prev.map((notification) => {
+          if (notification.id !== detail.id || notification.isRead) {
+            return notification
+          }
+
+          shouldDecrement = true
+          return { ...notification, isRead: true }
+        }),
+      )
+
+      if (shouldDecrement) {
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      }
+    }
+
+    const handleNotificationsReadAll = (event: Event) => {
+      const detail = (event as CustomEvent<{ source?: string }>).detail
+      if (detail?.source === MAIN_HEADER_SOURCE) {
+        return
+      }
+
+      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })))
+      setUnreadCount(0)
+    }
+
+    window.addEventListener(NOTIFICATION_READ_EVENT, handleNotificationRead as EventListener)
+    window.addEventListener(
+      NOTIFICATIONS_READ_ALL_EVENT,
+      handleNotificationsReadAll as EventListener,
+    )
+
+    return () => {
+      window.removeEventListener(
+        NOTIFICATION_READ_EVENT,
+        handleNotificationRead as EventListener,
+      )
+      window.removeEventListener(
+        NOTIFICATIONS_READ_ALL_EVENT,
+        handleNotificationsReadAll as EventListener,
+      )
+    }
+  }, [])
+
   const userName = useMemo(() => getDisplayName(user), [user])
   const roleLabel = useMemo(() => getRoleLabel(user?.role || ''), [user?.role])
 
@@ -129,14 +220,34 @@ export function MainHeader() {
     await notificationsService.markAllAsRead()
     setUnreadCount(0)
     setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })))
+    emitNotificationsReadAll(MAIN_HEADER_SOURCE)
   }
 
   async function handleMarkAsRead(id: string) {
+    const target = notifications.find((item) => item.id === id)
     await notificationsService.markAsRead(id)
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
     )
-    setUnreadCount((prev) => Math.max(0, prev - 1))
+    if (!target?.isRead) {
+      setUnreadCount((prev) => Math.max(0, prev - 1))
+    }
+    emitNotificationRead(id, MAIN_HEADER_SOURCE)
+  }
+
+  async function handleNotificationClick(notification: Notification) {
+    const actionHref = getNotificationActionHref(notification)
+
+    if (!actionHref) {
+      return
+    }
+
+    if (!notification.isRead) {
+      await handleMarkAsRead(notification.id)
+    }
+
+    setIsBellOpen(false)
+    router.push(actionHref)
   }
 
   return (
@@ -220,14 +331,24 @@ export function MainHeader() {
                       <span className="text-[10px] text-text-muted">
                         {formatTime(notification.created_at)}
                       </span>
-                      {!notification.isRead && (
-                        <button
-                          onClick={() => void handleMarkAsRead(notification.id)}
-                          className="text-[10px] font-black uppercase tracking-wider text-primary-main hover:underline"
-                        >
-                          Okundu
-                        </button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {getNotificationActionHref(notification) ? (
+                          <button
+                            onClick={() => void handleNotificationClick(notification)}
+                            className="text-[10px] font-black uppercase tracking-wider text-primary-main hover:underline"
+                          >
+                            Aç
+                          </button>
+                        ) : null}
+                        {!notification.isRead && (
+                          <button
+                            onClick={() => void handleMarkAsRead(notification.id)}
+                            className="text-[10px] font-black uppercase tracking-wider text-primary-main hover:underline"
+                          >
+                            Okundu
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -264,11 +385,9 @@ export function MainHeader() {
             <div className="w-9 h-9 rounded-sm bg-bg-surface flex items-center justify-center border border-border-light overflow-hidden">
               <User size={18} className="text-text-muted group-hover:text-primary-main transition-colors" />
             </div>
-            <ChevronDown size={14} className="text-text-muted group-hover:text-primary-main transition-colors" />
           </div>
         </Link>
       </div>
     </header>
   )
 }
-

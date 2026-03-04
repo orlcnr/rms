@@ -2,6 +2,8 @@ import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Role } from '../../../common/enums/role.enum';
+import { OneToMany } from 'typeorm';
+import { UserBranchRole } from './user-branch-role.entity';
 
 @Entity('users', { schema: 'business' })
 export class User extends BaseEntity {
@@ -37,4 +39,18 @@ export class User extends BaseEntity {
   })
   @JoinColumn({ name: 'restaurant_id' })
   restaurant: Restaurant;
+
+  @OneToMany(() => UserBranchRole, (userBranchRole) => userBranchRole.user)
+  branch_roles: UserBranchRole[];
+
+  get must_change_password(): boolean {
+    return Boolean(this.profile_details?.must_change_password);
+  }
+
+  set must_change_password(value: boolean) {
+    this.profile_details = {
+      ...(this.profile_details || {}),
+      must_change_password: value,
+    };
+  }
 }

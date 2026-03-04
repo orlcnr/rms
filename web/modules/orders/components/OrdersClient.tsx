@@ -97,7 +97,7 @@ export function OrdersClient({
         }
       })
       .filter((item): item is (typeof hook.basket)[number] => item !== null)
-  }, [hook.basket, localExistingOrder])
+  }, [hook, localExistingOrder])
 
   if (!hook.mounted) return null
 

@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
-import { CashMovementType } from '../enums/cash.enum';
+import { CashMovementSubtype, CashMovementType } from '../enums/cash.enum';
 import { PaymentMethod } from '../../payments/entities/payment.entity';
 import { CashSession } from './cash-session.entity';
 
@@ -19,6 +19,9 @@ export class CashMovement extends BaseEntity {
     enum: CashMovementType,
   })
   type: CashMovementType;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  subtype: CashMovementSubtype | null;
 
   @Column({
     name: 'payment_method',

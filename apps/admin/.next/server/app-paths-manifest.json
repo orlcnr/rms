@@ -1,0 +1,15 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/(auth)/force-password-change/page": "app/(auth)/force-password-change/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/page": "app/page.js",
+  "/(admin)/ops/page": "app/(admin)/ops/page.js",
+  "/(admin)/restaurants/page": "app/(admin)/restaurants/page.js",
+  "/(admin)/settings/page": "app/(admin)/settings/page.js",
+  "/(admin)/reports/page": "app/(admin)/reports/page.js",
+  "/(admin)/restaurants/[id]/page": "app/(admin)/restaurants/[id]/page.js",
+  "/(admin)/subscriptions/page": "app/(admin)/subscriptions/page.js",
+  "/(admin)/users/page": "app/(admin)/users/page.js",
+  "/(admin)/reports/audit/page": "app/(admin)/reports/audit/page.js",
+  "/(admin)/dashboard/page": "app/(admin)/dashboard/page.js"
+}

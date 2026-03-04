@@ -7,13 +7,16 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useOrdersBoard } from '../hooks/useOrdersBoard'
 import { useOrdersSocket } from '../hooks/useOrdersSocket'
 import { useSocketStore } from '@/modules/shared/api/socket'
+import { guestStaffApi } from '@/modules/guest/service'
+import { GuestApprovalsClient } from '@/modules/guest/components/GuestApprovalsClient'
 import { KanbanBoard } from './KanbanBoard'
 import { Archive, Printer } from 'lucide-react'
+import { Modal } from '@/modules/shared/components/Modal'
 import { SubHeaderSection, BodySection } from '@/modules/shared/components/layout'
 import { OrderBoardToolbar } from './OrderBoardToolbar'
 import { OrderDetailDrawer } from './OrderDetailDrawer'
@@ -26,15 +29,24 @@ interface OrdersBoardClientProps {
   restaurantId: string
   userId: string
   initialOrdersByStatus: OrdersByStatus
+  initialPendingGuestApprovalsCount?: number
 }
 
 export function OrdersBoardClient({
   restaurantId,
   userId,
   initialOrdersByStatus,
+  initialPendingGuestApprovalsCount = 0,
 }: OrdersBoardClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { printOrder } = useOrderPrint()
+  const [pendingGuestApprovalsCount, setPendingGuestApprovalsCount] = useState(
+    initialPendingGuestApprovalsCount,
+  )
+  const [isGuestApprovalsOpen, setIsGuestApprovalsOpen] = useState(false)
+  const [guestApprovalsFocusOrderId, setGuestApprovalsFocusOrderId] = useState<string | null>(null)
+  const [guestApprovalsNotificationId, setGuestApprovalsNotificationId] = useState<string | null>(null)
   const {
     ordersByStatus,
     allOrdersByStatus,
@@ -62,7 +74,7 @@ export function OrdersBoardClient({
   })
 
   // Get socket store for connection status
-  const { connect, disconnect } = useSocketStore()
+  const { connect, disconnect, on, off } = useSocketStore()
 
   // Local state for archive (closed orders) modal
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
@@ -74,14 +86,28 @@ export function OrdersBoardClient({
     void fetchArchiveOrders(true)
   }, [fetchArchiveOrders, isArchiveOpen])
 
+  const refreshPendingGuestApprovalsCount = useCallback(async () => {
+    try {
+      const items = await guestStaffApi.getPendingApprovals(restaurantId)
+      setPendingGuestApprovalsCount(items.length)
+    } catch (error) {
+      console.error(
+        '[OrdersBoardClient] Failed to refresh pending guest approvals count:',
+        error,
+      )
+    }
+  }, [restaurantId])
+
   // Ensure fresh board state when entering page from sidebar/history
   // and when tab regains focus (covers missed socket events while page was closed).
   useEffect(() => {
     void refetch(false)
+    void refreshPendingGuestApprovalsCount()
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         void refetch(false)
+        void refreshPendingGuestApprovalsCount()
       }
     }
 
@@ -91,7 +117,46 @@ export function OrdersBoardClient({
       window.removeEventListener('focus', handleVisibilityOrFocus)
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
     }
-  }, [refetch])
+  }, [refetch, refreshPendingGuestApprovalsCount])
+
+  useEffect(() => {
+    const handleGuestOrderSubmitted = () => {
+      setPendingGuestApprovalsCount((current) => current + 1)
+    }
+
+    const handleGuestOrderProcessed = () => {
+      setPendingGuestApprovalsCount((current) => Math.max(0, current - 1))
+    }
+
+    on('ops:guest_order_submitted', handleGuestOrderSubmitted)
+    on('ops:guest_order_converted', handleGuestOrderProcessed)
+    on('guest_order_processed', handleGuestOrderProcessed)
+
+    return () => {
+      off('ops:guest_order_submitted', handleGuestOrderSubmitted)
+      off('ops:guest_order_converted', handleGuestOrderProcessed)
+      off('guest_order_processed', handleGuestOrderProcessed)
+    }
+  }, [off, on])
+
+  useEffect(() => {
+    const openModal = searchParams.get('open')
+
+    if (openModal !== 'guest-approvals') {
+      return
+    }
+
+    setGuestApprovalsFocusOrderId(searchParams.get('focus'))
+    setGuestApprovalsNotificationId(searchParams.get('notificationId'))
+    setIsGuestApprovalsOpen(true)
+
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.delete('open')
+    nextParams.delete('focus')
+    nextParams.delete('notificationId')
+    const nextUrl = nextParams.toString() ? `/orders?${nextParams}` : '/orders'
+    router.replace(nextUrl)
+  }, [router, searchParams])
 
   // Socket connection with sound enabled
   const handleOrderCreated = useCallback((order: Parameters<NonNullable<Parameters<typeof useOrdersSocket>[1]['onOrderCreated']>>[0]) => {
@@ -229,13 +294,32 @@ export function OrdersBoardClient({
         onRefresh={handleReconnect}
         moduleColor="bg-success-main"
         actions={
-          <button
-            onClick={() => setIsArchiveOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
-          >
-            <Archive size={16} />
-            <span>KAPANAN SİPARİŞLER</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setGuestApprovalsFocusOrderId(null)
+                setGuestApprovalsNotificationId(null)
+                setIsGuestApprovalsOpen(true)
+              }}
+              className="relative flex items-center justify-center gap-2 rounded-sm border border-amber-600 bg-amber-50 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-amber-800 transition-all hover:bg-amber-100"
+            >
+              <span>Misafir Onayları</span>
+              {pendingGuestApprovalsCount > 0 ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-black text-white">
+                  {pendingGuestApprovalsCount}
+                </span>
+              ) : null}
+            </button>
+
+            <button
+              onClick={() => setIsArchiveOpen(true)}
+              className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+            >
+              <Archive size={16} />
+              <span>KAPANAN SİPARİŞLER</span>
+            </button>
+          </div>
         }
       />
 
@@ -300,6 +384,26 @@ export function OrdersBoardClient({
         }}
         onSelect={handlePrintFormatSelect}
       />
+
+      <Modal
+        isOpen={isGuestApprovalsOpen}
+        onClose={() => {
+          setIsGuestApprovalsOpen(false)
+          setGuestApprovalsFocusOrderId(null)
+          setGuestApprovalsNotificationId(null)
+        }}
+        title="Misafir Sipariş Onayları"
+        maxWidth="max-w-5xl"
+        className="max-h-[90vh]"
+      >
+        <GuestApprovalsClient
+          restaurantId={restaurantId}
+          initialItems={[]}
+          mode="modal"
+          focusOrderId={guestApprovalsFocusOrderId}
+          notificationId={guestApprovalsNotificationId}
+        />
+      </Modal>
     </div>
   )
 }

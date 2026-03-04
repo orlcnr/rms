@@ -1,4 +1,5 @@
-import { IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class ApproveGuestOrderDto {
   @IsOptional()
@@ -7,6 +8,11 @@ export class ApproveGuestOrderDto {
 }
 
 export class RejectGuestOrderDto {
+  @Transform(({ value }): string =>
+    typeof value === 'string' ? value.trim() : '',
+  )
   @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
   reason: string;
 }

@@ -76,6 +76,9 @@ export class CashSession extends BaseEntity {
   })
   difference: number;
 
+  @Column({ name: 'closed_with_open_tables', default: false })
+  closedWithOpenTables: boolean;
+
   @Column({
     type: 'enum',
     enum: CashSessionStatus,

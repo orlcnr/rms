@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Download, LayoutGrid, Loader2, RefreshCcw } from 'lucide-react'
@@ -141,7 +142,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
             off('new_order')
             disconnect()
         }
-    }, [restaurantId, mounted, refreshData])
+    }, [restaurantId, mounted, connect, disconnect, on, off, refreshData])
 
     // Refresh when user comes back to this tab or window regains focus.
     useEffect(() => {
@@ -443,7 +444,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                                 <Loader2 className="w-8 h-8 text-primary-main animate-spin" />
                             </div>
                         ) : qrData ? (
-                            <img src={qrData.qrImageDataUrl} alt="QR Code" className="w-full h-full object-contain" />
+                            <Image src={qrData.qrImageDataUrl} alt="QR Code" fill unoptimized className="w-full h-full object-contain" />
                         ) : (
                             <div className="flex items-center justify-center text-danger-main font-bold">Hata!</div>
                         )}

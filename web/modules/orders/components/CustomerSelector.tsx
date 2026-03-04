@@ -37,10 +37,9 @@ export function CustomerSelector({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dışarı tıklandığında kapat
   useEffect(() => {
@@ -54,48 +53,7 @@ export function CustomerSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Debounced search
-  useEffect(() => {
-    if (debounceTimeout) {
-      clearTimeout(debounceTimeout);
-    }
-
-    if (searchQuery.trim().length < 2) {
-      setCustomers([]);
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      searchCustomers(searchQuery);
-    }, 300);
-
-    setDebounceTimeout(timeout);
-
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [searchQuery]);
-
-  // Update searchQuery when selectedCustomer changes (for showing selected customer in input)
-  useEffect(() => {
-    if (selectedCustomer) {
-      setSearchQuery(`${selectedCustomer.first_name} ${selectedCustomer.last_name} (${formatPhoneNumber(selectedCustomer.phone)})`);
-    }
-  }, [selectedCustomer]);
-
-  // Load customer by ID if value provided
-  useEffect(() => {
-    if (value && value !== selectedCustomer?.id) {
-      loadCustomerById(value);
-    }
-    // Reset selectedCustomer when value is cleared
-    if (!value) {
-      setSelectedCustomer(null);
-      setSearchQuery('');
-    }
-  }, [value]);
-
-  const loadCustomerById = async (customerId: string) => {
+  const loadCustomerById = useCallback(async (customerId: string) => {
     try {
       setIsLoading(true);
       const customer = await customersApi.getById(customerId);
@@ -106,9 +64,9 @@ export function CustomerSelector({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const searchCustomers = async (query: string) => {
+  const searchCustomers = useCallback(async (query: string) => {
     try {
       setIsLoading(true);
       // Use centralized API with restaurantId for multi-tenant filtering
@@ -123,7 +81,50 @@ export function CustomerSelector({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [restaurantId]);
+
+  // Debounced search
+  useEffect(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+
+    if (searchQuery.trim().length < 2) {
+      setCustomers([]);
+      return;
+    }
+
+    debounceTimeoutRef.current = setTimeout(() => {
+      searchCustomers(searchQuery);
+    }, 300);
+
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+        debounceTimeoutRef.current = null;
+      }
+    };
+  }, [searchCustomers, searchQuery]);
+
+  // Update searchQuery when selectedCustomer changes (for showing selected customer in input)
+  useEffect(() => {
+    if (selectedCustomer) {
+      setSearchQuery(`${selectedCustomer.first_name} ${selectedCustomer.last_name} (${formatPhoneNumber(selectedCustomer.phone)})`);
+    }
+  }, [selectedCustomer]);
+
+  // Load customer by ID if value provided
+  useEffect(() => {
+    if (value && value !== selectedCustomer?.id) {
+      void loadCustomerById(value);
+    }
+    // Reset selectedCustomer when value is cleared
+    if (!value) {
+      setSelectedCustomer(null);
+      setSearchQuery('');
+    }
+  }, [loadCustomerById, selectedCustomer?.id, value]);
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -178,7 +179,6 @@ export function CustomerSelector({
         </div>
         
         <input
-          ref={inputRef}
           type="text"
           value={searchQuery}
           onChange={(e) => {

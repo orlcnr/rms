@@ -7,7 +7,7 @@ import {
   IsUUID,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { CashMovementType } from '../enums/cash.enum';
+import { CashMovementSubtype, CashMovementType } from '../enums/cash.enum';
 import { PaymentMethod } from '../../payments/entities/payment.entity';
 
 export class CreateCashRegisterDto {
@@ -47,6 +47,11 @@ export class CloseCashSessionDto {
   transaction_id?: string;
 
   @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @ApiProperty({ required: false })
   @IsNumber()
   @IsOptional()
   creditCardTotal?: number;
@@ -63,12 +68,19 @@ export class CloseCashSessionDto {
 }
 
 export class CreateCashMovementDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsUUID()
-  cash_register_id: string;
+  cash_register_id?: string;
+
   @ApiProperty({ enum: CashMovementType })
   @IsEnum(CashMovementType)
   type: CashMovementType;
+
+  @ApiProperty({ enum: CashMovementSubtype, required: false })
+  @IsEnum(CashMovementSubtype)
+  @IsOptional()
+  subtype?: CashMovementSubtype;
 
   @ApiProperty({ enum: PaymentMethod })
   @IsEnum(PaymentMethod)

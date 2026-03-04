@@ -12,7 +12,6 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../../../common/guards/super-admin.guard';
 import { AuditInterceptor } from '../../../common/interceptors/audit.interceptor';
 import { SuperAdminUsersService } from '../services/super-admin-users.service';
@@ -20,9 +19,13 @@ import { CreateSuperAdminUserDto } from '../dto/create-super-admin-user.dto';
 import { UpdateSuperAdminUserDto } from '../dto/update-super-admin-user.dto';
 import { UpdateUserPasswordDto } from '../dto/update-user-password.dto';
 import { SearchUserDto } from '../dto/search-user.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { SuperAdminJwtAuthGuard } from '../../super-admin-auth/guards/super-admin-jwt-auth.guard';
 
+@ApiTags('Super Admin Users')
+@ApiBearerAuth()
 @Controller('super-admin/users')
-@UseGuards(JwtAuthGuard, SuperAdminGuard)
+@UseGuards(SuperAdminJwtAuthGuard, SuperAdminGuard)
 @UseInterceptors(AuditInterceptor)
 @Throttle({ default: { limit: 50, ttl: 60000 } })
 export class SuperAdminUsersController {
@@ -71,5 +74,17 @@ export class SuperAdminUsersController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.remove(id);
+  }
+
+  @Patch(':id/activate')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  activate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.activate(id);
+  }
+
+  @Patch(':id/deactivate')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  deactivate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.deactivate(id);
   }
 }

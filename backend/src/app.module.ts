@@ -27,8 +27,6 @@ import { AuditModule } from './modules/audit/audit.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { QrGuestModule } from './modules/qr-guest/qr-guest.module';
 import { DebugModule } from './modules/debug/debug.module';
-import { CacheModule } from '@nestjs/cache-manager';
-import { redisStore } from 'cache-manager-redis-yet';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CashModule } from './modules/cash/cash.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
@@ -36,6 +34,8 @@ import { MailModule } from './modules/mail/mail.module';
 import { RulesModule } from './modules/rules/rules.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SuperAdminAuthModule } from './modules/super-admin-auth/super-admin-auth.module';
+import { AppCacheModule } from './common/cache/app-cache.module';
 
 @Module({
   imports: [
@@ -53,20 +53,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         limit: 100, // 60 saniyede maksimum 100 istek
       },
     ]),
-    CacheModule.registerAsync({
-      isGlobal: true,
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
-        store: await redisStore({
-          socket: {
-            host: configService.get<string>('REDIS_HOST') || 'localhost',
-            port: configService.get<number>('REDIS_PORT') || 6379,
-          },
-          ttl: 3600, // 60 minutes (seconds in v5+)
-        }),
-      }),
-    }),
+    AppCacheModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -111,6 +98,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     ReportsModule,
     QrGuestModule,
     CashModule,
+    SuperAdminAuthModule,
     SuperAdminModule,
     MailModule,
     SettingsModule,

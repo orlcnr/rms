@@ -16,6 +16,16 @@ export interface ApiResponse<T> {
     }
 }
 
+export interface EnvelopePaginationMeta {
+    page: number
+    limit: number
+    itemCount: number
+    totalItems: number
+    totalPages: number
+    hasPreviousPage: boolean
+    hasNextPage: boolean
+}
+
 export interface PaginatedResponse<T> {
     items: T[]
     meta: {

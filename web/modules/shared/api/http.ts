@@ -1,15 +1,17 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { getCookie } from 'cookies-next';
-import { toast } from 'sonner';
+import type { EnvelopePaginationMeta } from '../types';
 
 const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://api.localhost/api/v1';
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://backend:3000/api/v1';
 
-interface BackendResponse<T> {
+export interface BackendEnvelope<T> {
   success: boolean;
   data: T;
   message?: string;
-  timestamp: string;
+  meta?: EnvelopePaginationMeta;
+  statusCode?: number;
+  timestamp?: string;
 }
 
 class HttpClient {
@@ -92,28 +94,56 @@ class HttpClient {
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.instance.get<BackendResponse<T>>(url, config);
+    const response = await this.instance.get<BackendEnvelope<T>>(url, config);
     return response.data.data;
   }
 
   async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.instance.post<BackendResponse<T>>(url, data, config);
+    const response = await this.instance.post<BackendEnvelope<T>>(url, data, config);
     return response.data.data;
   }
 
   async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.instance.put<BackendResponse<T>>(url, data, config);
+    const response = await this.instance.put<BackendEnvelope<T>>(url, data, config);
     return response.data.data;
   }
 
   async patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.instance.patch<BackendResponse<T>>(url, data, config);
+    const response = await this.instance.patch<BackendEnvelope<T>>(url, data, config);
     return response.data.data;
   }
 
   async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response = await this.instance.delete<BackendResponse<T>>(url, config);
+    const response = await this.instance.delete<BackendEnvelope<T>>(url, config);
     return response.data.data;
+  }
+
+  async getEnvelope<T>(url: string, config?: AxiosRequestConfig): Promise<BackendEnvelope<T>> {
+    const response = await this.instance.get<BackendEnvelope<T>>(url, config);
+    return response.data;
+  }
+
+  async postEnvelope<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<BackendEnvelope<T>> {
+    const response = await this.instance.post<BackendEnvelope<T>>(url, data, config);
+    return response.data;
+  }
+
+  async patchEnvelope<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<BackendEnvelope<T>> {
+    const response = await this.instance.patch<BackendEnvelope<T>>(url, data, config);
+    return response.data;
+  }
+
+  async deleteEnvelope<T>(url: string, config?: AxiosRequestConfig): Promise<BackendEnvelope<T>> {
+    const response = await this.instance.delete<BackendEnvelope<T>>(url, config);
+    return response.data;
+  }
+
+  async download(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const response = await this.instance.get<Blob>(url, {
+      ...config,
+      responseType: 'blob',
+    })
+    return response.data
   }
 
   async upload<T>(url: string, file: File, fieldName: string = 'file'): Promise<T> {
@@ -136,7 +166,7 @@ class HttpClient {
       }
     }
 
-    const response = await this.instance.post<BackendResponse<T>>(
+    const response = await this.instance.post<BackendEnvelope<T>>(
       `${baseURL}${url}`,
       formData,
       {

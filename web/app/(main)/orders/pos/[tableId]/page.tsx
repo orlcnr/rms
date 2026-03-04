@@ -10,6 +10,8 @@ import { productsApi } from '@/modules/products/services/products.service'
 import { tablesApi } from '@/modules/tables/services/tables.service'
 import { OrdersClient } from '@/modules/orders/components/OrdersClient'
 import { OrderStatus } from '@/modules/orders/types'
+import type { MenuItem } from '@/modules/products/types'
+import type { PaginatedResponse } from '@/modules/shared/types'
 
 export const metadata = {
   title: 'POS - Sipariş | Restaurant App',
@@ -19,6 +21,22 @@ export const metadata = {
 interface PageProps {
   params: Promise<{ tableId: string }>
   searchParams: Promise<{ orderId?: string }>
+}
+
+function getEmptyProductsResponse(
+  page: number,
+  limit: number,
+): PaginatedResponse<MenuItem> {
+  return {
+    items: [],
+    meta: {
+      totalItems: 0,
+      itemCount: 0,
+      itemsPerPage: limit,
+      totalPages: 0,
+      currentPage: page,
+    },
+  }
 }
 
 export default async function PosPage({ params, searchParams }: PageProps) {
@@ -58,19 +76,17 @@ export default async function PosPage({ params, searchParams }: PageProps) {
   }
 
   const [menuItemsResponse, categories] = await Promise.all([
-    productsApi.getProducts(restaurantId, { page: 1, limit: 20, posMode: true }).catch(() => ({ items: [], total: 0 })),
+    productsApi.getProducts(restaurantId, { page: 1, limit: 20, posMode: true }).catch(() => getEmptyProductsResponse(1, 20)),
     productsApi.getCategories(restaurantId).catch(() => []),
   ])
 
-  const initialMenuItems = 'items' in menuItemsResponse
-    ? menuItemsResponse.items
-    : menuItemsResponse
+  const initialMenuItems = menuItemsResponse.items
 
-  const paginationMeta = 'meta' in menuItemsResponse ? {
+  const paginationMeta = {
     totalItems: menuItemsResponse.meta.totalItems,
     totalPages: menuItemsResponse.meta.totalPages,
     itemsPerPage: menuItemsResponse.meta.itemsPerPage,
-  } : undefined
+  }
 
   return (
     /*

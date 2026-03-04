@@ -21,16 +21,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Database'den user'ı restaurant bilgisi ile çek
     const user = await this.usersService.findByEmail(payload.email, [
       'restaurant',
+      'restaurant.brand',
     ]);
 
     if (!user) {
       throw new UnauthorizedException('Invalid token');
     }
 
+    const brandId = user.restaurant?.brand_id || null;
+    const branchId = user.restaurant_id || null;
+    const scopedRoles = await this.usersService.getScopedRoles(
+      user.id,
+      brandId,
+      branchId,
+    );
+
     return {
       id: user.id,
       email: user.email,
       role: user.role,
+      roles: scopedRoles,
+      brandId,
+      branchId,
       restaurantId: user.restaurant_id,
       restaurant_id: user.restaurant_id,
       first_name: user.first_name,

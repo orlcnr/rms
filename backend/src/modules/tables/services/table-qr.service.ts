@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as QRCode from 'qrcode';
 import * as puppeteer from 'puppeteer';
+import { normalizeFrontendUrl } from '../../../common/utils/normalize-frontend-url.util';
 import { Table } from '../entities/table.entity';
 
 export interface TableQrData {
@@ -91,7 +92,7 @@ export class TableQrService {
     if (!frontendUrl) {
       throw new Error('FRONTEND_URL environment variable is not configured');
     }
-    const qrUrl = `${frontendUrl}/guest?token=${encodeURIComponent(qrToken)}`;
+    const qrUrl = `${normalizeFrontendUrl(frontendUrl)}/guest?token=${encodeURIComponent(qrToken)}`;
 
     // Generate QR code image as data URL - High quality for scanning
     const qrImageDataUrl = await QRCode.toDataURL(qrUrl, {

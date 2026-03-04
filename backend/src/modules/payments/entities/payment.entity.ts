@@ -14,6 +14,16 @@ export enum PaymentMethod {
   MEAL_VOUCHER = 'meal_voucher', // Yemek Çeki
 }
 
+export enum MealVoucherType {
+  MULTINET = 'multinet',
+  SODEXO = 'sodexo',
+  EDENRED = 'edenred',
+  SETCARD = 'setcard',
+  METROPOL = 'metropol',
+  DIGITAL = 'digital',
+  OTHER = 'other',
+}
+
 export enum PaymentStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
@@ -56,6 +66,9 @@ export class Payment extends BaseEntity {
 
   @Column({ type: 'enum', enum: PaymentMethod })
   payment_method: PaymentMethod;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  meal_voucher_type: string | null;
 
   // Nakit ödeme için
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })

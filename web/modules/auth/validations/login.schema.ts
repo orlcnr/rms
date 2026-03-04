@@ -9,6 +9,7 @@ export const loginSchema = z.object({
     .string()
     .min(1, 'Şifre zorunludur')
     .min(6, 'Şifre en az 6 karakter olmalıdır'),
+  rememberMe: z.boolean().default(false),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

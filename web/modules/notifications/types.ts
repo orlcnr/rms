@@ -19,6 +19,12 @@ export interface Notification {
   updated_at: string
 }
 
+export interface GuestOrderNotificationData {
+  orderId?: string
+  tableId?: string
+  tableName?: string
+}
+
 export interface NotificationsMeta {
   totalItems: number
   itemCount: number
@@ -38,4 +44,3 @@ export interface GetNotificationsParams {
   isRead?: boolean
   type?: NotificationType
 }
-

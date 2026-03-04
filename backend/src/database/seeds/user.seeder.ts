@@ -13,17 +13,22 @@ export class UserSeeder {
   ) {}
 
   async seed() {
+    const superAdminEmail =
+      process.env.SUPER_ADMIN_SEED_EMAIL || 'oralodabas@gmail.com';
+    const superAdminPassword =
+      process.env.SUPER_ADMIN_SEED_PASSWORD || 'Kartal1903';
     const salt = await bcrypt.genSalt();
-    const commonPassword = await bcrypt.hash('Kartal1903', salt);
+    const commonPassword = await bcrypt.hash(superAdminPassword, salt);
 
     const users = [
       {
-        email: 'oralodabas@gmail.com',
+        email: superAdminEmail,
         password_hash: commonPassword,
         first_name: 'oral',
         last_name: 'çınar',
         role: Role.SUPER_ADMIN,
         is_active: true,
+        must_change_password: process.env.NODE_ENV === 'production',
       },
       {
         email: 'owner@tomubulunmeyhanesi.com',
@@ -43,6 +48,13 @@ export class UserSeeder {
         const user = this.userRepository.create(data);
         await this.userRepository.save(user);
         console.log(`User seeded: ${data.email}`);
+      } else if (
+        data.role === Role.SUPER_ADMIN &&
+        existing.role !== Role.SUPER_ADMIN
+      ) {
+        throw new Error(
+          `Seeded super admin email ${data.email} is already used by a non-super-admin user`,
+        );
       } else {
         console.log(`User already exists: ${data.email}`);
       }

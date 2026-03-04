@@ -1,4 +1,5 @@
 export * from './guest-sessions.controller';
+export * from './guest-public.controller';
 export * from './guest-orders.controller';
 export * from './guest-orders-staff.controller';
 export * from './guest-requests.controller';

@@ -6,7 +6,6 @@ import {
   Param,
   Query,
   UseGuards,
-  Req,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -18,7 +17,6 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { GetPaymentsDto } from './dto/get-payments.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { Request } from 'express';
 
 @ApiTags('Payments')
 @ApiBearerAuth()
@@ -50,12 +48,8 @@ export class PaymentsController {
     summary: 'Revert/refund a payment',
     description: 'Bir ödemeyi iptal eder ve gerekirse müşteri borcunu düzeltir',
   })
-  revertPayment(@GetUser() user: any, @Body() dto: RevertPaymentDto) {
-    return this.paymentsService.revertPayment(
-      dto.payment_id,
-      dto.reason,
-      user.id,
-    );
+  revertPayment(@Body() dto: RevertPaymentDto) {
+    return this.paymentsService.revertPayment(dto.payment_id, dto.reason);
   }
 
   @Get('orders/:orderId')

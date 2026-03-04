@@ -218,9 +218,21 @@ export class SuperAdminUsersService {
   }
 
   async remove(id: string) {
+    return this.deactivate(id);
+  }
+
+  async activate(id: string) {
     const user = await this.findOne(id);
 
-    // Soft delete - just deactivate
+    user.is_active = true;
+    await this.userRepository.save(user);
+
+    return { message: 'User activated successfully' };
+  }
+
+  async deactivate(id: string) {
+    const user = await this.findOne(id);
+
     user.is_active = false;
     await this.userRepository.save(user);
 

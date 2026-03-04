@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GuestSession } from '../interfaces';
 import { WaiterCallDto, BillRequestDto } from '../dto';
 import { GuestGateway } from '../gateways/guest.gateway';
@@ -7,6 +8,7 @@ import { NotificationType } from '../../notifications/entities/notification.enti
 import { InjectRepository } from '@nestjs/typeorm';
 import { Table } from '../../tables/entities/table.entity';
 import { Repository } from 'typeorm';
+import { Redis } from 'ioredis';
 
 export interface WaiterCallRequest {
   sessionId: string;
@@ -26,14 +28,32 @@ export interface BillRequest {
   timestamp: Date;
 }
 
+export interface GuestRequestAck<T> {
+  accepted: boolean;
+  deduped: boolean;
+  nextAllowedAt: string;
+  serverTime: string;
+  request: T;
+}
+
 @Injectable()
 export class GuestRequestsService {
+  private readonly redis: Redis;
+  private readonly WAITER_DEDUPE_SECONDS = 60;
+  private readonly BILL_DEDUPE_SECONDS = 120;
+
   constructor(
     private guestGateway: GuestGateway,
     private notificationsService: NotificationsService,
+    private configService: ConfigService,
     @InjectRepository(Table)
     private tableRepository: Repository<Table>,
-  ) {}
+  ) {
+    this.redis = new Redis({
+      host: this.configService.get<string>('REDIS_HOST') || 'localhost',
+      port: this.configService.get<number>('REDIS_PORT') || 6379,
+    });
+  }
 
   /**
    * Handle waiter call request from guest
@@ -41,7 +61,7 @@ export class GuestRequestsService {
   async callWaiter(
     session: GuestSession,
     dto: WaiterCallDto,
-  ): Promise<WaiterCallRequest> {
+  ): Promise<GuestRequestAck<WaiterCallRequest>> {
     const request: WaiterCallRequest = {
       sessionId: session.id,
       restaurantId: session.restaurantId,
@@ -50,6 +70,21 @@ export class GuestRequestsService {
       urgency: dto.urgency || 'medium',
       timestamp: new Date(),
     };
+
+    const dedupe = await this.handleDedupe(
+      `guestRequest:${session.id}:waiter`,
+      this.WAITER_DEDUPE_SECONDS,
+    );
+
+    if (dedupe.deduped) {
+      return {
+        accepted: true,
+        deduped: true,
+        nextAllowedAt: dedupe.nextAllowedAt,
+        serverTime: new Date().toISOString(),
+        request,
+      };
+    }
 
     // Emit to staff via ephemeral gateway
     this.guestGateway.notifyWaiterCall(request);
@@ -70,7 +105,13 @@ export class GuestRequestsService {
       },
     });
 
-    return request;
+    return {
+      accepted: true,
+      deduped: false,
+      nextAllowedAt: dedupe.nextAllowedAt,
+      serverTime: new Date().toISOString(),
+      request,
+    };
   }
 
   /**
@@ -79,7 +120,7 @@ export class GuestRequestsService {
   async requestBill(
     session: GuestSession,
     dto: BillRequestDto,
-  ): Promise<BillRequest> {
+  ): Promise<GuestRequestAck<BillRequest>> {
     const request: BillRequest = {
       sessionId: session.id,
       restaurantId: session.restaurantId,
@@ -88,6 +129,21 @@ export class GuestRequestsService {
       notes: dto.notes,
       timestamp: new Date(),
     };
+
+    const dedupe = await this.handleDedupe(
+      `guestRequest:${session.id}:bill`,
+      this.BILL_DEDUPE_SECONDS,
+    );
+
+    if (dedupe.deduped) {
+      return {
+        accepted: true,
+        deduped: true,
+        nextAllowedAt: dedupe.nextAllowedAt,
+        serverTime: new Date().toISOString(),
+        request,
+      };
+    }
 
     // Emit to staff via ephemeral gateway
     this.guestGateway.notifyBillRequest(request);
@@ -114,7 +170,26 @@ export class GuestRequestsService {
       timestamp: request.timestamp,
     });
 
-    return request;
+    return {
+      accepted: true,
+      deduped: false,
+      nextAllowedAt: dedupe.nextAllowedAt,
+      serverTime: new Date().toISOString(),
+      request,
+    };
+  }
+
+  async getRequestState(sessionId: string) {
+    const [waiterUntil, billUntil] = await Promise.all([
+      this.redis.get(`guestRequest:${sessionId}:waiter`),
+      this.redis.get(`guestRequest:${sessionId}:bill`),
+    ]);
+
+    return {
+      waiterNextAllowedAt: waiterUntil || null,
+      billNextAllowedAt: billUntil || null,
+      serverTime: new Date().toISOString(),
+    };
   }
 
   /**
@@ -154,5 +229,27 @@ export class GuestRequestsService {
       message: 'Your bill request is being processed.',
       timestamp: new Date(),
     });
+  }
+
+  private async handleDedupe(key: string, ttlSeconds: number) {
+    const existing = await this.redis.get(key);
+
+    if (existing) {
+      return {
+        deduped: true,
+        nextAllowedAt: existing,
+      };
+    }
+
+    const nextAllowedAt = new Date(
+      Date.now() + ttlSeconds * 1000,
+    ).toISOString();
+
+    await this.redis.setex(key, ttlSeconds, nextAllowedAt);
+
+    return {
+      deduped: false,
+      nextAllowedAt,
+    };
   }
 }

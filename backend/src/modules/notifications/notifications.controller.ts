@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Patch,
-  Param,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '../users/entities/user.entity';
@@ -15,10 +9,7 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  async findAll(
-    @Query() query: GetNotificationsDto,
-    @GetUser() user: User,
-  ) {
+  async findAll(@Query() query: GetNotificationsDto, @GetUser() user: User) {
     return this.notificationsService.findAll(user, query);
   }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   SubHeaderSection,
@@ -37,18 +37,20 @@ export function CashHistoryClient({
   const searchParams = useSearchParams()
 
   // Handle both paginated and non-paginated initial data
-  const normalizedData = Array.isArray(initialData)
-    ? {
-      items: initialData,
-      meta: {
-        totalItems: initialData.length,
-        itemCount: initialData.length,
-        itemsPerPage: 10,
-        totalPages: 1,
-        currentPage: 1
+  const normalizedData = useMemo(() => (
+    Array.isArray(initialData)
+      ? {
+        items: initialData,
+        meta: {
+          totalItems: initialData.length,
+          itemCount: initialData.length,
+          itemsPerPage: 10,
+          totalPages: 1,
+          currentPage: 1
+        }
       }
-    }
-    : initialData
+      : initialData
+  ), [initialData])
 
   const [data, setData] = useState<PaginatedResponse<CashSession>>(normalizedData)
   const [isLoading, setIsLoading] = useState(false)
@@ -123,7 +125,13 @@ export function CashHistoryClient({
   useEffect(() => {
     setData(normalizedData)
     setFilters(initialFilters)
-  }, [initialData, initialFilters])
+  }, [initialFilters, normalizedData])
+
+  useEffect(() => {
+    const normalized = normalizeFilters(initialFilters)
+    setFilters(normalized)
+    void fetchHistory(normalized)
+  }, [fetchHistory, initialFilters])
 
   return (
     <div className="flex flex-col min-h-screen bg-bg-app">

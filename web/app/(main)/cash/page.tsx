@@ -19,23 +19,11 @@ export default async function CashPage() {
     cashApi.getActiveSessions(),
   ])
 
-  // Get session summary if there's an active session
-  let summary = null
-  if (activeSessions.length > 0) {
-    try {
-      summary = await cashApi.getSessionSummary(activeSessions[0].session.id)
-    } catch {
-      // Session might have been closed
-      summary = null
-    }
-  }
-
   return (
     <CashClient
       restaurantId={restaurantId}
       initialRegisters={registersWithStatus}
       initialSessions={activeSessions}
-      initialSummary={summary}
     />
   )
 }

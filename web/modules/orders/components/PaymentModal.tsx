@@ -314,6 +314,11 @@ export function PaymentModal({
                         <PaymentLineItem
                           key={payment.id}
                           payment={payment}
+                          methodSequence={
+                            hook.payments
+                              .slice(0, index + 1)
+                              .filter((line) => line.method === payment.method).length
+                          }
                           isActive={hook.activePaymentIndex === index}
                           onActivate={() => hook.setActivePaymentIndex(index)}
                           onRemove={() => hook.removePaymentLine(payment.id)}
@@ -399,7 +404,7 @@ export function PaymentModal({
       {isPaymentConfirmOpen && (
         <ChangeConfirmationDialog
           netAmount={hook.finalTotal}
-          payments={hook.payments}
+          payments={hook.payments.filter((payment) => payment.amount > 0)}
           discount={hook.discount}
           totalPaidAmount={hook.totalPaid}
           totalTipAmount={totalTipAmount}

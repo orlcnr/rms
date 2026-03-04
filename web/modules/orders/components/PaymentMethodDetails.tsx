@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calculator, Wallet } from 'lucide-react';
-import { PaymentMethod, PaymentLine } from '../types';
+import { Wallet } from 'lucide-react';
+import {
+  MealVoucherType,
+  MEAL_VOUCHER_TYPE_OPTIONS,
+  PaymentMethod,
+  PaymentLine,
+} from '../types';
 import { CustomerSelector } from './CustomerSelector';
 import { Customer } from '@/modules/customers/services/customers.service';
 
@@ -141,9 +146,9 @@ function OpenAccountForm({
         </label>
         <CustomerSelector
           restaurantId={restaurantId}
-          value={payment.customerId}
+          value={payment.customerId ?? undefined}
           onChange={(customer) => {
-            onUpdate({ customerId: customer?.id });
+            onUpdate({ customerId: customer?.id ?? null });
           }}
           onAddNew={onAddNewCustomer}
           onOpenNewCustomerModal={onOpenNewCustomerModal}
@@ -151,6 +156,82 @@ function OpenAccountForm({
           placeholder="Müşteri ara..."
         />
       </div>
+    </div>
+  );
+}
+
+function MealVoucherPaymentForm({
+  payment,
+  onUpdate,
+  disabled,
+}: {
+  payment: PaymentLine;
+  onUpdate: (updates: Partial<PaymentLine>) => void;
+  disabled: boolean;
+}) {
+  const [localAmount, setLocalAmount] = useState(payment.amount.toString());
+
+  useEffect(() => {
+    setLocalAmount(payment.amount.toString());
+  }, [payment.amount]);
+
+  const handleAmountChange = (value: string) => {
+    setLocalAmount(value);
+    const num = parseFloat(value.replace(',', '.')) || 0;
+    onUpdate({ amount: num });
+  };
+
+  const handleVoucherTypeChange = (value: string) => {
+    onUpdate({
+      mealVoucherType: value
+        ? (value as MealVoucherType)
+        : null,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
+          Ödeme Tutarı
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={localAmount}
+            onChange={(e) => handleAmountChange(e.target.value)}
+            disabled={disabled}
+            className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
+              focus:outline-none focus:border-primary-main"
+            placeholder="0,00"
+          />
+          <span className="text-lg font-semibold text-text-muted">TL</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-text-secondary uppercase block mb-2">
+          Çek Tipi
+        </label>
+        <select
+          value={payment.mealVoucherType ?? ''}
+          onChange={(e) => handleVoucherTypeChange(e.target.value)}
+          disabled={disabled}
+          className="w-full px-4 py-3 text-sm font-semibold bg-bg-muted border border-border-light rounded-sm
+            focus:outline-none focus:border-primary-main text-text-primary"
+        >
+          <option value="">Çek tipi seçin</option>
+          {MEAL_VOUCHER_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <p className="text-[11px] text-text-muted">
+        Her yemek çeki ayrı bir ödeme satırı olarak girilir.
+      </p>
     </div>
   );
 }
@@ -340,6 +421,14 @@ export function PaymentMethodDetails({
           methodLabel="Havale"
           commissionRate={commissionRate}
           tipEnabled={tipEnabled}
+        />
+      )}
+
+      {method === PaymentMethod.MEAL_VOUCHER && (
+        <MealVoucherPaymentForm
+          payment={activePayment}
+          onUpdate={onUpdate}
+          disabled={disabled}
         />
       )}
     </div>

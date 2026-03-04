@@ -11,6 +11,7 @@ import { Restaurant } from './entities/restaurant.entity';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { User } from '../users/entities/user.entity';
+import { Brand } from '../brands/entities/brand.entity';
 
 import { RulesService } from '../rules/rules.service';
 
@@ -19,6 +20,8 @@ export class RestaurantsService {
   constructor(
     @InjectRepository(Restaurant)
     private readonly restaurantRepository: Repository<Restaurant>,
+    @InjectRepository(Brand)
+    private readonly brandRepository: Repository<Brand>,
     private readonly rulesService: RulesService,
   ) {}
 
@@ -26,11 +29,22 @@ export class RestaurantsService {
     createRestaurantDto: CreateRestaurantDto,
     user: User,
   ): Promise<Restaurant> {
-    const restaurant = this.restaurantRepository.create({
-      ...createRestaurantDto,
-      owner_id: user.id,
-    });
     try {
+      const brand = await this.brandRepository.save(
+        this.brandRepository.create({
+          name: createRestaurantDto.name,
+          owner_id: user.id,
+          is_active: true,
+        }),
+      );
+
+      const restaurant = this.restaurantRepository.create({
+        ...createRestaurantDto,
+        owner_id: user.id,
+        brand_id: brand.id,
+        is_branch: true,
+      });
+
       const savedRestaurant = await this.restaurantRepository.save(restaurant);
       await this.rulesService.initializeDefaultRules(savedRestaurant.id);
       return savedRestaurant;

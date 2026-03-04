@@ -5,20 +5,19 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Wallet, TrendingUp, Banknote, History } from 'lucide-react'
+import { Plus, Search, Wallet, History } from 'lucide-react'
 import { useCash } from '@/modules/cash/hooks/useCash'
 import {
   CashOpenModal,
   CashCloseModal,
   CashRegisterModal,
 } from '@/modules/cash/components'
-import { CashRegisterWithStatus, ActiveSessionWrapper, CashSummaryData, CashCloseData } from '@/modules/cash/types'
+import { CashRegisterWithStatus, ActiveSessionWrapper, CashCloseData } from '@/modules/cash/types'
 import { ActiveSessionCard } from './ActiveSessionCard'
 import { RegistersList } from './RegistersList'
 import { SubHeaderSection, FilterSection, BodySection } from '@/modules/shared/components/layout'
 import { Button } from '@/modules/shared/components/Button'
 import { useSocketStore } from '@/modules/shared/api/socket'
-import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { cn } from '@/modules/shared/utils/cn'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -30,21 +29,18 @@ interface CashClientProps {
   restaurantId: string
   initialRegisters: CashRegisterWithStatus[]
   initialSessions: ActiveSessionWrapper[]
-  initialSummary: CashSummaryData | null
 }
 
 export default function CashClient({
   restaurantId,
   initialRegisters,
   initialSessions,
-  initialSummary,
 }: CashClientProps) {
   const router = useRouter()
   // State from hook
   const {
     registersWithStatus,
     activeSessions,
-    summary,
     fetchRegistersWithStatus,
     fetchActiveSessions,
     fetchSessionSummary,
@@ -58,25 +54,16 @@ export default function CashClient({
     restaurantId,
     initialRegisters,
     initialSessions,
-    initialSummary,
   })
 
   // Modal states
   const [selectedRegister, setSelectedRegister] = useState<{ id: string; name: string } | null>(null)
+  const [selectedSession, setSelectedSession] = useState<{ id: string; name: string } | null>(null)
+  const [selectedSessionCardTips, setSelectedSessionCardTips] = useState(0)
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false)
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [editingRegister, setEditingRegister] = useState<{ id: string; name: string } | null>(null)
-
-  // Computed values
-  const currentSession = activeSessions?.[0] || null
-  const currentSummary = summary || {
-    netSales: 0,
-    totalTips: 0,
-    totalCash: 0,
-    cashTips: 0,
-    cardTips: 0,
-  }
 
   // Handlers
   const handleOpenSession = async (data: { openingBalance: number; notes?: string }) => {
@@ -89,13 +76,8 @@ export default function CashClient({
       })
       setIsOpenModalOpen(false)
       setSelectedRegister(null)
-      fetchRegistersWithStatus()
-      const sessions = await fetchActiveSessions()
-      // Yeni oturum açılınca özeti güncelle
-      const newSessionId = sessions?.[0]?.session?.id
-      if (newSessionId) {
-        fetchSessionSummary(newSessionId)
-      }
+      await fetchRegistersWithStatus()
+      await fetchActiveSessions()
     } catch (error: any) {
       if (!error?.response?.data?.message) {
         toast.error('Kasa oturumu açılırken beklenmeyen bir hata oluştu')
@@ -104,14 +86,15 @@ export default function CashClient({
   }
 
   const handleCloseSession = async (data: CashCloseData) => {
-    const sessionId = activeSessions?.[0]?.session?.id
+    const sessionId = selectedSession?.id
     if (!sessionId) return
     try {
       await closeSession(sessionId, data)
       setIsCloseModalOpen(false)
-      fetchRegistersWithStatus()
-      fetchActiveSessions()
-      // Oturum kapandığında özet bilgisi sıfırlanır (aktif oturum yok)
+      setSelectedSession(null)
+      setSelectedSessionCardTips(0)
+      await fetchRegistersWithStatus()
+      await fetchActiveSessions()
     } catch (error: any) {
       if (!error?.response?.data?.message) {
         toast.error('Kasa oturumu kapatılırken beklenmeyen bir hata oluştu')
@@ -163,11 +146,33 @@ export default function CashClient({
     setSelectedRegister(null)
   }
 
+  const handleCloseCloseModal = () => {
+    setIsCloseModalOpen(false)
+    setSelectedSession(null)
+    setSelectedSessionCardTips(0)
+  }
+
   const { isConnected: socketConnected } = useSocketStore()
 
   const handleRegisterSelect = (register: { id: string; name: string }) => {
     setSelectedRegister(register)
     setIsOpenModalOpen(true)
+  }
+
+  const handleSessionSelect = async (session: { id: string; name: string }) => {
+    setSelectedSession(session)
+    try {
+      const sessionSummary = await fetchSessionSummary(session.id)
+      setSelectedSessionCardTips(sessionSummary?.cardTips || 0)
+      setIsCloseModalOpen(true)
+    } catch (error: any) {
+      setSelectedSession(null)
+      setSelectedSessionCardTips(0)
+      console.error('[CashClient] Session summary fetch failed:', error)
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa özeti alınamadı')
+      }
+    }
   }
 
   const [mounted, setMounted] = useState(false)
@@ -178,16 +183,12 @@ export default function CashClient({
   const refreshCashData = useCallback(async () => {
     try {
       await fetchRegistersWithStatus()
-      const sessions = await fetchActiveSessions()
-      const sessionId = sessions?.[0]?.session?.id
-      if (sessionId) {
-        await fetchSessionSummary(sessionId)
-      }
+      await fetchActiveSessions()
     } catch (error) {
       // Silent refresh: do not interrupt user with toast noise.
       console.error('[CashClient] Silent refresh failed:', error)
     }
-  }, [fetchActiveSessions, fetchRegistersWithStatus, fetchSessionSummary])
+  }, [fetchActiveSessions, fetchRegistersWithStatus])
 
   // Ensure fresh data when entering cash page and when tab regains focus.
   useEffect(() => {
@@ -268,41 +269,39 @@ export default function CashClient({
                   socketConnected ? "bg-primary-main animate-pulse" : "bg-danger-main"
                 )} />
                 <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">
-                  Günün Özeti
+                  Aktif Kasa Durumu
                 </p>
               </div>
             </div>
 
-            {/* Net Satış */}
+            {/* Açık Oturum Sayısı */}
             <div className="text-center min-w-[100px]">
-              <p className="text-sm font-black text-text-primary tabular-nums">
-                {formatCurrency(currentSummary.netSales)}
+              <p className="text-sm font-black text-text-primary">
+                {activeSessions.length}
               </p>
               <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter flex items-center justify-center gap-1">
-                <TrendingUp size={10} className="text-success-main" />
-                Net Satış
+                Açık Oturum
               </p>
             </div>
 
-            {/* Toplam Bahşiş */}
+            {/* Açık Kasa Sayısı */}
             <div className="text-center min-w-[100px]">
-              <p className="text-sm font-black text-text-primary tabular-nums">
-                {formatCurrency(currentSummary.totalTips)}
+              <p className="text-sm font-black text-text-primary">
+                {registersWithStatus.filter((register) => register.status === 'open').length}
               </p>
               <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter flex items-center justify-center gap-1">
-                <Banknote size={10} className="text-primary-main" />
-                Bahşiş
+                Açık Kasa
               </p>
             </div>
 
-            {/* Toplam Nakit */}
+            {/* Kapalı Kasa Sayısı */}
             <div className="text-center min-w-[100px]">
-              <p className="text-sm font-black text-warning-main tabular-nums">
-                {formatCurrency(currentSummary.totalCash)}
+              <p className="text-sm font-black text-warning-main">
+                {registersWithStatus.filter((register) => register.status === 'closed').length}
               </p>
               <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter flex items-center justify-center gap-1">
-                <Wallet size={10} />
-                Nakit
+                <Wallet size={10} className="text-warning-main" />
+                Kapalı Kasa
               </p>
             </div>
           </div>
@@ -312,18 +311,15 @@ export default function CashClient({
         <BodySection className="overflow-y-auto space-y-6">
           {/* Active Session Notice */}
           <ActiveSessionCard
-            session={currentSession}
-            isOpen={isCloseModalOpen}
-            onOpenClose={() => setIsCloseModalOpen(true)}
-            summary={currentSummary}
+            activeSessionCount={activeSessions.length}
           />
 
           {/* Registers List */}
           <RegistersList
             registers={registersWithStatus}
-            currentSession={currentSession}
             onEdit={handleEditRegister}
             onSelectRegister={handleRegisterSelect}
+            onSelectSessionToClose={handleSessionSelect}
           />
         </BodySection>
       </main>
@@ -338,9 +334,9 @@ export default function CashClient({
 
       <CashCloseModal
         isOpen={isCloseModalOpen}
-        onClose={() => setIsCloseModalOpen(false)}
+        onClose={handleCloseCloseModal}
         onSubmit={handleCloseSession}
-        cardTipsToday={currentSummary.cardTips}
+        cardTipsToday={selectedSessionCardTips}
         isLoading={isLoading}
       />
 

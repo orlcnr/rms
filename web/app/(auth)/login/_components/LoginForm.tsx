@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ interface LoginFormProps {
 
 export function LoginForm({ locale }: LoginFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dict = useDictionary(locale);
   const [showPassword, setShowPassword] = React.useState(false);
 
@@ -32,6 +33,7 @@ export function LoginForm({ locale }: LoginFormProps) {
     defaultValues: {
       email: '',
       password: '',
+      rememberMe: false,
     },
   });
 
@@ -39,7 +41,8 @@ export function LoginForm({ locale }: LoginFormProps) {
     try {
       await authService.login(data);
       toast.success(t(dict, 'auth.login.loginSuccess'));
-      router.push('/dashboard');
+      const nextPath = searchParams.get('next');
+      router.push(nextPath && nextPath.startsWith('/') ? nextPath : '/dashboard');
     } catch {
       toast.error(t(dict, 'auth.login.loginError'));
     }
@@ -111,6 +114,7 @@ export function LoginForm({ locale }: LoginFormProps) {
         <label className="flex items-center gap-2 cursor-pointer group">
           <input
             type="checkbox"
+            {...register('rememberMe')}
             className="w-4 h-4 rounded-sm border-border-light bg-bg-app text-primary-main focus:ring-primary-main/20 transition-all cursor-pointer"
           />
           <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest group-hover:text-text-primary transition-colors">

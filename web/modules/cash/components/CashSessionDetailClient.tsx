@@ -14,12 +14,27 @@ import {
 import { SessionMovementTable } from './SessionMovementTable'
 import { SessionFinancialSummary } from './SessionFinancialSummary'
 import { ReconciliationReportView } from './ReconciliationReportView'
+import {
+  CashMovementModal,
+  ManualCashMovementSubmitData,
+} from './CashMovementModal'
 import { Button } from '@/modules/shared/components/Button'
-import { ArrowLeft, Printer, FileText, ClipboardCheck } from 'lucide-react'
+import {
+  ArrowLeft,
+  Printer,
+  FileText,
+  ClipboardCheck,
+  Wallet,
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { cashApi } from '../services'
-import { ReconciliationReport } from '../types'
+import {
+  ReconciliationReport,
+  CashMovementType,
+  CashMovementSubtype,
+} from '../types'
+import { PaymentMethod } from '@/modules/orders/types'
 import { toast } from 'sonner'
 import { cn } from '@/modules/shared/utils/cn'
 
@@ -36,16 +51,47 @@ export function CashSessionDetailClient({
 }: CashSessionDetailClientProps) {
   const router = useRouter()
   const [isMounted, setIsMounted] = React.useState(false)
+  const [sessionMovements, setSessionMovements] = React.useState(movements)
+  const [sessionSummary, setSessionSummary] = React.useState(summary)
+  const [isSummaryLoading, setIsSummaryLoading] = React.useState(false)
   const [viewMode, setViewMode] = React.useState<'summary' | 'reconciliation'>('summary')
   const [reconciliationReport, setReconciliationReport] = React.useState<ReconciliationReport | null>(null)
   const [isReportLoading, setIsReportLoading] = React.useState(false)
+  const [isMovementModalOpen, setIsMovementModalOpen] = React.useState(false)
+  const [isMovementSubmitting, setIsMovementSubmitting] = React.useState(false)
 
   React.useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  const fetchReconciliationReport = async () => {
-    if (reconciliationReport) return
+  const fetchSummary = React.useCallback(async () => {
+    setIsSummaryLoading(true)
+    try {
+      const data = await cashApi.getSessionSummary(session.id)
+      setSessionSummary(data)
+      return data
+    } catch (err) {
+      console.error('Kasa özeti yüklenemedi:', err)
+      toast.error('Kasa özeti güncellenemedi')
+      throw err
+    } finally {
+      setIsSummaryLoading(false)
+    }
+  }, [session.id])
+
+  const fetchMovements = React.useCallback(async () => {
+    try {
+      const data = await cashApi.getMovements(session.id)
+      setSessionMovements(data)
+      return data
+    } catch (err) {
+      console.error('Kasa hareketleri yüklenemedi:', err)
+      toast.error('Kasa hareketleri güncellenemedi')
+      throw err
+    }
+  }, [session.id])
+
+  const fetchReconciliationReport = React.useCallback(async () => {
     setIsReportLoading(true)
     try {
       const data = await cashApi.getReconciliationReport(session.id)
@@ -53,19 +99,75 @@ export function CashSessionDetailClient({
     } catch (err) {
       console.error('Mutabakat raporu yüklenemedi:', err)
       toast.error('Mutabakat raporu yüklenemedi')
+      throw err
     } finally {
       setIsReportLoading(false)
     }
-  }
+  }, [session.id])
 
   React.useEffect(() => {
     if (viewMode === 'reconciliation') {
-      fetchReconciliationReport()
+      void fetchReconciliationReport().catch(() => undefined)
     }
-  }, [viewMode])
+  }, [fetchReconciliationReport, viewMode])
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const handleManualMovement = async (
+    data: ManualCashMovementSubmitData
+  ) => {
+    let type: CashMovementType
+    let subtype: CashMovementSubtype
+
+    if (data.preset === 'cash_in') {
+      type = CashMovementType.IN
+      subtype = CashMovementSubtype.REGULAR
+    } else if (data.preset === 'expense') {
+      type = CashMovementType.OUT
+      subtype = CashMovementSubtype.EXPENSE
+    } else if (data.adjustmentDirection === 'in') {
+      type = CashMovementType.IN
+      subtype = CashMovementSubtype.ADJUSTMENT
+    } else {
+      type = CashMovementType.OUT
+      subtype = CashMovementSubtype.ADJUSTMENT
+    }
+
+    setIsMovementSubmitting(true)
+
+    try {
+      await cashApi.addMovement(session.id, {
+        type,
+        subtype,
+        cash_register_id: session.cashRegisterId,
+        paymentMethod: PaymentMethod.CASH,
+        amount: data.amount,
+        description: data.description,
+      })
+
+      await fetchMovements()
+      await fetchSummary()
+
+      if (viewMode === 'reconciliation') {
+        setReconciliationReport(null)
+        try {
+          await fetchReconciliationReport()
+        } catch {
+          // Reconciliation refresh failure should not invalidate the movement save.
+        }
+      }
+
+      setIsMovementModalOpen(false)
+      toast.success('Kasa hareketi eklendi')
+    } catch (error: any) {
+      if (!error?.response?.data?.message) {
+        toast.error('Kasa hareketi eklenemedi')
+      }
+    } finally {
+      setIsMovementSubmitting(false)
+    }
   }
 
   const formattedOpenedAt = isMounted
@@ -80,6 +182,15 @@ export function CashSessionDetailClient({
           description={`${formattedOpenedAt} tarihinde açıldı`}
           actions={
             <div className="flex gap-2">
+              {session.status === 'open' && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsMovementModalOpen(true)}
+                >
+                  <Wallet size={16} className="mr-2" />
+                  MANUEL HAREKET
+                </Button>
+              )}
               <Button variant="outline" onClick={() => router.back()}>
                 <ArrowLeft size={16} className="mr-2" />
                 GERİ DÖN
@@ -96,7 +207,7 @@ export function CashSessionDetailClient({
       <main className="flex flex-col flex-1 pb-6 min-h-0 px-layout print:px-0 print:pb-0">
         {/* Financial Summary & Reconciliation Section */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 print:hidden">
             <div className="flex items-center gap-2">
               <div className={cn(
                 "w-1.5 h-4 rounded-full",
@@ -135,11 +246,33 @@ export function CashSessionDetailClient({
             </div>
           </div>
 
+          {session.status === 'closed' && (
+            <div className={cn(
+              "mb-4 rounded-sm border p-3",
+              session.closedWithOpenTables
+                ? "border-warning-main/30 bg-warning-main/5"
+                : "border-border-light bg-white"
+            )}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                KAPANIŞ AUDIT BİLGİSİ
+              </p>
+              <p className="mt-1 text-sm font-semibold text-text-primary">
+                Kapanış Anında Açık Masa Vardı:{' '}
+                <span className={cn(
+                  session.closedWithOpenTables ? "text-warning-main" : "text-success-main"
+                )}>
+                  {session.closedWithOpenTables ? 'Evet' : 'Hayır'}
+                </span>
+              </p>
+            </div>
+          )}
+
           {viewMode === 'summary' ? (
             <SessionFinancialSummary
-              summary={summary}
+              summary={sessionSummary}
               openingBalance={session.openingBalance}
               countedBalance={session.countedBalance}
+              isLoading={isSummaryLoading}
             />
           ) : (
             <ReconciliationReportView
@@ -150,7 +283,7 @@ export function CashSessionDetailClient({
         </div>
 
         {/* Movements Section */}
-        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col min-h-0 print:hidden">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-1.5 h-4 bg-success-main rounded-full" />
             <h2 className="text-sm font-black text-text-primary uppercase tracking-[0.15em]">
@@ -158,12 +291,15 @@ export function CashSessionDetailClient({
             </h2>
           </div>
           <BodySection className="flex-1 overflow-hidden">
-            <SessionMovementTable movements={movements} />
+            <SessionMovementTable movements={sessionMovements} />
           </BodySection>
         </div>
 
         {/* Print Only Header */}
-        <div className="hidden print:block mb-8 border-b-2 border-black pb-4">
+        <div className={cn(
+          "hidden mb-8 border-b-2 border-black pb-4 print:block",
+          viewMode === 'reconciliation' && "print:hidden"
+        )}>
           <h1 className="text-2xl font-bold uppercase">KASA MUTABAKAT RAPORU</h1>
           <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
             <div>
@@ -179,6 +315,13 @@ export function CashSessionDetailClient({
           </div>
         </div>
       </main>
+
+      <CashMovementModal
+        isOpen={isMovementModalOpen}
+        onClose={() => setIsMovementModalOpen(false)}
+        onSubmit={handleManualMovement}
+        isLoading={isMovementSubmitting}
+      />
     </div>
   )
 }

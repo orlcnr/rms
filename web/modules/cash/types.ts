@@ -6,6 +6,8 @@
 import { BaseEntity, PaginatedResponse } from '@/modules/shared/types';
 import { PaymentMethod } from '@/modules/orders/types';
 
+export type CashPaymentMethod = PaymentMethod;
+
 // ============================================
 // ENUMS
 // ============================================
@@ -82,6 +84,7 @@ export interface CashSession extends BaseEntity {
   closingBalance?: number
   countedBalance?: number
   difference?: number
+  closedWithOpenTables?: boolean
   status: CashSessionStatus
   movements?: CashMovement[]
 
@@ -111,6 +114,12 @@ export interface CashMovement extends BaseEntity {
   // Frontend tarafından yönetilen alanlar
   isLiquid?: boolean // Likid mi? (nakit = true, kart = false)
   isRevenue?: boolean // Ciro mu? (tip için false olacak)
+  isTip?: boolean
+  isVoid?: boolean
+  isOpeningBalance?: boolean
+  isClosingDifference?: boolean
+  isManualCashIn?: boolean
+  isManualCashOut?: boolean
 }
 
 /**
@@ -159,6 +168,9 @@ export interface CashSummaryData {
   totalCash: number // Kasa Toplamı (Nakit + Nakit Bahşiş)
   cashTips: number // Nakit Bahşiş
   cardTips: number // Kart Bahşiş
+  cashTipDistributed?: number // Kasadan dağıtılan tip
+  manualCashInTotal?: number
+  manualCashOutTotal?: number
   paymentBreakdown?: Record<string, number> // Ödeme yöntemi kırılımı
 }
 
@@ -179,6 +191,11 @@ export interface ReconciliationReport {
   totalTip: number;
   tipCommission: number;
   netTip: number;
+  cashTipDistributed?: number;
+  manualCashInTotal?: number;
+  expenseTotal?: number;
+  adjustmentInTotal?: number;
+  adjustmentOutTotal?: number;
   expectedCash: number;
   actualCash: number | null;
   difference: number | null;
@@ -230,12 +247,13 @@ export interface CreateMovementData {
   paymentMethod: PaymentMethod
   amount: number
   description?: string
+  cash_register_id?: string
   orderId?: string
   transaction_id?: string
 
   // Frontend tarafından belirlenen alanlar
-  isLiquid: boolean
-  isRevenue: boolean
+  isLiquid?: boolean
+  isRevenue?: boolean
 }
 
 /**

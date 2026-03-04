@@ -4,7 +4,6 @@
 // ============================================
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { paymentsApi, SplitPaymentResponse } from '../services/payments.service';
 import { ordersApi } from '../services';
@@ -14,6 +13,7 @@ import {
   PaymentMethod,
   PaymentLine,
   Discount,
+  MealVoucherType,
   DiscountType,
   calculateTotalPaid,
   calculateRemaining,
@@ -43,8 +43,7 @@ export function usePayment({
   onSuccess,
   onError
 }: UsePaymentProps) {
-  const router = useRouter();
-  const { emit, on, off, isConnected } = useSocketStore();
+  const { on, off } = useSocketStore();
   const pendingQueue = usePendingQueue();
 
   // Socket suppression list to avoid double-updates
@@ -123,7 +122,7 @@ export function usePayment({
     };
 
     fetchLatestOrder();
-  }, [orderId]);
+  }, [orderId, orderTotal]);
 
   // ============ COMPUTED VALUES (useMemo) ============
 
@@ -154,40 +153,44 @@ export function usePayment({
     return calculateRemaining(finalTotal, payments);
   }, [finalTotal, payments]);
 
+  const effectivePayments = useMemo(() => {
+    return payments.filter((payment) => payment.amount > 0);
+  }, [payments]);
+
   /**
    * Ödeme tamamlandı mı?
    * Frontend validation: Tüm ödeme satırları için gerekli kontroller
    */
   const canCompletePayment = useMemo(() => {
-    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
-
-    if (nonZeroPayments.length === 0) {
+    if (effectivePayments.length === 0) {
       return false;
     }
 
     // Temel kontrol: toplam ödeme yeterli mi?
-    if (!isPaymentComplete(finalTotal, nonZeroPayments)) {
+    if (!isPaymentComplete(finalTotal, effectivePayments)) {
       return false;
     }
 
     // Yalnız gönderilecek (pozitif) ödeme satırları için validation
-    for (const payment of nonZeroPayments) {
+    for (const payment of effectivePayments) {
       // Açık hesap için müşteri seçilmeli
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
+        return false;
+      }
+
+      if (payment.method === PaymentMethod.MEAL_VOUCHER && !payment.mealVoucherType) {
         return false;
       }
     }
 
     return true;
-  }, [finalTotal, payments]);
+  }, [effectivePayments, finalTotal]);
 
   /**
    * Ödeme validation hatası - Neden ödeme yapılamayacağını döner
    */
   const paymentValidationError = useMemo((): string | null => {
-    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
-
-    if (nonZeroPayments.length === 0) {
+    if (effectivePayments.length === 0) {
       return 'En az bir ödeme yöntemi için tutar giriniz';
     }
 
@@ -196,14 +199,18 @@ export function usePayment({
       return `${formatPaymentAmount(remainingBalance)} ödenmemiş`;
     }
 
-    for (const payment of nonZeroPayments) {
+    for (const payment of effectivePayments) {
       if (payment.method === PaymentMethod.OPEN_ACCOUNT && !payment.customerId) {
         return 'Açık hesap için müşteri seçmelisiniz';
+      }
+
+      if (payment.method === PaymentMethod.MEAL_VOUCHER && !payment.mealVoucherType) {
+        return 'Yemek çeki için çek tipi seçmelisiniz';
       }
     }
 
     return null;
-  }, [payments, remainingBalance]);
+  }, [effectivePayments, remainingBalance]);
 
   /**
    * Nakit ödemeleri için toplam para üstü
@@ -220,23 +227,23 @@ export function usePayment({
    * Yeni ödeme satırı ekle
    */
   const addPaymentLine = useCallback((method: PaymentMethod) => {
-    const existingIndex = payments.findIndex((payment) => payment.method === method);
-    if (existingIndex >= 0) {
-      setActivePaymentIndex(existingIndex);
-      return;
-    }
-
     const newLine: PaymentLine = {
       id: crypto.randomUUID(),
       method,
       amount: 0,
       ...(method === PaymentMethod.CASH ? { cashReceived: 0 } : {}),
-      ...(method === PaymentMethod.OPEN_ACCOUNT ? { customerId: undefined } : {}),
+      ...(method === PaymentMethod.OPEN_ACCOUNT ? { customerId: null } : {}),
+      ...(method === PaymentMethod.MEAL_VOUCHER
+        ? { mealVoucherType: null as MealVoucherType | null }
+        : {}),
     };
 
-    setPayments(prev => [...prev, newLine]);
-    setActivePaymentIndex(payments.length);
-  }, [payments]);
+    setPayments((prev) => {
+      const next = [...prev, newLine];
+      setActivePaymentIndex(next.length - 1);
+      return next;
+    });
+  }, []);
 
   /**
    * Ödeme satırını güncelle
@@ -251,11 +258,38 @@ export function usePayment({
    * Ödeme satırını sil
    */
   const removePaymentLine = useCallback((id: string) => {
-    setPayments(prev => prev.filter(p => p.id !== id));
-    if (activePaymentIndex !== null && activePaymentIndex >= payments.length - 1) {
-      setActivePaymentIndex(null);
+    const removedIndex = payments.findIndex((payment) => payment.id === id);
+    if (removedIndex === -1) {
+      return;
     }
-  }, [activePaymentIndex, payments.length]);
+
+    const nextPayments = payments.filter((payment) => payment.id !== id);
+    setPayments(nextPayments);
+
+    if (activePaymentIndex === null) {
+      setActivePaymentIndex(null);
+      return;
+    }
+
+    if (activePaymentIndex !== removedIndex) {
+      setActivePaymentIndex(
+        activePaymentIndex > removedIndex ? activePaymentIndex - 1 : activePaymentIndex,
+      );
+      return;
+    }
+
+    if (removedIndex < nextPayments.length) {
+      setActivePaymentIndex(removedIndex);
+      return;
+    }
+
+    if (nextPayments.length > 0) {
+      setActivePaymentIndex(nextPayments.length - 1);
+      return;
+    }
+
+    setActivePaymentIndex(null);
+  }, [activePaymentIndex, payments]);
 
   /**
    * Tüm ödemeleri temizle
@@ -382,30 +416,28 @@ export function usePayment({
     setError(null);
 
     const txId = crypto.randomUUID();
-    const nonZeroPayments = payments.filter((payment) => payment.amount > 0);
+    const nonZeroPayments = effectivePayments;
+    const requestData = {
+      order_id: orderId,
+      transaction_id: txId,
+      payments: nonZeroPayments.map(p => ({
+        amount: p.amount,
+        payment_method: p.method,
+        customer_id: p.customerId || undefined,
+        meal_voucher_type:
+          p.method === PaymentMethod.MEAL_VOUCHER && p.mealVoucherType
+            ? p.mealVoucherType
+            : undefined,
+        cash_received: p.cashReceived,
+        tip_amount: p.tipAmount,
+        commission_rate: p.commissionRate,
+      })),
+      ...(discount ? { discount_type: discount.type } : {}),
+      ...(discount ? { discount_amount: discount.amount } : {}),
+      ...(discount?.reason ? { discount_reason: discount.reason } : {}),
+    };
 
     try {
-      if (nonZeroPayments.length !== payments.length) {
-        setPayments(nonZeroPayments);
-      }
-
-      // API isteği için formatla
-      const requestData = {
-        order_id: orderId,
-        transaction_id: txId,
-        payments: nonZeroPayments.map(p => ({
-          amount: p.amount,
-          payment_method: p.method,
-          customer_id: p.customerId || undefined,
-          cash_received: p.cashReceived,
-          tip_amount: p.tipAmount,
-          commission_rate: p.commissionRate,
-        })),
-        ...(discount ? { discount_type: discount.type } : {}),
-        ...(discount ? { discount_amount: discount.amount } : {}),
-        ...(discount?.reason ? { discount_reason: discount.reason } : {}),
-      };
-
       // Suppression listesine ekle
       suppressedTransactionIds.current.add(txId);
 
@@ -438,7 +470,7 @@ export function usePayment({
           module: 'payment',
           endpoint: '/payments/split',
           method: 'POST',
-          payload: { order_id: orderId, payments: nonZeroPayments, discount }
+          payload: requestData,
         });
       }
 
@@ -450,12 +482,13 @@ export function usePayment({
     isProcessing,
     paymentValidationError,
     orderId,
-    payments,
+    effectivePayments,
     discount,
     onSuccess,
     onError,
     clearPayments,
     removeDiscount,
+    pendingQueue,
   ]);
 
   /**
@@ -485,7 +518,7 @@ export function usePayment({
     } finally {
       setIsProcessing(false);
     }
-  }, [orderId, restaurantId, isConnected, emit]);
+  }, []);
 
   // ============ SOCKET EVENT LISTENERS ============
 

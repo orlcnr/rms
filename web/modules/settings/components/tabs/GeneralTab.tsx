@@ -3,6 +3,11 @@
 import React, { useEffect, useState } from 'react'
 import { Button } from '@/modules/shared/components/Button'
 import { FormInput } from '@/modules/shared/components/FormInput'
+import { RmsSwitch } from '@/modules/shared/components/RmsSwitch'
+import {
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+} from '@/modules/shared/utils/notification-sound'
 import { RestaurantDetails, RestaurantFormInput } from '../../types'
 
 interface GeneralTabProps {
@@ -20,6 +25,11 @@ export function GeneralTab({ restaurant, isLoading, onSave }: GeneralTabProps) {
     contact_email: '',
     contact_phone: '',
   })
+  const [soundEnabled, setSoundEnabled] = useState(true)
+
+  useEffect(() => {
+    setSoundEnabled(isNotificationSoundEnabled())
+  }, [])
 
   useEffect(() => {
     if (!restaurant) return
@@ -97,6 +107,33 @@ export function GeneralTab({ restaurant, isLoading, onSave }: GeneralTabProps) {
         value={form.description || ''}
         onChange={(value) => setForm((prev) => ({ ...prev, description: value }))}
       />
+
+      <div className="md:col-span-2 rounded-sm border border-border-light bg-bg-surface p-4">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-text-primary">
+              Sesli Bildirim
+            </p>
+            <p className="mt-1 text-sm text-text-secondary">
+              Yeni sipariş, misafir siparişi, garson çağrısı ve hesap isteği
+              bildirimlerinde zil sesi çalınsın.
+            </p>
+          </div>
+
+          <RmsSwitch
+            checked={soundEnabled}
+            onChange={(checked) => {
+              setSoundEnabled(checked)
+              setNotificationSoundEnabled(checked)
+            }}
+            label="Sesli bildirim"
+            labelOn="AÇIK"
+            labelOff="KAPALI"
+            theme="primary"
+            containerClassName="bg-bg-app"
+          />
+        </div>
+      </div>
 
       <div className="md:col-span-2 border-t border-border-light pt-4 flex justify-end">
         <Button type="submit" isLoading={isLoading}>FİRMA BİLGİLERİNİ KAYDET</Button>

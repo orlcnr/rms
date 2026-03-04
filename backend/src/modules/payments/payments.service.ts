@@ -9,15 +9,12 @@ import {
   Payment,
   PaymentMethod,
   PaymentStatus,
-  DiscountType,
 } from './entities/payment.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateSplitPaymentDto } from './dto/create-split-payment.dto';
 import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../orders/enums/order-status.enum';
 import { Table, TableStatus } from '../tables/entities/table.entity';
-import { CashSession } from '../cash/entities/cash-session.entity';
-import { CreateCashMovementDto } from '../cash/dto/cash-ops.dto';
 import { CashMovementType } from '../cash/enums/cash.enum';
 import { InventoryService } from '../inventory/inventory.service';
 import { paginate, Pagination } from 'nestjs-typeorm-paginate';
@@ -33,6 +30,7 @@ import {
   Transport,
 } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import { GuestSessionsService } from '../qr-guest/services/guest-sessions.service';
 
 // Helper function for precise decimal calculations (to avoid floating point errors)
 // Uses integer math: multiply by 100, calculate, then divide by 100
@@ -146,6 +144,7 @@ export class PaymentsService {
     private readonly cashService: CashService,
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
+    private readonly guestSessionsService: GuestSessionsService,
   ) {
     this.client = ClientProxyFactory.create({
       transport: Transport.RMQ,
@@ -193,6 +192,11 @@ export class PaymentsService {
     }
   }
 
+  private getNextServiceCycleVersion(current: string | number | null | undefined): string {
+    const normalized = current === undefined || current === null ? '1' : String(current);
+    return (BigInt(normalized) + BigInt(1)).toString();
+  }
+
   async findAll(queryDto: GetPaymentsDto): Promise<Pagination<Payment>> {
     const { page = 1, limit = 10, search } = queryDto;
 
@@ -232,6 +236,9 @@ export class PaymentsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    let updatedTableAfterPayment:
+      | { id: string; oldStatus: TableStatus; nextVersion: string }
+      | null = null;
 
     try {
       // 1. Fetch Order with Table and Items
@@ -353,7 +360,38 @@ export class PaymentsService {
         );
       }
 
+      // 5. Update Table Status if exists
+      if (order.table) {
+        const table = await queryRunner.manager.findOneBy(Table, {
+          id: order.table.id,
+        });
+        if (table) {
+          const oldStatus = table.status;
+          const nextVersion = this.getNextServiceCycleVersion(
+            table.serviceCycleVersion,
+          );
+          table.serviceCycleVersion = nextVersion;
+          table.status = TableStatus.AVAILABLE;
+          await queryRunner.manager.save(table);
+          updatedTableAfterPayment = {
+            id: table.id,
+            oldStatus,
+            nextVersion,
+          };
+        }
+      }
+
       await queryRunner.commitTransaction();
+
+      if (updatedTableAfterPayment) {
+        await this.guestSessionsService.setServiceCycleVersionCache(
+          updatedTableAfterPayment.id,
+          updatedTableAfterPayment.nextVersion,
+        );
+        await this.guestSessionsService.markRecentPaymentClose(
+          updatedTableAfterPayment.id,
+        );
+      }
 
       // Emit payment completed event first so cash and guests get the notification
       this.eventEmitter.emit('payment.completed', {
@@ -376,23 +414,13 @@ export class PaymentsService {
       };
       this.client.emit('popularity.update', popularityData);
 
-      // 5. Update Table Status if exists
-      if (order.table) {
-        const table = await queryRunner.manager.findOneBy(Table, {
-          id: order.table.id,
+      if (updatedTableAfterPayment) {
+        this.eventEmitter.emit('table.status.changed', {
+          tableId: updatedTableAfterPayment.id,
+          restaurantId: order.restaurantId,
+          oldStatus: updatedTableAfterPayment.oldStatus,
+          newStatus: TableStatus.AVAILABLE,
         });
-        if (table) {
-          const oldStatus = table.status;
-          table.status = TableStatus.AVAILABLE;
-          await queryRunner.manager.save(table);
-
-          this.eventEmitter.emit('table.status.changed', {
-            tableId: table.id,
-            restaurantId: order.restaurantId,
-            oldStatus: oldStatus,
-            newStatus: TableStatus.AVAILABLE,
-          });
-        }
       }
 
       return savedPayment;
@@ -433,6 +461,9 @@ export class PaymentsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    let updatedSplitPaymentTable:
+      | { id: string; oldStatus: TableStatus; nextVersion: string }
+      | null = null;
 
     try {
       // 1. Siparişi getir
@@ -453,7 +484,22 @@ export class PaymentsService {
         order.restaurantId,
       );
       for (const payment of payments) {
+        if (Number(payment.amount) <= 0) {
+          throw new BadRequestException(
+            'Ödeme tutarı sıfırdan büyük olmalıdır',
+          );
+        }
+
         this.validateMethodIsEnabled(payment.payment_method, enabledMethods);
+
+        if (
+          payment.payment_method === PaymentMethod.MEAL_VOUCHER &&
+          !payment.meal_voucher_type
+        ) {
+          throw new BadRequestException(
+            'Yemek çeki ödemesi için çek tipi seçilmelidir',
+          );
+        }
       }
 
       // 2. Toplam ödenen miktarı hesapla
@@ -576,26 +622,20 @@ export class PaymentsService {
         const tipAmount = payment.tip_amount ? Number(payment.tip_amount) : 0;
         let resolvedCommissionRate = payment.commission_rate;
 
-        // 6. Kasa hareketini kaydet (Nakit, Kredi Kartı veya Açık Hesap ödemeleri için)
-        if (
-          payment.payment_method === PaymentMethod.CASH ||
-          payment.payment_method === PaymentMethod.CREDIT_CARD ||
-          payment.payment_method === PaymentMethod.OPEN_ACCOUNT
-        ) {
-          await this.cashService.addMovement(
-            (userId || order.userId)!, // Ensure userId is always a string
-            typedActiveSession.id,
-            {
-              cash_register_id: activeRegister.id,
-              amount: amount,
-              type: CashMovementType.SALE,
-              paymentMethod: payment.payment_method,
-              description: `Split payment for order ${order.id} via ${payment.payment_method}`,
-              is_payment: true,
-            },
-            queryRunner,
-          );
-        }
+        // 6. Kasa hareketini kaydet (tüm ödeme yöntemleri için satış kırılımı gerekir)
+        await this.cashService.addMovement(
+          (userId || order.userId)!, // Ensure userId is always a string
+          typedActiveSession.id,
+          {
+            cash_register_id: activeRegister.id,
+            amount: amount,
+            type: CashMovementType.SALE,
+            paymentMethod: payment.payment_method,
+            description: `Split payment for order ${order.id} via ${payment.payment_method}`,
+            is_payment: true,
+          },
+          queryRunner,
+        );
 
         // 6.1. Bahşişi kaydet (eğer varsa)
         if (tipAmount > 0) {
@@ -639,6 +679,10 @@ export class PaymentsService {
           discount_reason,
           final_amount,
           payment_method: payment.payment_method,
+          meal_voucher_type:
+            payment.payment_method === PaymentMethod.MEAL_VOUCHER
+              ? payment.meal_voucher_type
+              : null,
           customer_id: payment.customer_id,
           transaction_id: payment.transaction_id,
           description: payment.description,
@@ -676,8 +720,39 @@ export class PaymentsService {
       // 7. Stok düş
       await this.inventoryService.decreaseStockForOrder(order, queryRunner);
 
+      if (order.table) {
+        const table = await queryRunner.manager.findOneBy(Table, {
+          id: order.table.id,
+        });
+
+        if (table) {
+          const nextVersion = this.getNextServiceCycleVersion(
+            table.serviceCycleVersion,
+          );
+          table.serviceCycleVersion = nextVersion;
+          const oldStatus = table.status;
+          table.status = TableStatus.AVAILABLE;
+          await queryRunner.manager.save(table);
+          updatedSplitPaymentTable = {
+            id: table.id,
+            oldStatus,
+            nextVersion,
+          };
+        }
+      }
+
       // 8. Transaction'ı commit et
       await queryRunner.commitTransaction();
+
+      if (updatedSplitPaymentTable) {
+        await this.guestSessionsService.setServiceCycleVersionCache(
+          updatedSplitPaymentTable.id,
+          updatedSplitPaymentTable.nextVersion,
+        );
+        await this.guestSessionsService.markRecentPaymentClose(
+          updatedSplitPaymentTable.id,
+        );
+      }
 
       // 9. Socket event'leri emit et (transaction dışında — cash kaydı artık transaction içinde yapılıyor)
       this.eventEmitter.emit('payment.completed', {
@@ -700,11 +775,11 @@ export class PaymentsService {
       this.client.emit('popularity.update', popularityData);
 
       // 11. Masa durumunu güncelle (socket)
-      if (order.table) {
+      if (updatedSplitPaymentTable) {
         this.eventEmitter.emit('table.status.changed', {
-          tableId: order.table.id,
+          tableId: updatedSplitPaymentTable.id,
           restaurantId: order.restaurantId,
-          oldStatus: order.table.status,
+          oldStatus: updatedSplitPaymentTable.oldStatus,
           newStatus: TableStatus.AVAILABLE,
         });
       }
@@ -736,11 +811,7 @@ export class PaymentsService {
    * 3. Nakit ise kasa hareketi oluşturur
    * 4. Sipariş durumunu günceller
    */
-  async revertPayment(
-    paymentId: string,
-    reason: string,
-    userId?: string,
-  ): Promise<Payment> {
+  async revertPayment(paymentId: string, reason: string): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();

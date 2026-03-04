@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList, Bell } from 'lucide-react'
+import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList, Bell, BarChart3 } from 'lucide-react'
+import { authService } from '@/modules/auth/services/auth.service'
 import { useUI } from '@/modules/shared/context/UIContext'
 import { cn } from '../utils/cn'
 import { usePathname } from 'next/navigation'
@@ -18,6 +19,7 @@ export function Sidebar() {
         { icon: Grid2X2, label: 'Masa Yönetimi', href: '/tables' },
         { icon: ClipboardList, label: 'Siparişler', href: '/orders' },
         { icon: Wallet, label: 'Kasa', href: '/cash' },
+        { icon: BarChart3, label: 'Raporlar', href: '/reports' },
         { icon: BookOpen, label: 'Ürün Kataloğu', href: '/products' },
         { icon: Package, label: 'Stok ve Envanter', href: '/inventory' },
         { icon: Calendar, label: 'Rezervasyonlar', href: '/reservations' },
@@ -123,7 +125,14 @@ export function Sidebar() {
                         ) : null}
 
                         {/* Logout Button - Combined logic */}
-                        <button className="flex items-center h-12 w-full transition-all relative group overflow-hidden text-danger-main hover:bg-danger-main/5">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                closeSidebar()
+                                authService.logout()
+                            }}
+                            className="flex items-center h-12 w-full transition-all relative group overflow-hidden text-danger-main hover:bg-danger-main/5"
+                        >
                             <div className="w-20 shrink-0 flex items-center justify-center">
                                 <LogOut size={20} />
                             </div>

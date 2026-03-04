@@ -1,6 +1,12 @@
 import { http } from '@/modules/shared/api/http'
+import { normalizePaginatedEnvelope } from '@/modules/shared/api/normalize-paginated-envelope'
 import { Category, MenuItem, CreateCategoryInput, CreateMenuItemInput, PaginatedResponse } from '../types'
 
+/**
+ * @deprecated Bu servis aktif kullanımda değildir.
+ * Yeni geliştirmeler için productsApi kullanın.
+ * Bkz: web/modules/products/services/products.service.ts
+ */
 export const menuService = {
     // Categories
     getCategories: async (restaurantId: string): Promise<Category[]> => {
@@ -16,7 +22,7 @@ export const menuService = {
     },
 
     deleteCategory: async (id: string): Promise<void> => {
-        return http.delete(`/menus/categories/${id}`)
+        await http.deleteEnvelope<null>(`/menus/categories/${id}`)
     },
 
     // Menu Items
@@ -24,7 +30,8 @@ export const menuService = {
         restaurantId: string,
         params: { page?: number; limit?: number; search?: string; categoryId?: string } = {}
     ): Promise<PaginatedResponse<MenuItem>> => {
-        return http.get<PaginatedResponse<MenuItem>>(`/menus/restaurants/${restaurantId}/items`, { params })
+        const response = await http.getEnvelope<MenuItem[]>(`/menus/restaurants/${restaurantId}/items`, { params })
+        return normalizePaginatedEnvelope(response)
     },
 
     createMenuItem: async (data: CreateMenuItemInput): Promise<MenuItem> => {
@@ -36,6 +43,6 @@ export const menuService = {
     },
 
     deleteMenuItem: async (id: string): Promise<void> => {
-        return http.delete(`/menus/items/${id}`)
+        await http.deleteEnvelope<null>(`/menus/items/${id}`)
     },
 }

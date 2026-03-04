@@ -1,10 +1,17 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
-import { PaymentLine, formatPaymentAmount } from '../types';
+import {
+  getMealVoucherTypeLabel,
+  getPaymentMethodLabel,
+  PaymentLine,
+  PaymentMethod,
+  formatPaymentAmount,
+} from '../types';
 
 interface PaymentLineItemProps {
   payment: PaymentLine;
+  methodSequence: number;
   isActive: boolean;
   onActivate: () => void;
   onRemove: () => void;
@@ -13,30 +20,13 @@ interface PaymentLineItemProps {
 
 export function PaymentLineItem({
   payment,
+  methodSequence,
   isActive,
   onActivate,
   onRemove,
   disabled,
 }: PaymentLineItemProps) {
-  // Get method label
-  const getMethodLabel = (method: string) => {
-    switch (method) {
-      case 'cash':
-        return 'Nakit';
-      case 'credit_card':
-        return 'Kredi Kartı';
-      case 'debit_card':
-        return 'Banka Kartı';
-      case 'digital_wallet':
-        return 'Dijital Cüzdan';
-      case 'bank_transfer':
-        return 'Havale/EFT';
-      case 'open_account':
-        return 'Açık Hesap';
-      default:
-        return method;
-    }
-  };
+  const voucherTypeLabel = getMealVoucherTypeLabel(payment.mealVoucherType);
 
   return (
     <div
@@ -55,7 +45,7 @@ export function PaymentLineItem({
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-semibold text-text-secondary uppercase">
-              {getMethodLabel(payment.method)}
+              {getPaymentMethodLabel(payment.method as PaymentMethod)} #{methodSequence}
             </span>
             {isActive && (
               <span className="text-[10px] text-primary-main font-bold uppercase">Seçili</span>
@@ -70,6 +60,11 @@ export function PaymentLineItem({
           <p className="mt-1 text-[10px] text-text-muted uppercase tracking-wider">
             Düzenleme sağ panelden yapılır
           </p>
+          {payment.method === PaymentMethod.MEAL_VOUCHER && voucherTypeLabel && (
+            <p className="mt-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+              Çek Tipi: {voucherTypeLabel}
+            </p>
+          )}
         </div>
 
         {/* Remove Button */}

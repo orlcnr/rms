@@ -7,6 +7,7 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { normalizeFrontendUrl } from '../../../common/utils/normalize-frontend-url.util';
 import { GuestSessionsService } from '../services/guest-sessions.service';
 import { GuestOrdersService } from '../services/guest-orders.service';
 import { GuestGateway } from '../gateways/guest.gateway';
@@ -51,7 +52,7 @@ export class GuestDebugController {
 
     return {
       token,
-      qrUrl: `${frontendUrl}/guest?token=${encodeURIComponent(token)}`,
+      qrUrl: `${normalizeFrontendUrl(frontendUrl)}/guest?token=${encodeURIComponent(token)}`,
       tableId,
       restaurantId: restaurantId || 'test-restaurant-id',
     };

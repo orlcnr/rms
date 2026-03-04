@@ -10,6 +10,11 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GuestRequestsService } from '../services/guest-requests.service';
+import type {
+  BillRequest,
+  GuestRequestAck,
+  WaiterCallRequest,
+} from '../services/guest-requests.service';
 import { GuestAuthGuard } from '../guards/guest-auth.guard';
 import { WaiterCallDto, BillRequestDto } from '../dto';
 import type { Request } from 'express';
@@ -25,7 +30,10 @@ export class GuestRequestsController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Call waiter to table' })
-  async callWaiter(@Body() dto: WaiterCallDto, @Req() req: Request) {
+  async callWaiter(
+    @Body() dto: WaiterCallDto,
+    @Req() req: Request,
+  ): Promise<GuestRequestAck<WaiterCallRequest>> {
     return await this.guestRequestsService.callWaiter(req.guestSession!, dto);
   }
 
@@ -35,7 +43,10 @@ export class GuestRequestsController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Request bill/check' })
-  async requestBill(@Body() dto: BillRequestDto, @Req() req: Request) {
+  async requestBill(
+    @Body() dto: BillRequestDto,
+    @Req() req: Request,
+  ): Promise<GuestRequestAck<BillRequest>> {
     return await this.guestRequestsService.requestBill(req.guestSession!, dto);
   }
 }

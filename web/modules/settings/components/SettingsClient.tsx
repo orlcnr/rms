@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/modules/shared/components/Button'
@@ -39,9 +39,19 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
   const [isSaving, setIsSaving] = useState(false)
   const [pendingSettings, setPendingSettings] = useState<Partial<Record<SettingKey, SettingValue>>>({})
 
-  const settingsStore = useSettingsStore()
-  const restaurantStore = useRestaurantStore()
-  const usersStore = useUsersStore()
+  const settingsIsLoading = useSettingsStore((state) => state.isLoading)
+  const settingsLastFetched = useSettingsStore((state) => state.lastFetched)
+  const loadSettings = useSettingsStore((state) => state.loadSettings)
+  const updateSetting = useSettingsStore((state) => state.updateSetting)
+  const getSetting = useSettingsStore((state) => state.getSetting)
+
+  const restaurant = useRestaurantStore((state) => state.restaurant)
+  const restaurantIsLoading = useRestaurantStore((state) => state.isLoading)
+  const loadRestaurant = useRestaurantStore((state) => state.loadRestaurant)
+  const updateRestaurant = useRestaurantStore((state) => state.updateRestaurant)
+
+  const usersIsLoading = useUsersStore((state) => state.isLoading)
+  const loadUsers = useUsersStore((state) => state.loadUsers)
 
   const castedRole = (userRole || UserRole.MANAGER) as UserRole
 
@@ -52,21 +62,21 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
   useEffect(() => {
     if (!mounted || !restaurantId) return
 
-    settingsStore.loadSettings(restaurantId)
-    restaurantStore.loadRestaurant(restaurantId)
-  }, [mounted, restaurantId])
+    loadSettings(restaurantId)
+    loadRestaurant(restaurantId)
+  }, [mounted, restaurantId, loadRestaurant, loadSettings])
 
   useEffect(() => {
     if (!mounted || activeTab !== 'users') return
-    usersStore.loadUsers()
-  }, [mounted, activeTab])
+    loadUsers()
+  }, [mounted, activeTab, loadUsers])
 
   useEffect(() => {
     if (!mounted) return
 
     setPendingSettings({
       [SettingKey.ENABLED_PAYMENT_METHODS]: (() => {
-        const loadedValue = settingsStore.getSetting(
+        const loadedValue = getSetting(
           SettingKey.ENABLED_PAYMENT_METHODS,
           '',
         )
@@ -77,32 +87,32 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
           ? loadedValue
           : JSON.stringify(Object.values(PaymentMethod))
       })(),
-      [SettingKey.TIP_COMMISSION_ENABLED]: settingsStore.getSetting(
+      [SettingKey.TIP_COMMISSION_ENABLED]: getSetting(
         SettingKey.TIP_COMMISSION_ENABLED,
         true,
       ),
-      [SettingKey.TIP_COMMISSION_RATE]: settingsStore.getSetting(
+      [SettingKey.TIP_COMMISSION_RATE]: getSetting(
         SettingKey.TIP_COMMISSION_RATE,
         0.02,
       ),
-      [SettingKey.TIP_COMMISSION_EDITABLE]: settingsStore.getSetting(
+      [SettingKey.TIP_COMMISSION_EDITABLE]: getSetting(
         SettingKey.TIP_COMMISSION_EDITABLE,
         true,
       ),
-      [SettingKey.DEFAULT_OPENING_BALANCE]: settingsStore.getSetting(
+      [SettingKey.DEFAULT_OPENING_BALANCE]: getSetting(
         SettingKey.DEFAULT_OPENING_BALANCE,
         0,
       ),
-      [SettingKey.SHIFT_DURATION_HOURS]: settingsStore.getSetting(SettingKey.SHIFT_DURATION_HOURS, 8),
-      [SettingKey.REQUIRE_CLOSING_COUNT]: settingsStore.getSetting(
+      [SettingKey.SHIFT_DURATION_HOURS]: getSetting(SettingKey.SHIFT_DURATION_HOURS, 8),
+      [SettingKey.REQUIRE_CLOSING_COUNT]: getSetting(
         SettingKey.REQUIRE_CLOSING_COUNT,
         false,
       ),
     })
-  }, [mounted, settingsStore.lastFetched])
+  }, [mounted, getSetting, settingsLastFetched])
 
   const isConnected = true
-  const isSyncing = settingsStore.isLoading || restaurantStore.isLoading || usersStore.isLoading
+  const isSyncing = settingsIsLoading || restaurantIsLoading || usersIsLoading
 
   function parseEnabledPaymentMethods(value: SettingValue | undefined): PaymentMethod[] {
     const defaults = Object.values(PaymentMethod)
@@ -136,21 +146,18 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
     }
   }
 
-  const summaryText = useMemo(() => {
-    const now = new Date().toLocaleDateString('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-    return `SON SENKRON: ${now}`
-  }, [settingsStore.lastFetched])
+  const summaryText = `SON SENKRON: ${new Date().toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })}`
 
   async function handleRefresh() {
     try {
       await Promise.all([
-        settingsStore.loadSettings(restaurantId, true),
-        restaurantStore.loadRestaurant(restaurantId),
-        activeTab === 'users' ? usersStore.loadUsers() : Promise.resolve(),
+        loadSettings(restaurantId, true),
+        loadRestaurant(restaurantId),
+        activeTab === 'users' ? loadUsers() : Promise.resolve(),
       ])
       toast.success('Ayarlar güncellendi')
     } catch {
@@ -176,10 +183,10 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
         keys.map((key) => {
           const nextValue = pendingSettings[key]
           if (nextValue === undefined) return Promise.resolve()
-          return settingsStore.updateSetting(restaurantId, key, nextValue as SettingValue)
+          return updateSetting(restaurantId, key, nextValue as SettingValue)
         }),
       )
-      await settingsStore.loadSettings(restaurantId, true)
+      await loadSettings(restaurantId, true)
       toast.success('Ayarlar kaydedildi')
     } catch {
       toast.error('Ayarlar kaydedilemedi')
@@ -192,7 +199,7 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
     if (!restaurantId) return
 
     try {
-      await restaurantStore.updateRestaurant(restaurantId, values)
+      await updateRestaurant(restaurantId, values)
       toast.success('Firma bilgileri güncellendi')
     } catch {
       toast.error('Firma bilgileri güncellenemedi')
@@ -250,8 +257,8 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
         <BodySection>
           {activeTab === 'general' && (
             <GeneralTab
-              restaurant={restaurantStore.restaurant}
-              isLoading={restaurantStore.isLoading}
+              restaurant={restaurant}
+              isLoading={restaurantIsLoading}
               onSave={handleSaveGeneral}
             />
           )}

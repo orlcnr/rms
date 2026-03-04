@@ -4,6 +4,7 @@
 // ============================================
 
 import { getRestaurantContext } from '@/modules/auth/server/getServerUser'
+import { guestStaffApi } from '@/modules/guest/service'
 import { ordersApi } from '@/modules/orders/services'
 import { groupOrdersByTableAndStatus } from '@/modules/orders/utils/order-group'
 import { OrdersBoardClient } from '@/modules/orders/components'
@@ -44,12 +45,25 @@ export default async function OrdersPage() {
   const allOrders = todayOrdersResponse?.items || todayOrdersResponse as any || []
   console.log('=== ACTIVE ORDERS:', allOrders.length)
   const ordersByStatus = groupOrdersByTableAndStatus(allOrders)
+  let pendingGuestApprovalsCount = 0
+
+  try {
+    const pendingGuestApprovals =
+      await guestStaffApi.getPendingApprovals(restaurantId)
+    pendingGuestApprovalsCount = pendingGuestApprovals.length
+  } catch (error) {
+    console.error(
+      '[OrdersPage] Failed to load pending guest approvals count:',
+      error,
+    )
+  }
 
   return (
     <OrdersBoardClient
       restaurantId={restaurantId}
       userId={user.id}
       initialOrdersByStatus={ordersByStatus}
+      initialPendingGuestApprovalsCount={pendingGuestApprovalsCount}
     />
   )
 }
