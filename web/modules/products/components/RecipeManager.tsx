@@ -8,9 +8,11 @@ import { SearchableSelect } from '@/modules/shared/components/SearchableSelect';
 import { AddIngredientModal } from '@/modules/shared/components/AddIngredientModal';
 import { FormSection } from '@/modules/shared/components/FormSection';
 import { FormInput } from '@/modules/shared/components/FormInput';
+import { RmsSwitch } from '@/modules/shared/components/RmsSwitch';
 import { toast } from 'sonner';
 import { inventoryApi } from '../../inventory/services/inventory.service';
 import { formatNumericDisplay, handleNumericInput, formatCurrency } from '@/modules/shared/utils/numeric';
+import { cn } from '@/modules/shared/utils/cn';
 
 // ============================================
 // PROPS
@@ -37,6 +39,8 @@ interface RecipeManagerProps {
       quantity?: number;
     }>;
   };
+  className?: string;
+  setTrackInventory?: (enabled: boolean) => void;
 }
 
 // ============================================
@@ -53,6 +57,8 @@ export function RecipeManager({
   removeRecipeItem,
   updateRecipeItem,
   restaurantId,
+  className,
+  setTrackInventory,
 }: RecipeManagerProps) {
   // Stock adjustment state
   const [adjustingIngredient, setAdjustingIngredient] = useState<string | null>(null);
@@ -130,25 +136,44 @@ export function RecipeManager({
   }, [selectedRecipeIndex, updateRecipeItem]);
 
   return (
-    <div className="md:col-span-8">
+    <div className={cn('md:col-span-8', className)}>
       <FormSection 
         title="REÇETE YÖNETİMİ" 
         variant="info"
         showDivider={false}
         className="!pb-0"
         actions={
-          track_inventory ? (
-            <button
-              type="button"
-              onClick={addRecipeItem}
-              className="px-4 py-1.5 bg-bg-app border border-border-light hover:border-info-main hover:text-info-main transition-all text-text-secondary text-[9px] font-black uppercase tracking-widest rounded-sm shadow-sm flex items-center gap-2"
-            >
-              <PlusCircle size={14} />
-              YENİ MALZEME
-            </button>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            <div className="min-w-[220px]">
+              <RmsSwitch
+                checked={track_inventory}
+                onChange={(checked) => setTrackInventory?.(checked)}
+                label="Stok Takibi"
+                labelOn="AÇIK"
+                labelOff="KAPALI"
+                theme="info"
+                containerClassName="!py-2 !px-3"
+              />
+            </div>
+            {track_inventory ? (
+              <button
+                type="button"
+                onClick={addRecipeItem}
+                className="px-4 py-1.5 bg-bg-app border border-border-light hover:border-info-main hover:text-info-main transition-all text-text-secondary text-[9px] font-black uppercase tracking-widest rounded-sm shadow-sm flex items-center gap-2"
+              >
+                <PlusCircle size={14} />
+                YENİ MALZEME
+              </button>
+            ) : undefined}
+          </div>
         }
       >
+        {track_inventory && recipes.length === 0 ? (
+          <p className="text-[10px] font-semibold text-warning-main uppercase tracking-wider mb-3">
+            Stok takibi açıkken en az 1 reçete satırı zorunludur.
+          </p>
+        ) : null}
+
         {/* Content based on track_inventory and recipes */}
         {!track_inventory ? (
           <div className="h-full border border-dashed border-border-light rounded-sm flex flex-col items-center justify-center p-12 text-center opacity-40 bg-bg-app/50 grayscale">
@@ -205,6 +230,9 @@ export function RecipeManager({
                     onChange={(option) => {
                       if (option.id) {
                         updateRecipeItem(index, 'ingredient_id' as any, option.id);
+                        if (Number(recipe.quantity) <= 0) {
+                          updateRecipeItem(index, 'quantity' as any, 1);
+                        }
                       }
                     }}
                     onSearch={searchIngredients}

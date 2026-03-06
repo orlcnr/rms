@@ -11,6 +11,7 @@ interface CashTabProps {
     defaultOpeningBalance: number
     shiftDurationHours: number
     requireClosingCount: boolean
+    foodCostAlertThresholdPercent: number
   }
   isSaving: boolean
   onChange: (key: SettingKey, value: string | number | boolean) => void
@@ -66,6 +67,26 @@ export function CashTab({ values, isSaving, onChange, onSave }: CashTabProps) {
             labelOff="OPSİYONEL"
             theme="warning"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <FormInput
+            id="food_cost_alert_threshold_percent"
+            name="food_cost_alert_threshold_percent"
+            type="number"
+            label="Food Cost Alarm Eşiği (%)"
+            value={values.foodCostAlertThresholdPercent}
+            inputMode="decimal"
+            onChange={(value) =>
+              onChange(
+                SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT,
+                parseNumberInput(value, values.foodCostAlertThresholdPercent),
+              )
+            }
+          />
+          <p className="mt-1 text-[10px] font-semibold tracking-wide text-text-muted">
+            Bu yüzdeyi aşan ürünler food cost alarm listesine düşer.
+          </p>
         </div>
       </div>
 

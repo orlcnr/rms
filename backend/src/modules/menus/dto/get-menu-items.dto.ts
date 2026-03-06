@@ -1,9 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsOptional,
   IsInt,
   Min,
+  Max,
   IsString,
   IsUUID,
   IsEnum,
@@ -19,9 +20,17 @@ export class GetMenuItemsDto {
   page?: number = 1;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 10 })
+  @Transform(({ value }) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return Number.NaN;
+    }
+    return Math.min(parsed, 100);
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(100)
   @IsOptional()
   limit?: number = 10;
 

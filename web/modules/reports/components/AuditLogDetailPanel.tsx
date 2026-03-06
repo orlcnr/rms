@@ -2,18 +2,13 @@
 
 import { ReportEmptyState } from './ReportEmptyState'
 import { AuditLogItem } from '../types'
+import { resolveAuditActionLabel } from '../constants/audit-action-labels'
+import { AuditPayloadSummary } from './AuditPayloadSummary'
+import { AuditChangesPanel } from './AuditChangesPanel'
 
 interface AuditLogDetailPanelProps {
   log: AuditLogItem | null
   onClose: () => void
-}
-
-function prettyPrint(value: unknown) {
-  if (value === null || value === undefined) {
-    return 'Veri yok'
-  }
-
-  return JSON.stringify(value, null, 2)
 }
 
 export function AuditLogDetailPanel({
@@ -37,7 +32,7 @@ export function AuditLogDetailPanel({
         <div>
           <h2 className="text-lg font-black uppercase tracking-tight text-text-primary">Audit Log Detayı</h2>
           <p className="text-sm font-bold text-text-muted">
-            {log.action} / {log.resource}
+            {resolveAuditActionLabel(log.action)} / {log.resource}
           </p>
         </div>
 
@@ -51,37 +46,8 @@ export function AuditLogDetailPanel({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <h3 className="mb-2 text-sm font-black uppercase tracking-wider text-text-primary">Payload</h3>
-          <pre className="max-h-80 overflow-auto rounded-sm bg-bg-app p-4 text-xs text-text-secondary">
-            {prettyPrint(log.payload)}
-          </pre>
-        </div>
-
-        {log.changes ? (
-          <div className="grid gap-4">
-            <div>
-              <h3 className="mb-2 text-sm font-black uppercase tracking-wider text-text-primary">Önce</h3>
-              <pre className="max-h-36 overflow-auto rounded-sm bg-bg-app p-4 text-xs text-text-secondary">
-                {prettyPrint(log.changes.before)}
-              </pre>
-            </div>
-
-            <div>
-              <h3 className="mb-2 text-sm font-black uppercase tracking-wider text-text-primary">Sonra</h3>
-              <pre className="max-h-36 overflow-auto rounded-sm bg-bg-app p-4 text-xs text-text-secondary">
-                {prettyPrint(log.changes.after)}
-              </pre>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <h3 className="mb-2 text-sm font-black uppercase tracking-wider text-text-primary">Changes</h3>
-            <div className="rounded-sm bg-bg-app p-4 text-xs text-text-secondary">
-              Bu kayıtta changes alanı bulunmuyor.
-            </div>
-          </div>
-        )}
+        <AuditPayloadSummary payload={log.payload} changes={log.changes} />
+        <AuditChangesPanel changes={log.changes} payload={log.payload} />
       </div>
     </section>
   )

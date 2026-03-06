@@ -15,7 +15,7 @@ import {
   ApiBearerAuth,
   ApiResponse,
 } from '@nestjs/swagger';
-import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { GuestSessionsService } from '../services/guest-sessions.service';
 import { GuestAuthGuard } from '../guards/guest-auth.guard';
 import { CreateSessionDto, UuidParamDto } from '../dto';
@@ -37,7 +37,7 @@ export class GuestSessionsController {
 
   @Public()
   @Post()
-  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 requests per minute for session creation
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 requests per minute for session creation
   @ApiOperation({ summary: 'Create a new guest session from QR token' })
   @ApiResponse({ status: 201, description: 'Session created successfully' })
   @ApiResponse({ status: 401, description: 'Invalid QR token' })
@@ -51,7 +51,7 @@ export class GuestSessionsController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Keep session alive' })
-  async heartbeat(@Param() params: UuidParamDto, @Req() req: Request) {
+  async heartbeat(@Param() params: UuidParamDto) {
     const isActive = await this.guestSessionsService.heartbeat(params.id);
 
     if (!isActive) {
@@ -77,7 +77,7 @@ export class GuestSessionsController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Close guest session (logout)' })
-  async closeSession(@Param() params: UuidParamDto, @Req() req: Request) {
+  async closeSession(@Param() params: UuidParamDto) {
     await this.guestSessionsService.closeSession(params.id);
 
     return {
@@ -90,7 +90,7 @@ export class GuestSessionsController {
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current session info' })
-  async getCurrentSession(@Req() req: Request) {
+  getCurrentSession(@Req() req: Request) {
     return {
       session: req.guestSession,
     };

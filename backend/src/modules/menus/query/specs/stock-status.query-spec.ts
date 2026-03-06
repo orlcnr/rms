@@ -4,7 +4,11 @@ import { QuerySpec } from './query-spec.interface';
 
 export class StockStatusSpec implements QuerySpec<MenuItem> {
   constructor(
-    private readonly stockStatus?: 'all' | 'in_stock' | 'out_of_stock' | 'critical',
+    private readonly stockStatus?:
+      | 'all'
+      | 'in_stock'
+      | 'out_of_stock'
+      | 'critical',
   ) {}
 
   apply(qb: SelectQueryBuilder<MenuItem>): SelectQueryBuilder<MenuItem> {

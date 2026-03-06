@@ -38,6 +38,10 @@ export const GUEST_SESSION_UI_CONFIG: Record<string, GuestSessionUiState> = {
     title: 'QR Geçersiz',
     description: 'QR kodu doğrulanamadı veya masa şu anda kullanılamıyor.',
   },
+  throttled: {
+    title: 'Çok Fazla Deneme',
+    description: 'Kısa sürede çok fazla istek yapıldı. Lütfen 1 dakika bekleyip tekrar deneyin.',
+  },
 }
 
 export function getGuestSessionUiState(reason?: string | null): GuestSessionUiState {

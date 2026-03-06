@@ -6,8 +6,9 @@ import {
   Patch,
   Param,
   Delete,
-  UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { RestaurantsService } from './restaurants.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
@@ -35,8 +36,9 @@ export class RestaurantsController {
   create(
     @Body() createRestaurantDto: CreateRestaurantDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.restaurantsService.create(createRestaurantDto, user);
+    return this.restaurantsService.create(createRestaurantDto, user, request);
   }
 
   @Get()
@@ -58,14 +60,24 @@ export class RestaurantsController {
     @Param('id') id: string,
     @Body() updateRestaurantDto: UpdateRestaurantDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.restaurantsService.update(id, updateRestaurantDto, user);
+    return this.restaurantsService.update(
+      id,
+      updateRestaurantDto,
+      user,
+      request,
+    );
   }
 
   @Delete(':id')
   @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER)
   @ApiOperation({ summary: 'Delete a restaurant' })
-  remove(@Param('id') id: string, @GetUser() user: User) {
-    return this.restaurantsService.remove(id, user);
+  remove(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.restaurantsService.remove(id, user, request);
   }
 }

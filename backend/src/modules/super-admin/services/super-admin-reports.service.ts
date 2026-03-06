@@ -46,7 +46,10 @@ export class SuperAdminReportsService {
     }
 
     const [rows, total] = await Promise.all([
-      qb.skip((page - 1) * limit).take(limit).getRawAndEntities(),
+      qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getRawAndEntities(),
       this.restaurantRepository
         .createQueryBuilder('restaurant')
         .where(

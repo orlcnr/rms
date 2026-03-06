@@ -17,7 +17,18 @@ export interface GetProductsParams {
 export const productsApi = {
     // Categories
     getCategories: async (restaurantId: string) => {
-        return http.get<Category[]>(`/menus/restaurants/${restaurantId}/categories`)
+        const branchCategories = await http.get<Array<{
+            categoryId: string
+            name: string
+            isHiddenInBranch?: boolean
+        }>>(`/menus/branches/${restaurantId}/categories`)
+
+        return branchCategories
+            .map((item) => ({
+                id: item.categoryId,
+                name: item.name,
+                restaurant_id: restaurantId,
+            } as Category))
     },
 
     createCategory: async (data: CreateCategoryInput) => {
@@ -42,12 +53,24 @@ export const productsApi = {
         return http.get<MenuItem>(`/menus/items/${id}`)
     },
 
+    getBranchProductById: async (branchId: string, id: string) => {
+        return http.get<MenuItem>(`/menus/branches/${branchId}/items/${id}`)
+    },
+
     createProduct: async (data: CreateMenuItemInput) => {
         return http.post<MenuItem>('/menus/items', data)
     },
 
     updateProduct: async (id: string, data: Partial<CreateMenuItemInput>) => {
         return http.patch<MenuItem>(`/menus/items/${id}`, data)
+    },
+
+    upsertBranchMenuOverride: async (
+        branchId: string,
+        menuItemId: string,
+        data: { custom_price?: number },
+    ) => {
+        return http.patch(`/menus/branches/${branchId}/items/${menuItemId}/override`, data)
     },
 
     deleteProduct: async (id: string) => {

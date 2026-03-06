@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuditInterceptor } from '../../../common/interceptors/audit.interceptor';
@@ -37,7 +44,9 @@ export class SuperAdminReportsController {
   }
 
   @Get('reports/tenant-activity')
-  @ApiOperation({ summary: 'Get cross-tenant activity summary for super admins' })
+  @ApiOperation({
+    summary: 'Get cross-tenant activity summary for super admins',
+  })
   getTenantActivity(@Query() query: GetSuperAdminTenantActivityDto) {
     return this.superAdminReportsService.getTenantActivity(query);
   }

@@ -9,6 +9,9 @@ export interface Restaurant extends BaseEntity {
     contact_phone?: string
     opening_hours?: Record<string, any>
     owner_id: string
+    brand_id?: string
+    is_branch?: boolean
+    is_active?: boolean
 }
 
 export interface CreateRestaurantInput {

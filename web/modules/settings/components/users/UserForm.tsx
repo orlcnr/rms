@@ -4,7 +4,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/modules/shared/components/Modal'
 import { Button } from '@/modules/shared/components/Button'
 import { FormInput } from '@/modules/shared/components/FormInput'
-import { CreateUserInput, UpdateUserInput, User, UserRole } from '../../types'
+import {
+  CreateUserInput,
+  UpdateUserInput,
+  User,
+  UserRole,
+  USER_ROLE_LABELS,
+} from '../../types'
+import { Restaurant } from '@/modules/restaurants/types'
 
 interface UserFormProps {
   isOpen: boolean
@@ -12,6 +19,10 @@ interface UserFormProps {
   mode: 'create' | 'edit'
   currentUserRole: UserRole
   userToEdit?: User | null
+  showBranchSelect?: boolean
+  branchOptions?: Restaurant[]
+  targetBranchId?: string
+  onBranchChange?: (branchId: string) => void
   onClose: () => void
   onCreate: (payload: CreateUserInput) => Promise<void>
   onUpdate: (userId: string, payload: UpdateUserInput) => Promise<void>
@@ -22,7 +33,7 @@ interface UserFormState {
   last_name: string
   email: string
   phone: string
-  role: UserRole
+  role: UserRole | ''
   password: string
 }
 
@@ -31,19 +42,38 @@ const INITIAL_FORM: UserFormState = {
   last_name: '',
   email: '',
   phone: '',
-  role: UserRole.WAITER,
+  role: '',
   password: '',
 }
 
 function getAllowedRoles(currentUserRole: UserRole): UserRole[] {
   if (currentUserRole === UserRole.SUPER_ADMIN) {
     return [
+      UserRole.BRAND_OWNER,
+      UserRole.BRANCH_MANAGER,
       UserRole.RESTAURANT_OWNER,
       UserRole.MANAGER,
+      UserRole.BRANCH_CASHIER,
+      UserRole.BRANCH_WAITER,
+      UserRole.BRANCH_CHEF,
       UserRole.WAITER,
       UserRole.CHEF,
       UserRole.CUSTOMER,
     ]
+  }
+
+  if (currentUserRole === UserRole.BRAND_OWNER) {
+    return [
+      UserRole.BRANCH_MANAGER,
+      UserRole.BRANCH_CASHIER,
+      UserRole.BRANCH_WAITER,
+      UserRole.BRANCH_CHEF,
+      UserRole.CUSTOMER,
+    ]
+  }
+
+  if (currentUserRole === UserRole.BRANCH_MANAGER) {
+    return [UserRole.BRANCH_CASHIER, UserRole.BRANCH_WAITER, UserRole.BRANCH_CHEF, UserRole.CUSTOMER]
   }
 
   if (currentUserRole === UserRole.RESTAURANT_OWNER) {
@@ -63,6 +93,10 @@ export function UserForm({
   mode,
   currentUserRole,
   userToEdit,
+  showBranchSelect = false,
+  branchOptions = [],
+  targetBranchId,
+  onBranchChange,
   onClose,
   onCreate,
   onUpdate,
@@ -91,19 +125,22 @@ export function UserForm({
 
   const roleOptions = allowedRoles.map((role) => ({
     value: role,
-    label: role.toUpperCase(),
+    label: USER_ROLE_LABELS[role],
   }))
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     if (mode === 'create') {
+      if (!form.role) {
+        return
+      }
       await onCreate({
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
-        role: form.role,
+        role: form.role as UserRole,
         password: form.password,
       })
       return
@@ -116,7 +153,7 @@ export function UserForm({
       last_name: form.last_name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim() || undefined,
-      role: form.role,
+      ...(form.role ? { role: form.role } : {}),
       ...(form.password.trim() ? { password: form.password.trim() } : {}),
     })
   }
@@ -177,6 +214,22 @@ export function UserForm({
           onChange={(value) => setForm((prev) => ({ ...prev, role: value as UserRole }))}
         />
 
+        {mode === 'create' && showBranchSelect && (
+          <FormInput
+            id="branch_id"
+            name="branch_id"
+            label="Şube"
+            required
+            isSelect
+            value={targetBranchId || ''}
+            options={branchOptions.map((branch) => ({
+              value: branch.id,
+              label: branch.name,
+            }))}
+            onChange={(value) => onBranchChange?.(value)}
+          />
+        )}
+
         <div className="space-y-2">
           <FormInput
             id="password"
@@ -196,7 +249,14 @@ export function UserForm({
 
         <div className="md:col-span-2 flex justify-end gap-3 pt-2 border-t border-border-light mt-2">
           <Button type="button" variant="outline" onClick={onClose}>İptal</Button>
-          <Button type="submit" isLoading={isSubmitting}>
+          <Button
+            type="submit"
+            isLoading={isSubmitting}
+            disabled={
+              (mode === 'create' && !form.role) ||
+              (mode === 'create' && showBranchSelect && !targetBranchId)
+            }
+          >
             {mode === 'create' ? 'KULLANICI OLUŞTUR' : 'DEĞİŞİKLİKLERİ KAYDET'}
           </Button>
         </div>

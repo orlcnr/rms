@@ -2,10 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ClientProxy,
   ClientProxyFactory,
+  RmqOptions,
   Transport,
 } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
 import { IAuditLog } from './interfaces/audit-log.interface';
+import { sanitizeAuditObject } from './utils/sanitize-audit.util';
 
 @Injectable()
 export class AuditService {
@@ -13,7 +16,7 @@ export class AuditService {
   private readonly logger = new Logger(AuditService.name);
 
   constructor(private configService: ConfigService) {
-    this.client = ClientProxyFactory.create({
+    const rmqOptions: RmqOptions = {
       transport: Transport.RMQ,
       options: {
         urls: [
@@ -27,10 +30,12 @@ export class AuditService {
           durable: true,
         },
       },
-    } as any);
+    };
+
+    this.client = ClientProxyFactory.create(rmqOptions);
   }
 
-  async emitLog(log: Partial<IAuditLog>) {
+  async emitLog(log: Partial<IAuditLog>): Promise<void> {
     const fullLog: IAuditLog = {
       ...log,
       action: log.action || 'unknown',
@@ -39,32 +44,59 @@ export class AuditService {
       payload: this.truncateData(log.payload),
       changes: log.changes
         ? {
-            before: this.truncateData(log.changes.before),
-            after: this.truncateData(log.changes.after),
+            ...(log.changes.before !== undefined
+              ? { before: this.truncateData(log.changes.before) }
+              : {}),
+            ...(log.changes.after !== undefined
+              ? { after: this.truncateData(log.changes.after) }
+              : {}),
+            ...(log.changes.meta !== undefined
+              ? { meta: this.truncateMeta(log.changes.meta) }
+              : {}),
           }
         : undefined,
     };
 
     try {
-      console.log(
-        '[AUDIT SERVICE] Emit ediliyor:',
-        JSON.stringify(fullLog, null, 2),
-      );
-      this.client.emit('audit_log_created', fullLog);
+      await firstValueFrom(this.client.emit('audit_log_created', fullLog));
       this.logger.log(
         `[AUDIT SERVICE] Audit log başarıyla RMQ'ya gönderildi: ${fullLog.action}`,
       );
     } catch (error) {
       this.logger.error('[AUDIT SERVICE] RMQ Emit hatası:', error);
-      console.error('[AUDIT SERVICE] Hata detayı:', error);
     }
   }
 
-  private truncateData(data: any): any {
-    if (!data) return data;
+  async safeEmitLog(log: Partial<IAuditLog>, loggerContext: string) {
+    try {
+      await this.emitLog(log);
+    } catch (error) {
+      this.logger.warn(
+        `[${loggerContext}] Audit log gönderilemedi: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
+
+  markRequestAsAudited(request?: Record<string, unknown>) {
+    if (!request) {
+      return;
+    }
+    request.__auditLogged = true;
+  }
+
+  private truncateData(data: unknown): unknown {
+    if (data === null || data === undefined) {
+      return data;
+    }
 
     // Basit bir derinlik ve boyut kontrolü
-    const str = JSON.stringify(data);
+    const sanitizedData = sanitizeAuditObject(data);
+    const str = JSON.stringify(sanitizedData);
+    if (!str) {
+      return sanitizedData;
+    }
     const MAX_SIZE = 10240; // 10KB
 
     if (str.length > MAX_SIZE) {
@@ -75,6 +107,18 @@ export class AuditService {
       };
     }
 
-    return data;
+    return sanitizedData;
+  }
+
+  private truncateMeta(meta: unknown): Record<string, unknown> | undefined {
+    const truncated = this.truncateData(meta);
+    if (
+      truncated &&
+      typeof truncated === 'object' &&
+      !Array.isArray(truncated)
+    ) {
+      return truncated as Record<string, unknown>;
+    }
+    return undefined;
   }
 }

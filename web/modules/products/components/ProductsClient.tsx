@@ -134,7 +134,7 @@ export function ProductsClient({
 
     const handleEditProduct = async (product: MenuItem) => {
         try {
-            const fullProduct = await productsApi.getProductById(product.id)
+            const fullProduct = await productsApi.getBranchProductById(restaurantId, product.id)
             setEditingProduct(fullProduct)
             setIsModalOpen(true)
         } catch (error) {
@@ -174,10 +174,49 @@ export function ProductsClient({
             }
 
             if (editingProduct) {
-                await productsApi.updateProduct(editingProduct.id, {
+                const nextPrice = Number(data.price)
+                const hasBranchPriceContext =
+                    editingProduct.base_price !== undefined ||
+                    editingProduct.effective_price !== undefined
+                const hasCustomBranchOverride =
+                    editingProduct.override?.custom_price !== null &&
+                    editingProduct.override?.custom_price !== undefined
+                const currentBasePrice = Number(
+                    editingProduct.base_price ?? editingProduct.price ?? 0,
+                )
+
+                const updatePayload: Partial<CreateMenuItemInput> & { image_url?: string } = {
                     ...data,
                     image_url: imageUrl,
+                }
+
+                // Branch custom override varken formdaki efektif fiyatı base price'a yazmayalım.
+                if (
+                    hasBranchPriceContext &&
+                    hasCustomBranchOverride &&
+                    Number.isFinite(currentBasePrice)
+                ) {
+                    updatePayload.price = currentBasePrice
+                }
+
+                await productsApi.updateProduct(editingProduct.id, {
+                    ...updatePayload,
                 })
+
+                // Branch contextte custom_price override varsa, ekranda görünen efektif fiyatı da senkron tut.
+                if (
+                    hasCustomBranchOverride &&
+                    Number.isFinite(nextPrice)
+                ) {
+                    try {
+                        await productsApi.upsertBranchMenuOverride(restaurantId, editingProduct.id, {
+                            custom_price: nextPrice,
+                        })
+                    } catch (overrideError) {
+                        console.warn('Branch price override sync failed:', overrideError)
+                    }
+                }
+
                 await refreshProducts(false)
                 toast.success('Ürün güncellendi.')
             } else {

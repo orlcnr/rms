@@ -10,7 +10,9 @@ import {
   Put,
   Patch,
   Delete,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,7 +32,13 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({ summary: 'Create a new user' })
   @ApiResponse({
     status: 201,
@@ -44,43 +52,92 @@ export class UsersController {
   create(
     @Body(ValidationPipe) createUserDto: CreateUserDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.usersService.create(createUserDto, user);
+    return this.usersService.create(createUserDto, user, request);
+  }
+
+  @Post('branches/:branchId')
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.BRAND_OWNER,
+    Role.RESTAURANT_OWNER,
+    Role.BRANCH_MANAGER,
+  )
+  @ApiOperation({ summary: 'Create a new user for a target branch' })
+  @ApiResponse({
+    status: 201,
+    description: 'The user has been successfully created for selected branch.',
+  })
+  @ApiResponse({ status: 403, description: 'Not allowed for target branch.' })
+  createForBranch(
+    @Param('branchId') branchId: string,
+    @Body(ValidationPipe) createUserDto: CreateUserDto,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.usersService.createForBranch(
+      branchId,
+      createUserDto,
+      user,
+      request,
+    );
   }
 
   @Get()
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({
     summary: 'Get all users (filtered by restaurant if not super admin)',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'branchId', required: false, type: String })
   @ApiQuery({ name: 'includeDeleted', required: false, type: Boolean })
   findAll(
     @GetUser() user: User,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
+    @Query('branchId') branchId?: string,
     @Query('includeDeleted') includeDeleted?: boolean,
   ) {
     return this.usersService.findAll(user, {
       page,
       limit,
       search,
+      branchId,
       includeDeleted,
     });
   }
 
   @Get(':id')
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({ summary: 'Get a user by ID' })
   findOne(@Param('id') id: string, @GetUser() user: User) {
     return this.usersService.findOne(id, user);
   }
 
   @Put(':id')
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({ summary: 'Update a user' })
   @ApiResponse({
     status: 200,
@@ -95,12 +152,19 @@ export class UsersController {
     @Param('id') id: string,
     @Body(ValidationPipe) updateUserDto: UpdateUserDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.usersService.update(id, updateUserDto, user);
+    return this.usersService.update(id, updateUserDto, user, request);
   }
 
   @Patch(':id/active')
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER, Role.MANAGER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({ summary: 'Activate or deactivate a user' })
   @ApiResponse({
     status: 200,
@@ -115,8 +179,14 @@ export class UsersController {
     @Param('id') id: string,
     @Body(ValidationPipe) activateDeactivateDto: ActivateDeactivateUserDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.usersService.setActive(id, activateDeactivateDto, user);
+    return this.usersService.setActive(
+      id,
+      activateDeactivateDto,
+      user,
+      request,
+    );
   }
 
   @Delete(':id')
@@ -128,8 +198,12 @@ export class UsersController {
   })
   @ApiResponse({ status: 404, description: 'User not found.' })
   @ApiResponse({ status: 403, description: 'Not allowed to delete this user.' })
-  softDelete(@Param('id') id: string, @GetUser() user: User) {
-    return this.usersService.softDelete(id, user);
+  softDelete(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.usersService.softDelete(id, user, request);
   }
 
   @Post(':id/restore')
@@ -144,12 +218,21 @@ export class UsersController {
     status: 403,
     description: 'Only super_admin can restore users.',
   })
-  restore(@Param('id') id: string, @GetUser() user: User) {
-    return this.usersService.restore(id, user);
+  restore(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.usersService.restore(id, user, request);
   }
 
   @Post(':id/assign-restaurant')
-  @Roles(Role.SUPER_ADMIN, Role.RESTAURANT_OWNER)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.RESTAURANT_OWNER,
+    Role.BRAND_OWNER,
+    Role.BRANCH_MANAGER,
+  )
   @ApiOperation({ summary: 'Assign a user to a restaurant' })
   @ApiResponse({
     status: 200,
@@ -160,7 +243,13 @@ export class UsersController {
     @Param('id') id: string,
     @Body('restaurant_id') restaurantId: string,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    return this.usersService.assignToRestaurant(id, restaurantId, user);
+    return this.usersService.assignToRestaurant(
+      id,
+      restaurantId,
+      user,
+      request,
+    );
   }
 }

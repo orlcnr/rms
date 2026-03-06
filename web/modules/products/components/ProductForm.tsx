@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowRight, FileText, ListChecks } from 'lucide-react'
+import { toast } from 'sonner'
 import { 
     Category, 
     MenuItem, 
@@ -11,8 +12,8 @@ import {
 } from '../types'
 import { Ingredient } from '../../inventory/types'
 import { ProductGeneralInfo } from './ProductGeneralInfo'
-import { ProductPricing } from './ProductPricing'
 import { RecipeManager } from './RecipeManager'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 
 interface ProductFormProps {
     initialData?: MenuItem
@@ -33,6 +34,8 @@ export function ProductForm({
     onCancel, 
     isLoading 
 }: ProductFormProps) {
+    const [activeTab, setActiveTab] = useState<'general' | 'recipe'>('general')
+
     // Use the hook for state management
     const { hook } = useProductForm({
         initialData,
@@ -46,47 +49,183 @@ export function ProductForm({
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        const validRecipes = hook.recipes.filter(
+            (recipe) =>
+                typeof recipe.ingredient_id === 'string' &&
+                recipe.ingredient_id.trim().length > 0 &&
+                Number(recipe.quantity) > 0,
+        )
+
+        const hasInvalidRecipeQuantity = hook.recipes.some(
+            (recipe) =>
+                typeof recipe.ingredient_id === 'string' &&
+                recipe.ingredient_id.trim().length > 0 &&
+                Number(recipe.quantity) <= 0,
+        )
+
+        if (hook.formData.track_inventory && validRecipes.length === 0) {
+            setActiveTab('recipe')
+            toast.error(
+                hasInvalidRecipeQuantity
+                    ? 'Seçili reçete satırlarında miktar 0’dan büyük olmalıdır.'
+                    : 'Stok takibi açıkken en az 1 reçete girmelisiniz.',
+            )
+            return
+        }
+
         await hook.handleFormSubmit(e)
     }
 
+    const costMetrics = React.useMemo(() => {
+        const totalRecipeCost = hook.recipes.reduce((sum, recipe) => {
+            const option = hook.ingredientOptions.find((o) => o.id === recipe.ingredient_id)
+            const cost = option?.average_cost || 0
+            const quantity = Number(recipe.quantity) || 0
+            return sum + cost * quantity
+        }, 0)
+
+        const sellingPrice = Number(hook.formData.price) || 0
+        const foodCostRatio = sellingPrice > 0 ? (totalRecipeCost / sellingPrice) * 100 : 0
+        const grossProfit = sellingPrice - totalRecipeCost
+        const isHighCost = foodCostRatio > 35
+        const isLoss = sellingPrice > 0 && sellingPrice < totalRecipeCost
+
+        return {
+            totalRecipeCost,
+            foodCostRatio,
+            grossProfit,
+            isHighCost,
+            isLoss,
+        }
+    }, [hook.formData.price, hook.ingredientOptions, hook.recipes])
+
     return (
         <form onSubmit={handleFormSubmit} className="space-y-6 bg-bg-surface border border-border-light rounded-sm p-6 sm:p-8 shadow-sm">
-            <div className="flex flex-col gap-10">
-                {/* Product General Info */}
-                <ProductGeneralInfo
-                    formData={hook.formData}
-                    setFormData={hook.setFormData}
-                    categories={categories}
-                    previewUrl={hook.previewUrl}
-                    fileInputRef={hook.fileInputRef as any}
-                    handleFileChange={hook.handleFileChange}
-                    removeFile={hook.removeFile}
-                />
+            <div className="space-y-2">
+                <div className="flex items-center gap-2 bg-bg-hover p-1 rounded-sm border border-border-light">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('general')}
+                    className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'general'
+                        ? 'bg-bg-surface text-primary-main shadow-sm border border-primary-main/30'
+                        : 'text-text-muted hover:text-text-primary'
+                        }`}
+                >
+                    <FileText size={14} />
+                    Genel Bilgiler
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('recipe')}
+                    className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'recipe'
+                        ? 'bg-bg-surface text-primary-main shadow-sm border border-primary-main/30'
+                        : 'text-text-muted hover:text-text-primary'
+                        }`}
+                >
+                    <ListChecks size={14} />
+                    Reçete Yönetimi
+                </button>
+            </div>
+                <p className="text-[10px] text-text-muted font-semibold uppercase tracking-wider">
+                    {activeTab === 'general'
+                        ? 'Ürün adı, kategori, fiyat ve satış durumunu yönetin'
+                        : 'Stok takibi ve reçete/malzeme tanımlarını yönetin'}
+                </p>
+            </div>
 
-                {/* Configuration Section - Pricing & Recipe */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                    {/* Pricing */}
-                    <ProductPricing
-                        formData={hook.formData}
-                        setFormData={hook.setFormData}
-                        recipes={hook.recipes}
-                        ingredientOptions={hook.ingredientOptions}
-                    />
+            <div className="flex flex-col gap-8">
+                {activeTab === 'general' ? (
+                    <>
+                        <ProductGeneralInfo
+                            formData={hook.formData}
+                            setFormData={hook.setFormData}
+                            categories={categories}
+                            previewUrl={hook.previewUrl}
+                            fileInputRef={hook.fileInputRef as any}
+                            handleFileChange={hook.handleFileChange}
+                            removeFile={hook.removeFile}
+                        />
+                    </>
+                ) : (
+                    <>
+                        {hook.formData.track_inventory && hook.recipes.length > 0 ? (
+                            <div className="border border-border-light rounded-sm p-4 bg-bg-app">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-secondary mb-3">
+                                    Reçete Maliyet Özeti
+                                </h4>
+                                <div className="mt-6 pt-4 border-t border-border-light space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                                            Toplam Reçete Maliyeti
+                                        </span>
+                                        <span className="text-sm font-bold text-text-primary">
+                                            {formatCurrency(costMetrics.totalRecipeCost)}
+                                        </span>
+                                    </div>
 
-                    {/* Recipe Manager */}
-                    <RecipeManager
-                        recipes={hook.recipes}
-                        setRecipes={hook.setRecipes}
-                        track_inventory={hook.formData.track_inventory}
-                        ingredientOptions={hook.ingredientOptions}
-                        searchIngredients={hook.searchIngredients}
-                        addRecipeItem={hook.addRecipeItem}
-                        removeRecipeItem={hook.removeRecipeItem}
-                        updateRecipeItem={hook.updateRecipeItem}
-                        restaurantId={restaurantId}
-                        initialData={initialData}
-                    />
-                </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                                            Food Cost Oranı
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {costMetrics.isHighCost && (
+                                                <AlertTriangle size={14} className="text-danger-main" />
+                                            )}
+                                            <span className={`text-sm font-bold ${costMetrics.isHighCost ? 'text-danger-main' : 'text-text-primary'}`}>
+                                                %{costMetrics.foodCostRatio.toFixed(1)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+                                            Brüt Kâr
+                                        </span>
+                                        <span className={`text-sm font-bold ${costMetrics.isLoss ? 'text-danger-main' : 'text-success-main'}`}>
+                                            {formatCurrency(costMetrics.grossProfit)}
+                                        </span>
+                                    </div>
+
+                                    {costMetrics.isLoss && (
+                                        <div className="flex items-center gap-2 p-2 bg-danger-subtle border border-danger-main/20 rounded-sm">
+                                            <AlertTriangle size={16} className="text-danger-main" />
+                                            <span className="text-xs font-bold text-danger-main uppercase tracking-wider">
+                                                Zararına Satış!
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {costMetrics.isHighCost && !costMetrics.isLoss && (
+                                        <div className="flex items-center gap-2 p-2 bg-warning-subtle border border-warning-main/20 rounded-sm">
+                                            <AlertTriangle size={16} className="text-warning-main" />
+                                            <span className="text-xs font-bold text-warning-main uppercase tracking-wider">
+                                                Yüksek Maliyet! (%35 üzeri)
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        <RecipeManager
+                            recipes={hook.recipes}
+                            setRecipes={hook.setRecipes}
+                            track_inventory={hook.formData.track_inventory}
+                            setTrackInventory={(enabled) =>
+                                hook.setFormData((prev) => ({ ...prev, track_inventory: enabled }))
+                            }
+                            ingredientOptions={hook.ingredientOptions}
+                            searchIngredients={hook.searchIngredients}
+                            addRecipeItem={hook.addRecipeItem}
+                            removeRecipeItem={hook.removeRecipeItem}
+                            updateRecipeItem={hook.updateRecipeItem}
+                            restaurantId={restaurantId}
+                            initialData={initialData}
+                            className="md:col-span-12"
+                        />
+                    </>
+                )}
             </div>
 
             {/* Form Actions */}
@@ -125,7 +264,6 @@ export function ProductForm({
 // useProductForm Hook (Inline for convenience)
 // ============================================
 
-import { toast } from 'sonner'
 import { inventoryApi } from '../../inventory/services/inventory.service'
 
 interface UseProductFormProps {
@@ -231,19 +369,23 @@ function useProductForm({
   }, [initialData?.image_url])
 
   const addRecipeItem = useCallback(() => {
-    setRecipes([...recipes, { ingredient_id: '', quantity: 0 }])
-  }, [recipes])
+    setRecipes((prev) => [...prev, { ingredient_id: '', quantity: 1 }])
+  }, [])
 
   const removeRecipeItem = useCallback((index: number) => {
-    const newRecipes = recipes.filter((_, i) => i !== index)
-    setRecipes(newRecipes)
-  }, [recipes])
+    setRecipes((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
-  const updateRecipeItem = useCallback((index: number, field: keyof RecipeItem, value: any) => {
-    const newRecipes = [...recipes]
-    newRecipes[index] = { ...newRecipes[index], [field]: value }
-    setRecipes(newRecipes)
-  }, [recipes])
+  const updateRecipeItem = useCallback(
+    (index: number, field: keyof RecipeItem, value: any) => {
+      setRecipes((prev) =>
+        prev.map((recipe, i) =>
+          i === index ? { ...recipe, [field]: value } : recipe,
+        ),
+      )
+    },
+    [],
+  )
 
   // API-based async search for ingredients
   const searchIngredients = useCallback(async (query: string) => {

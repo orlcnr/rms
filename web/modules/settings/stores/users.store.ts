@@ -8,8 +8,10 @@ interface UsersStore {
   users: User[]
   isLoading: boolean
   error: string | null
-  loadUsers: () => Promise<void>
+  loadUsers: (filters?: { search?: string; branchId?: string }) => Promise<void>
   createUser: (payload: CreateUserInput) => Promise<void>
+  createUserForBranch: (branchId: string, payload: CreateUserInput) => Promise<void>
+  assignUserToBranch: (userId: string, branchId: string) => Promise<void>
   updateUser: (userId: string, payload: UpdateUserInput) => Promise<void>
   toggleStatus: (userId: string, isActive: boolean) => Promise<void>
 }
@@ -19,11 +21,11 @@ export const useUsersStore = create<UsersStore>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadUsers: async () => {
+  loadUsers: async (filters) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await settingsUsersService.getUsers()
+      const response = await settingsUsersService.getUsers(filters)
       set({ users: response.items || [], isLoading: false })
     } catch (error) {
       set({
@@ -43,6 +45,39 @@ export const useUsersStore = create<UsersStore>((set, get) => ({
       set({
         isLoading: false,
         error: error instanceof Error ? error.message : 'Kullanıcı oluşturulamadı',
+      })
+      throw error
+    }
+  },
+
+  createUserForBranch: async (branchId, payload) => {
+    set({ isLoading: true, error: null })
+
+    try {
+      const created = await settingsUsersService.createUserForBranch(branchId, payload)
+      set((state) => ({ users: [created, ...state.users], isLoading: false }))
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Kullanıcı oluşturulamadı',
+      })
+      throw error
+    }
+  },
+
+  assignUserToBranch: async (userId, branchId) => {
+    set({ isLoading: true, error: null })
+
+    try {
+      const updated = await settingsUsersService.assignUserToBranch(userId, branchId)
+      set((state) => ({
+        users: state.users.map((user) => (user.id === userId ? updated : user)),
+        isLoading: false,
+      }))
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Kullanıcı şubesi değiştirilemedi',
       })
       throw error
     }

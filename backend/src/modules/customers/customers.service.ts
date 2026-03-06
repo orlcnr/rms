@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
@@ -11,6 +12,10 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { paginate, Pagination } from 'nestjs-typeorm-paginate';
 import { GetCustomersDto } from './dto/get-customers.dto';
 import { Order } from '../orders/entities/order.entity';
+import type { User } from '../users/entities/user.entity';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
 
 @Injectable()
 export class CustomersService {
@@ -19,11 +24,59 @@ export class CustomersService {
     private readonly customerRepository: Repository<Customer>,
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
+    private readonly auditService: AuditService,
   ) {}
+
+  private buildActorName(user?: User): string | undefined {
+    if (!user?.first_name) {
+      return undefined;
+    }
+    return `${user.first_name} ${user.last_name || ''}`.trim();
+  }
+
+  private async emitDomainAudit(params: {
+    action: AuditAction;
+    restaurantId?: string;
+    payload?: Record<string, unknown>;
+    changes?: {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    actor?: User;
+    request?: Request;
+    context: string;
+  }): Promise<void> {
+    const headerUserAgent = params.request?.headers?.['user-agent'];
+    const userAgent =
+      typeof headerUserAgent === 'string'
+        ? headerUserAgent
+        : headerUserAgent?.[0];
+
+    await this.auditService.safeEmitLog(
+      {
+        action: params.action,
+        resource: 'CUSTOMERS',
+        user_id: params.actor?.id,
+        user_name: this.buildActorName(params.actor),
+        restaurant_id: params.restaurantId,
+        payload: params.payload,
+        changes: params.changes,
+        ip_address: params.request?.ip,
+        user_agent: userAgent,
+      },
+      params.context,
+    );
+    this.auditService.markRequestAsAudited(
+      params.request as unknown as Record<string, unknown>,
+    );
+  }
 
   async create(
     createCustomerDto: CreateCustomerDto,
     restaurantId: string,
+    actor?: User,
+    request?: Request,
   ): Promise<Customer> {
     // Validate phone is provided
     if (!createCustomerDto.phone) {
@@ -44,10 +97,35 @@ export class CustomersService {
         ...createCustomerDto,
         restaurantId,
       });
-      return await this.customerRepository.save(customer);
+      const savedCustomer = await this.customerRepository.save(customer);
+      await this.emitDomainAudit({
+        action: AuditAction.CUSTOMER_CREATED,
+        restaurantId,
+        payload: { customerId: savedCustomer.id },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: savedCustomer.id,
+            first_name: savedCustomer.first_name,
+            last_name: savedCustomer.last_name,
+            phone: savedCustomer.phone,
+          },
+        }),
+        actor,
+        request,
+        context: 'CustomersService.create',
+      });
+      return savedCustomer;
     } catch (error) {
+      const errorCode =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof (error as { code?: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+
       // Handle unique constraint violation from database
-      if (error.code === '23505') {
+      if (errorCode === '23505') {
         throw new ConflictException(
           'Bu telefon numarası başka bir müşteri tarafından kullanılıyor',
         );
@@ -122,8 +200,16 @@ export class CustomersService {
     id: string,
     updateCustomerDto: Partial<CreateCustomerDto>,
     restaurantId: string,
+    actor?: User,
+    request?: Request,
   ): Promise<Customer> {
     const customer = await this.findOne(id, restaurantId);
+    const beforeSnapshot = {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      phone: customer.phone,
+      email: customer.email,
+    };
 
     // If phone is being updated, check for existing
     if (updateCustomerDto.phone && updateCustomerDto.phone !== customer.phone) {
@@ -140,9 +226,35 @@ export class CustomersService {
     Object.assign(customer, updateCustomerDto);
 
     try {
-      return await this.customerRepository.save(customer);
+      const savedCustomer = await this.customerRepository.save(customer);
+      await this.emitDomainAudit({
+        action: AuditAction.CUSTOMER_UPDATED,
+        restaurantId,
+        payload: { customerId: savedCustomer.id },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            first_name: savedCustomer.first_name,
+            last_name: savedCustomer.last_name,
+            phone: savedCustomer.phone,
+            email: savedCustomer.email,
+          },
+        }),
+        actor,
+        request,
+        context: 'CustomersService.update',
+      });
+      return savedCustomer;
     } catch (error) {
-      if (error.code === '23505') {
+      const errorCode =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof (error as { code?: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+
+      if (errorCode === '23505') {
         throw new ConflictException(
           'Bu telefon numarası başka bir müşteri tarafından kullanılıyor',
         );
@@ -163,9 +275,31 @@ export class CustomersService {
     await this.customerRepository.save(customer);
   }
 
-  async remove(id: string, restaurantId: string): Promise<void> {
+  async remove(
+    id: string,
+    restaurantId: string,
+    actor?: User,
+    request?: Request,
+  ): Promise<void> {
     const customer = await this.findOne(id, restaurantId);
     await this.customerRepository.remove(customer);
+    await this.emitDomainAudit({
+      action: AuditAction.CUSTOMER_DELETED,
+      restaurantId,
+      payload: { customerId: customer.id },
+      changes: sanitizeAuditChanges({
+        before: {
+          id: customer.id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          phone: customer.phone,
+        },
+        after: { deleted: true },
+      }),
+      actor,
+      request,
+      context: 'CustomersService.remove',
+    });
   }
 
   async getCustomerOrders(id: string, restaurantId: string): Promise<Order[]> {

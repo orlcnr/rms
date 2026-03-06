@@ -1,12 +1,14 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
+const SETTING_GROUPS = ['payment', 'cash', 'general'] as const;
+
 export class GetSettingsDto {
-  @ApiPropertyOptional({ example: 'payment' })
+  @ApiPropertyOptional({ example: 'payment', enum: SETTING_GROUPS })
   @IsOptional()
-  @IsString()
-  group?: string;
+  @IsIn(SETTING_GROUPS)
+  group?: (typeof SETTING_GROUPS)[number];
 
   @ApiPropertyOptional({
     example: true,

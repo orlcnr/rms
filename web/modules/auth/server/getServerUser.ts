@@ -7,6 +7,8 @@ interface AuthPayload {
     email: string
     restaurantId?: string
     restaurant_id?: string
+    branchId?: string
+    brandId?: string
     role: string
     exp: number
 }
@@ -33,7 +35,9 @@ export async function getRestaurantContext() {
     }
 
     return {
-        restaurantId: decoded.restaurant_id || decoded.restaurantId,
+        restaurantId: decoded.branchId || decoded.restaurant_id || decoded.restaurantId,
+        branchId: decoded.branchId || decoded.restaurant_id || decoded.restaurantId,
+        brandId: decoded.brandId,
         user: {
             id: decoded.id,
             email: decoded.email,

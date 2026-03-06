@@ -36,6 +36,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SuperAdminAuthModule } from './modules/super-admin-auth/super-admin-auth.module';
 import { AppCacheModule } from './common/cache/app-cache.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -47,6 +48,8 @@ import { AppCacheModule } from './common/cache/app-cache.module';
       global: true,
       wildcard: true,
     }),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 60 saniye
@@ -66,7 +69,7 @@ import { AppCacheModule } from './common/cache/app-cache.module';
         database: configService.get<string>('DB_NAME'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: false,
-        logging: configService.get<string>('NODE_ENV') === 'development',
+        logging: configService.get<string>('TYPEORM_LOGGING') === 'true',
         schema: 'business', // Default schema
         extra: {
           // Set search path for cross-schema queries

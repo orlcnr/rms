@@ -12,6 +12,7 @@ import { Plus, Package } from 'lucide-react'
 import { MenuItem } from '@/modules/products/types'
 import { cn } from '@/modules/shared/utils/cn'
 import { formatCurrency } from '@/modules/shared/utils/numeric'
+import { resolveDisplayPrice } from '@/modules/shared/utils/pricing'
 
 interface PosProductCardProps {
   product: MenuItem
@@ -85,7 +86,7 @@ export function PosProductCard({
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-black text-text-muted uppercase tracking-widest">BİRİM FİYAT</span>
           <span className="text-sm font-semibold text-text-primary tabular-nums tracking-tighter">
-            {formatCurrency(product.price)}
+            {formatCurrency(resolveDisplayPrice(product, { branchContext: true }))}
           </span>
         </div>
 
@@ -172,7 +173,7 @@ export function CompactPosProductCard({
         <div className="flex flex-col">
           <span className="text-[6px] font-black text-text-muted uppercase tracking-widest">BİRİM</span>
           <span className="text-xs font-black text-text-primary tabular-nums tracking-tighter">
-            {formatCurrency(product.price)}
+            {formatCurrency(resolveDisplayPrice(product, { branchContext: true }))}
           </span>
         </div>
       </div>

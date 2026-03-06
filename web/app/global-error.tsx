@@ -2,6 +2,8 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
+import { AppErrorScreen } from '@/modules/shared/components/AppErrorScreen';
+import { classifyAppError } from '@/modules/shared/errors/classify-error';
 
 export default function GlobalError({
   error,
@@ -10,29 +12,32 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const presentation = classifyAppError(error);
+
   useEffect(() => {
-    Sentry.captureException(error);
-  }, [error]);
+    if (presentation.kind !== 'connection' && presentation.kind !== 'server') {
+      Sentry.captureException(error);
+    }
+  }, [error, presentation.kind]);
+
+  useEffect(() => {
+    if (!presentation.autoRetry) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      reset();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [presentation.autoRetry, reset]);
 
   return (
     <html>
       <body>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center p-8">
-            <h2 className="text-2xl font-bold text-red-600 mb-4">
-              Bir hata oluştu!
-            </h2>
-            <p className="text-gray-600 mb-6">
-              {error.message || 'Beklenmeyen bir hata oluştu'}
-            </p>
-            <button
-              onClick={() => reset()}
-              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
-            >
-              Tekrar Dene
-            </button>
-          </div>
-        </div>
+        <AppErrorScreen
+          presentation={presentation}
+          onRetry={reset}
+          referenceCode={error.digest}
+        />
       </body>
     </html>
   );

@@ -85,6 +85,9 @@ export class ConvertGuestOrderUseCase {
         orderItem.menuItemId = item.menuItemId;
         orderItem.quantity = item.quantity;
         orderItem.unitPrice = item.unitPrice;
+        orderItem.basePrice = item.unitPrice;
+        orderItem.overridePrice = null;
+        orderItem.unitPriceLocked = item.unitPrice;
         orderItem.totalPrice = item.subtotal;
 
         await queryRunner.manager.save(orderItem);

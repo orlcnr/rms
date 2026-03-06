@@ -5,11 +5,12 @@ import {
   Body,
   Param,
   Patch,
-  Request,
   UseGuards,
   Query,
   ParseUUIDPipe,
+  Req,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
@@ -31,7 +32,14 @@ import { BatchUpdateStatusDto } from './dto/batch-update-status.dto';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  @Roles(Role.WAITER, Role.MANAGER, Role.RESTAURANT_OWNER, Role.SUPER_ADMIN) // Updated roles
+  @Roles(
+    Role.WAITER,
+    Role.MANAGER,
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+  ) // Updated roles
   @Get()
   @ApiOperation({ summary: 'Get filtered orders' })
   findAll(
@@ -53,14 +61,30 @@ export class OrdersController {
     );
   }
 
-  @Roles(Role.WAITER, Role.MANAGER, Role.RESTAURANT_OWNER, Role.SUPER_ADMIN)
+  @Roles(
+    Role.WAITER,
+    Role.MANAGER,
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+  )
   @Post()
   @ApiOperation({ summary: 'Create a new order' })
-  create(@Body() createOrderDto: CreateOrderDto, @GetUser() user: User) {
-    return this.ordersService.create(createOrderDto, user);
+  create(
+    @Body() createOrderDto: CreateOrderDto,
+    @GetUser() user: User,
+    @Req() request: ExpressRequest,
+  ) {
+    return this.ordersService.create(createOrderDto, user, request);
   }
 
-  @Roles(Role.RESTAURANT_OWNER, Role.SUPER_ADMIN, Role.MANAGER)
+  @Roles(
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.MANAGER,
+    Role.BRANCH_MANAGER,
+  )
   @Get('restaurants/:restaurantId')
   @ApiOperation({ summary: 'Get all orders for a restaurant' })
   findAllByRestaurant(@GetUser() user: User) {
@@ -73,6 +97,9 @@ export class OrdersController {
     Role.RESTAURANT_OWNER,
     Role.SUPER_ADMIN,
     Role.CHEF,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+    Role.BRANCH_CHEF,
   )
   @Get(':id')
   @ApiOperation({ summary: 'Get order details' })
@@ -86,6 +113,9 @@ export class OrdersController {
     Role.RESTAURANT_OWNER,
     Role.SUPER_ADMIN,
     Role.CHEF,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+    Role.BRANCH_CHEF,
   )
   @SkipThrottle() // Real-time kitchen operation — no rate limit
   @Patch(':id/status')
@@ -102,9 +132,17 @@ export class OrdersController {
   updateStatus(
     @Param('id') id: string,
     @Body('status') status: OrderStatus,
-    @Body('transaction_id') transactionId?: string,
+    @Body('transaction_id') transactionId: string | undefined,
+    @GetUser() user: User,
+    @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.updateStatus(id, status, transactionId);
+    return this.ordersService.updateStatus(
+      id,
+      status,
+      transactionId,
+      user,
+      request,
+    );
   }
 
   @Roles(
@@ -113,21 +151,37 @@ export class OrdersController {
     Role.RESTAURANT_OWNER,
     Role.SUPER_ADMIN,
     Role.CHEF,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+    Role.BRANCH_CHEF,
   )
   @SkipThrottle() // Batch real-time op — replaces N individual status updates
   @Patch('batch-status')
   @ApiOperation({
     summary: 'Batch update order statuses (single request for multiple orders)',
   })
-  batchUpdateStatus(@Body() dto: BatchUpdateStatusDto) {
+  batchUpdateStatus(
+    @Body() dto: BatchUpdateStatusDto,
+    @GetUser() user: User,
+    @Req() request: ExpressRequest,
+  ) {
     return this.ordersService.batchUpdateStatus(
       dto.order_ids,
       dto.status,
       dto.transaction_id,
+      user,
+      request,
     );
   }
 
-  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER, Role.SUPER_ADMIN) // Updated roles
+  @Roles(
+    Role.RESTAURANT_OWNER,
+    Role.MANAGER,
+    Role.WAITER,
+    Role.SUPER_ADMIN,
+    Role.BRANCH_MANAGER,
+    Role.BRANCH_WAITER,
+  ) // Updated roles
   @Patch(':id/move-to-table')
   @ApiOperation({ summary: 'Move an order to another table' })
   @ApiBody({ type: MoveOrderDto })
@@ -135,15 +189,24 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) orderId: string,
     @Body() dto: MoveOrderDto,
     @GetUser() user: User,
+    @Req() request: ExpressRequest,
   ) {
     return this.ordersService.moveOrder(
       orderId,
       dto.new_table_id,
       user.restaurant_id,
+      dto.on_target_occupied,
+      user,
+      request,
     );
   }
 
-  @Roles(Role.RESTAURANT_OWNER, Role.SUPER_ADMIN, Role.MANAGER) // Cleaned up roles
+  @Roles(
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.MANAGER,
+    Role.BRANCH_MANAGER,
+  ) // Cleaned up roles
   @Patch(':id/items')
   @ApiOperation({ summary: 'Update order items' })
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 60 saniyede maksimum 20 istek
@@ -151,6 +214,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @GetUser() user: User,
     @Body() dto: UpdateOrderItemsDto,
+    @Req() request: ExpressRequest,
   ) {
     return this.ordersService.updateItems(
       id,
@@ -161,6 +225,8 @@ export class OrdersController {
       dto.customer_id,
       dto.address,
       dto.transaction_id,
+      user,
+      request,
     );
   }
 }

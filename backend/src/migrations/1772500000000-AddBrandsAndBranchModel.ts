@@ -254,31 +254,75 @@ export class AddBrandsAndBranchModel1772500000000 implements MigrationInterface 
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_branch"`);
-    await queryRunner.query(`ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_brand"`);
-    await queryRunner.query(`ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_user"`);
-    await queryRunner.query(`ALTER TABLE "business"."branch_menu_overrides" DROP CONSTRAINT IF EXISTS "FK_branch_menu_overrides_menu_item"`);
-    await queryRunner.query(`ALTER TABLE "business"."branch_menu_overrides" DROP CONSTRAINT IF EXISTS "FK_branch_menu_overrides_branch"`);
-    await queryRunner.query(`ALTER TABLE "business"."menu_items" DROP CONSTRAINT IF EXISTS "FK_menu_items_branch"`);
-    await queryRunner.query(`ALTER TABLE "business"."menu_items" DROP CONSTRAINT IF EXISTS "FK_menu_items_brand"`);
-    await queryRunner.query(`ALTER TABLE "business"."categories" DROP CONSTRAINT IF EXISTS "FK_categories_brand"`);
-    await queryRunner.query(`ALTER TABLE "business"."restaurants" DROP CONSTRAINT IF EXISTS "FK_restaurants_brand"`);
-    await queryRunner.query(`ALTER TABLE "business"."brands" DROP CONSTRAINT IF EXISTS "FK_brands_owner"`);
+    await queryRunner.query(
+      `ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_branch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_brand"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."user_branch_roles" DROP CONSTRAINT IF EXISTS "FK_user_branch_roles_user"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."branch_menu_overrides" DROP CONSTRAINT IF EXISTS "FK_branch_menu_overrides_menu_item"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."branch_menu_overrides" DROP CONSTRAINT IF EXISTS "FK_branch_menu_overrides_branch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."menu_items" DROP CONSTRAINT IF EXISTS "FK_menu_items_branch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."menu_items" DROP CONSTRAINT IF EXISTS "FK_menu_items_brand"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."categories" DROP CONSTRAINT IF EXISTS "FK_categories_brand"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."restaurants" DROP CONSTRAINT IF EXISTS "FK_restaurants_brand"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."brands" DROP CONSTRAINT IF EXISTS "FK_brands_owner"`,
+    );
 
-    await queryRunner.query(`DROP INDEX IF EXISTS "business"."idx_user_branch_roles_scope_lookup"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "business"."idx_user_branch_roles_user"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "business"."idx_menu_items_branch"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "business"."idx_overrides_branch_item"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "business"."idx_menu_items_brand_branch"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "business"."idx_user_branch_roles_scope_lookup"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "business"."idx_user_branch_roles_user"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "business"."idx_menu_items_branch"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "business"."idx_overrides_branch_item"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "business"."idx_menu_items_brand_branch"`,
+    );
 
-    await queryRunner.query(`DROP TABLE IF EXISTS "business"."user_branch_roles"`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "business"."branch_menu_overrides"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "business"."user_branch_roles"`,
+    );
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "business"."branch_menu_overrides"`,
+    );
 
-    await queryRunner.query(`ALTER TABLE "business"."menu_items" DROP COLUMN IF EXISTS "branch_id"`);
-    await queryRunner.query(`ALTER TABLE "business"."menu_items" DROP COLUMN IF EXISTS "brand_id"`);
-    await queryRunner.query(`ALTER TABLE "business"."categories" DROP COLUMN IF EXISTS "brand_id"`);
-    await queryRunner.query(`ALTER TABLE "business"."restaurants" DROP COLUMN IF EXISTS "is_branch"`);
-    await queryRunner.query(`ALTER TABLE "business"."restaurants" DROP COLUMN IF EXISTS "brand_id"`);
+    await queryRunner.query(
+      `ALTER TABLE "business"."menu_items" DROP COLUMN IF EXISTS "branch_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."menu_items" DROP COLUMN IF EXISTS "brand_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."categories" DROP COLUMN IF EXISTS "brand_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."restaurants" DROP COLUMN IF EXISTS "is_branch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business"."restaurants" DROP COLUMN IF EXISTS "brand_id"`,
+    );
 
     await queryRunner.query(`DROP TABLE IF EXISTS "business"."brands"`);
   }

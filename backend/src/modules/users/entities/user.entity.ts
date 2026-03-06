@@ -28,6 +28,9 @@ export class User extends BaseEntity {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ type: 'int', default: 1 })
+  token_version: number;
+
   @Column({ type: 'jsonb', nullable: true })
   profile_details: Record<string, any>;
 

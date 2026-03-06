@@ -40,6 +40,19 @@ export class EffectiveMenuCacheService {
     return `branch:${branchId}:brandv:${brandVersion}:branchv:${branchVersion}:effectiveMenu:${hash}`;
   }
 
+  async getCategoryVisibilityStatsCacheKey(
+    branchId: string,
+    brandId: string,
+  ): Promise<string> {
+    const brandVersion = await this.getVersion(
+      this.getBrandVersionKey(brandId),
+    );
+    const branchVersion = await this.getVersion(
+      this.getBranchVersionKey(branchId),
+    );
+    return `branch:${branchId}:brandv:${brandVersion}:branchv:${branchVersion}:categoryVisibilityStats`;
+  }
+
   async get<T>(key: string): Promise<T | null> {
     const value = await this.cacheManager.get<T>(key);
     return value ?? null;

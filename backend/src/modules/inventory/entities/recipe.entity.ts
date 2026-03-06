@@ -21,4 +21,7 @@ export class Recipe extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 10, scale: 3 })
   quantity: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  unit: string | null;
 }

@@ -1,6 +1,7 @@
 export interface AuditLogChanges {
   before?: unknown
   after?: unknown
+  meta?: Record<string, unknown>
 }
 
 export interface AuditLogItem {

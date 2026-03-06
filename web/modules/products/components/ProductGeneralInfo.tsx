@@ -5,6 +5,7 @@ import { ImagePlus } from 'lucide-react';
 import { Category } from '../types';
 import { FormInput } from '@/modules/shared/components/FormInput';
 import { FormSection } from '@/modules/shared/components/FormSection';
+import { RmsSwitch } from '@/modules/shared/components/RmsSwitch';
 
 // ============================================
 // PROPS
@@ -90,6 +91,35 @@ export function ProductGeneralInfo({
             isTextarea
             rows={3}
           />
+
+          {/* Price & Sales Status */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormInput
+              id="productPrice"
+              name="price"
+              type="number"
+              label="Net Satış Fiyatı (₺)"
+              value={formData.price}
+              onChange={(value) => setFormData({ ...formData, price: value })}
+              placeholder="0,00"
+              required
+              inputMode="decimal"
+              textAlign="right"
+              fontSize="xl"
+            />
+
+            <RmsSwitch
+              checked={formData.is_available}
+              onChange={(checked) =>
+                setFormData({ ...formData, is_available: checked })
+              }
+              label="Satış Durumu"
+              labelOn="AKTİF"
+              labelOff="PASİF"
+              theme="success"
+              containerClassName="h-full"
+            />
+          </div>
         </div>
 
         {/* Image Upload */}

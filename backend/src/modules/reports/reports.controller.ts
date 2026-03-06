@@ -153,8 +153,6 @@ export class ReportsController {
   }
 
   @Get('audit-logs')
-  @UseInterceptors(RestaurantCacheInterceptor)
-  @CacheTTL(300)
   @ApiOperation({ summary: 'Get audit logs report' })
   async getAuditLogs(
     @GetUser() user: ReportsUserContext,

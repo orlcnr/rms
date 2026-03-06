@@ -5,6 +5,7 @@ import { Edit2, Trash2, Package } from 'lucide-react';
 import { MenuItem } from '../types';
 import { cn } from '@/modules/shared/utils/cn';
 import { formatCurrency } from '@/modules/shared/utils/numeric';
+import { resolveDisplayPrice } from '@/modules/shared/utils/pricing';
 
 interface ProductCardProps {
     product: MenuItem;
@@ -15,6 +16,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onEdit, onDelete, variant = 'grid' }: ProductCardProps) {
     const isListView = variant === 'list';
+    const displayPrice = resolveDisplayPrice(product, { branchContext: true });
     
     if (isListView) {
         // List view layout
@@ -56,7 +58,7 @@ export function ProductCard({ product, onEdit, onDelete, variant = 'grid' }: Pro
                 {/* Price */}
                 <div className="shrink-0">
                     <span className="text-lg font-black text-text-primary">
-                        {formatCurrency(product.price)}
+                        {formatCurrency(displayPrice)}
                     </span>
                 </div>
                 
@@ -124,7 +126,7 @@ export function ProductCard({ product, onEdit, onDelete, variant = 'grid' }: Pro
                 <div className="flex flex-col">
                     <span className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-0.5">BİRİM FİYAT</span>
                     <span className="text-base font-semibold text-text-primary tabular-nums tracking-tighter">
-                        {formatCurrency(product.price)}
+                        {formatCurrency(displayPrice)}
                     </span>
                 </div>
 

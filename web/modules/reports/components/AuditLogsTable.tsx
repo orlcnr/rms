@@ -8,6 +8,7 @@ import {
   DEFAULT_AUDIT_PAGE_SIZE_OPTIONS,
   PaginationMeta,
 } from '../types'
+import { resolveAuditActionLabel } from '../constants/audit-action-labels'
 
 interface AuditLogsTableProps {
   items: AuditLogItem[]
@@ -75,7 +76,7 @@ export function AuditLogsTable({
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-sm bg-bg-muted px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-text-primary">
-                      {item.action}
+                      {resolveAuditActionLabel(item.action)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-text-primary">{item.resource}</td>

@@ -29,6 +29,8 @@ import { OrderStatus } from '../../orders/enums/order-status.enum';
 import { OrderItem } from '../../orders/entities/order-item.entity';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationType } from '../../notifications/entities/notification.entity';
+import { Restaurant } from '../../restaurants/entities/restaurant.entity';
+import { EffectiveMenuResolverService } from '../../menus/services/effective-menu-resolver.service';
 
 @Injectable()
 export class GuestOrdersService {
@@ -41,6 +43,8 @@ export class GuestOrdersService {
     private menuItemRepository: Repository<MenuItem>,
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
+    @InjectRepository(Restaurant)
+    private restaurantRepository: Repository<Restaurant>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
@@ -48,6 +52,7 @@ export class GuestOrdersService {
     private dataSource: DataSource,
     private notificationsService: NotificationsService,
     private notificationsGateway: NotificationsGateway,
+    private effectiveMenuResolverService: EffectiveMenuResolverService,
   ) {}
 
   /**
@@ -307,33 +312,100 @@ export class GuestOrdersService {
   }
 
   async getCatalog(session: GuestSession) {
-    const categories = await this.categoryRepository.find({
-      where: {
-        restaurant_id: session.restaurantId,
-      },
-      relations: ['items'],
-      order: {
-        name: 'ASC',
-      },
+    const branch = await this.restaurantRepository.findOne({
+      where: { id: session.restaurantId },
+      select: ['id', 'brand_id'],
     });
+
+    if (!branch) {
+      throw new NotFoundException('Restaurant/branch not found');
+    }
+
+    const itemQuery = this.menuItemRepository
+      .createQueryBuilder('item')
+      .select([
+        'item.id',
+        'item.name',
+        'item.description',
+        'item.price',
+        'item.image_url',
+        'item.is_available',
+        'item.popularity',
+        'item.category_id',
+      ]);
+
+    if (branch.brand_id) {
+      itemQuery.where(
+        '(item.brand_id = :brandId AND item.branch_id IS NULL) OR item.branch_id = :branchId',
+        {
+          brandId: branch.brand_id,
+          branchId: branch.id,
+        },
+      );
+    } else {
+      itemQuery.where('item.restaurant_id = :restaurantId', {
+        restaurantId: branch.id,
+      });
+    }
+
+    const rawItems = await itemQuery.getMany();
+    if (!rawItems.length) {
+      return [];
+    }
+
+    const resolvedMap =
+      await this.effectiveMenuResolverService.resolveManyForBranch({
+        branchId: branch.id,
+        menuItemIds: rawItems.map((item) => item.id),
+      });
+
+    const categoryWhere = branch.brand_id
+      ? ({ brand_id: branch.brand_id } as const)
+      : ({ restaurant_id: branch.id } as const);
+    const categories = await this.categoryRepository.find({
+      where: categoryWhere,
+      order: { name: 'ASC' },
+    });
+
+    const groupedItems = new Map<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        description: string;
+        price: number;
+        image_url: string;
+        is_available: boolean;
+        popularity: number;
+      }>
+    >();
+
+    for (const item of rawItems) {
+      const resolved = resolvedMap.get(item.id);
+      if (!resolved || !resolved.isVisible) {
+        continue;
+      }
+      const list = groupedItems.get(item.category_id) || [];
+      list.push({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        price: Number(resolved.effectivePrice),
+        image_url: item.image_url,
+        is_available: true,
+        popularity: Number(item.popularity || 0),
+      });
+      groupedItems.set(item.category_id, list);
+    }
 
     return categories
       .map((category) => ({
         id: category.id,
         name: category.name,
         description: category.description,
-        items: (category.items || [])
-          .filter((item) => item.is_available)
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((item) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description,
-            price: Number(item.price),
-            image_url: item.image_url,
-            is_available: item.is_available,
-            popularity: Number(item.popularity || 0),
-          })),
+        items: (groupedItems.get(category.id) || []).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
       }))
       .filter((category) => category.items.length > 0);
   }
@@ -596,6 +668,9 @@ export class GuestOrdersService {
           newOrderItem.menuItemId = guestItem.menuItemId;
           newOrderItem.quantity = guestItem.quantity;
           newOrderItem.unitPrice = guestItem.unitPrice;
+          newOrderItem.basePrice = guestItem.unitPrice;
+          newOrderItem.overridePrice = null;
+          newOrderItem.unitPriceLocked = guestItem.unitPrice;
           newOrderItem.totalPrice = guestItem.subtotal;
           newOrderItem.status = OrderStatus.PENDING;
 
@@ -777,39 +852,43 @@ export class GuestOrdersService {
     }[] = [];
     let totalAmount = 0;
 
-    for (const item of items) {
-      const menuItem = await this.menuItemRepository.findOne({
-        where: { id: item.menuItemId },
-        relations: ['category'],
-      });
+    const requestedIds = [...new Set(items.map((item) => item.menuItemId))];
+    const [resolvedMap, menuItems] = await Promise.all([
+      this.effectiveMenuResolverService.resolveManyForBranch({
+        branchId: restaurantId,
+        menuItemIds: requestedIds,
+      }),
+      this.menuItemRepository.find({
+        where: requestedIds.map((id) => ({ id })),
+        select: ['id', 'name'],
+      }),
+    ]);
+    const menuItemNames = new Map(
+      menuItems.map((item) => [item.id, item.name]),
+    );
 
-      if (!menuItem) {
+    for (const item of items) {
+      const resolved = resolvedMap.get(item.menuItemId);
+      if (!resolved) {
         throw new BadRequestException(
           `Menu item not found: ${item.menuItemId}`,
         );
       }
 
-      // Verify menu item belongs to restaurant
-      if (menuItem.category?.restaurant_id !== restaurantId) {
+      if (!resolved.isVisible) {
         throw new BadRequestException(
-          `Menu item does not belong to this restaurant: ${item.menuItemId}`,
+          `Menu item is hidden or unavailable for this branch: ${item.menuItemId}`,
         );
       }
 
-      if (!menuItem.is_available) {
-        throw new BadRequestException(
-          `Menu item is not available: ${menuItem.name}`,
-        );
-      }
-
-      const subtotal = Number(menuItem.price) * item.quantity;
+      const subtotal = Number(resolved.effectivePrice) * item.quantity;
       totalAmount += subtotal;
 
       validatedItems.push({
         menuItemId: item.menuItemId,
-        name: menuItem.name,
+        name: menuItemNames.get(item.menuItemId) || 'Ürün',
         quantity: item.quantity,
-        unitPrice: Number(menuItem.price),
+        unitPrice: Number(resolved.effectivePrice),
         subtotal,
         notes: item.notes,
       });

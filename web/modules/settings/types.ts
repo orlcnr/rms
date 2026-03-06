@@ -1,7 +1,7 @@
 import { BaseEntity, PaginatedResponse } from '@/modules/shared/types'
 import { Restaurant, UpdateRestaurantInput } from '@/modules/restaurants/types'
 
-export type SettingsTab = 'general' | 'users' | 'payment' | 'cash'
+export type SettingsTab = 'general' | 'users' | 'payment' | 'cash' | 'brand-branch' | 'audit'
 
 export type SettingType = 'number' | 'boolean' | 'string'
 export type SettingGroup = 'payment' | 'cash' | 'general'
@@ -15,15 +15,35 @@ export enum SettingKey {
   DEFAULT_OPENING_BALANCE = 'default_opening_balance',
   SHIFT_DURATION_HOURS = 'shift_duration_hours',
   REQUIRE_CLOSING_COUNT = 'require_closing_count',
+  FOOD_COST_ALERT_THRESHOLD_PERCENT = 'food_cost_alert_threshold_percent',
 }
 
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',
+  BRAND_OWNER = 'brand_owner',
+  BRANCH_MANAGER = 'branch_manager',
+  BRANCH_CASHIER = 'branch_cashier',
+  BRANCH_WAITER = 'branch_waiter',
+  BRANCH_CHEF = 'branch_chef',
   RESTAURANT_OWNER = 'restaurant_owner',
   MANAGER = 'manager',
   WAITER = 'waiter',
   CHEF = 'chef',
   CUSTOMER = 'customer',
+}
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.SUPER_ADMIN]: 'Süper Admin',
+  [UserRole.BRAND_OWNER]: 'Marka Sahibi',
+  [UserRole.BRANCH_MANAGER]: 'Şube Müdürü',
+  [UserRole.BRANCH_CASHIER]: 'Şube Kasiyeri',
+  [UserRole.BRANCH_WAITER]: 'Şube Garsonu',
+  [UserRole.BRANCH_CHEF]: 'Şube Şefi',
+  [UserRole.RESTAURANT_OWNER]: 'İşletme Sahibi',
+  [UserRole.MANAGER]: 'Yönetici',
+  [UserRole.WAITER]: 'Garson',
+  [UserRole.CHEF]: 'Şef',
+  [UserRole.CUSTOMER]: 'Müşteri',
 }
 
 export interface SettingMeta {
@@ -100,6 +120,15 @@ export const SETTING_DEFINITIONS: Record<SettingKey, SettingDefinition> = {
     type: 'boolean',
     group: 'cash',
   },
+  [SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT]: {
+    key: SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT,
+    label: 'Food Cost Alarm Eşiği (%)',
+    description: 'Bu yüzdeden yüksek food cost oranına sahip ürünleri alarm listesine alır.',
+    type: 'number',
+    group: 'cash',
+    min: 1,
+    step: 0.1,
+  },
 }
 
 export interface SettingsByGroupResponse {
@@ -155,6 +184,8 @@ export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'users', label: 'KULLANICILAR' },
   { id: 'payment', label: 'ÖDEME' },
   { id: 'cash', label: 'KASA' },
+  { id: 'audit', label: 'AUDIT LOG' },
+  { id: 'brand-branch', label: 'MARKA / ŞUBE' },
 ]
 
 export function isSettingsTab(value: string): value is SettingsTab {

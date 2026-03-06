@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddServiceCycleVersionToTables1772423000000
-  implements MigrationInterface
-{
+export class AddServiceCycleVersionToTables1772423000000 implements MigrationInterface {
   name = 'AddServiceCycleVersionToTables1772423000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

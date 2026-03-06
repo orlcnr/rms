@@ -21,16 +21,16 @@ export class SuperAdminDashboardController {
   async getStats() {
     const [restaurantStats, userStats, recentRestaurants, auditSummary] =
       await Promise.all([
-      this.restaurantsService.getStats(),
-      this.usersService.getStats(),
-      this.restaurantsService.getRecent(5),
-      this.auditSearchService.findAll({
-        page: 1,
-        limit: 1,
-        start_date: subDays(new Date(), 1).toISOString(),
-        end_date: new Date().toISOString(),
-      }),
-    ]);
+        this.restaurantsService.getStats(),
+        this.usersService.getStats(),
+        this.restaurantsService.getRecent(5),
+        this.auditSearchService.findAll({
+          page: 1,
+          limit: 1,
+          start_date: subDays(new Date(), 1).toISOString(),
+          end_date: new Date().toISOString(),
+        }),
+      ]);
 
     return {
       restaurants: restaurantStats,

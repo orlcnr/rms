@@ -17,6 +17,22 @@ export class MenuItemResponseDto {
   price: number;
 
   @ApiProperty({ required: false })
+  base_price?: number;
+
+  @ApiProperty({ required: false })
+  effective_price?: number;
+
+  @ApiProperty({
+    required: false,
+    type: Object,
+    example: { is_hidden: false, custom_price: null },
+  })
+  override?: {
+    is_hidden: boolean;
+    custom_price: number | null;
+  };
+
+  @ApiProperty({ required: false })
   image_url: string;
 
   @ApiProperty()
@@ -44,11 +60,29 @@ export class MenuItemResponseDto {
     entity: MenuItem,
     availabilityStatus?: MenuItemAvailabilityStatus,
     customPrice?: number | null,
+    override?: { is_hidden: boolean; custom_price: number | null },
+    options?: { branchContext?: boolean },
   ): MenuItemResponseDto {
+    const effectivePrice =
+      customPrice !== undefined && customPrice !== null
+        ? Number(customPrice)
+        : Number(entity.price);
+    const hasBranchPricingContext =
+      Boolean(options?.branchContext) ||
+      customPrice !== undefined ||
+      Boolean(override);
+
     return {
       ...entity,
-      ...(customPrice !== undefined && customPrice !== null
-        ? { price: Number(customPrice) }
+      price: effectivePrice,
+      ...(override ? { override } : {}),
+      ...(hasBranchPricingContext
+        ? {
+            // These fields are populated when response is generated
+            // with branch/effective pricing context.
+            base_price: Number(entity.price),
+            effective_price: effectivePrice,
+          }
         : {}),
       image_url: normalizeImageUrl(entity.image_url),
       ...(availabilityStatus ? { availabilityStatus } : {}),

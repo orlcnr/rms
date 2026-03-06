@@ -116,19 +116,23 @@ export function useProductForm({
   }, [initialData?.image_url])
 
   const addRecipeItem = useCallback(() => {
-    setRecipes([...recipes, { ingredient_id: '', quantity: 0 }])
-  }, [recipes])
+    setRecipes((prev) => [...prev, { ingredient_id: '', quantity: 1 }])
+  }, [])
 
   const removeRecipeItem = useCallback((index: number) => {
-    const newRecipes = recipes.filter((_, i) => i !== index)
-    setRecipes(newRecipes)
-  }, [recipes])
+    setRecipes((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
-  const updateRecipeItem = useCallback((index: number, field: keyof RecipeItem, value: any) => {
-    const newRecipes = [...recipes]
-    newRecipes[index] = { ...newRecipes[index], [field]: value }
-    setRecipes(newRecipes)
-  }, [recipes])
+  const updateRecipeItem = useCallback(
+    (index: number, field: keyof RecipeItem, value: any) => {
+      setRecipes((prev) =>
+        prev.map((recipe, i) =>
+          i === index ? { ...recipe, [field]: value } : recipe,
+        ),
+      )
+    },
+    [],
+  )
 
   // Open modal for adding new ingredient
   const handleAddNewIngredient = useCallback((name: string, recipeIndex: number) => {

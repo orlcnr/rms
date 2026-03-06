@@ -3,7 +3,8 @@ import { IsOptional, IsString } from 'class-validator';
 
 export class SuperAdminRefreshDto {
   @ApiPropertyOptional({
-    description: 'Optional explicit refresh token. Cookie transport is preferred.',
+    description:
+      'Optional explicit refresh token. Cookie transport is preferred.',
   })
   @IsOptional()
   @IsString()

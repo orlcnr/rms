@@ -9,7 +9,7 @@ interface SettingsPageProps {
 }
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
-  const { restaurantId, user } = await getRestaurantContext()
+  const { restaurantId, branchId, user } = await getRestaurantContext()
 
   if (!restaurantId) {
     throw new Error('Restaurant not found')
@@ -23,6 +23,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     <SettingsClient
       activeTab={activeTab}
       restaurantId={restaurantId}
+      branchId={branchId}
       userRole={user.role}
     />
   )

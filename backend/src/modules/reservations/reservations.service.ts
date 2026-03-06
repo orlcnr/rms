@@ -4,12 +4,16 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Reservation, ReservationStatus } from './entities/reservation.entity';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { CustomersService } from '../customers/customers.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
 
 interface FindAllQuery {
   date?: string;
@@ -17,17 +21,71 @@ interface FindAllQuery {
   endDate?: string;
 }
 
+type ReservationActor = {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+  restaurantId?: string;
+};
+
 @Injectable()
 export class ReservationsService {
   constructor(
     @InjectRepository(Reservation)
     private readonly reservationRepository: Repository<Reservation>,
     private readonly customersService: CustomersService,
+    private readonly auditService: AuditService,
   ) {}
+
+  private buildActorName(actor?: ReservationActor): string | undefined {
+    if (!actor?.first_name) {
+      return undefined;
+    }
+    return `${actor.first_name} ${actor.last_name || ''}`.trim();
+  }
+
+  private async emitDomainAudit(params: {
+    action: AuditAction;
+    restaurantId?: string;
+    payload?: Record<string, unknown>;
+    changes?: {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    actor?: ReservationActor;
+    request?: Request;
+    context: string;
+  }): Promise<void> {
+    const headerUserAgent = params.request?.headers?.['user-agent'];
+    const userAgent =
+      typeof headerUserAgent === 'string'
+        ? headerUserAgent
+        : headerUserAgent?.[0];
+
+    await this.auditService.safeEmitLog(
+      {
+        action: params.action,
+        resource: 'RESERVATIONS',
+        user_id: params.actor?.id,
+        user_name: this.buildActorName(params.actor),
+        restaurant_id: params.restaurantId,
+        payload: params.payload,
+        changes: params.changes,
+        ip_address: params.request?.ip,
+        user_agent: userAgent,
+      },
+      params.context,
+    );
+    this.auditService.markRequestAsAudited(
+      params.request as unknown as Record<string, unknown>,
+    );
+  }
 
   async create(
     createReservationDto: CreateReservationDto,
-    user: { restaurantId: string },
+    user: { restaurantId: string } & ReservationActor,
+    request?: Request,
   ): Promise<Reservation> {
     try {
       const { customer_id, table_id, reservation_time } = createReservationDto;
@@ -68,7 +126,26 @@ export class ReservationsService {
         restaurant_id: user.restaurantId, // Multi-tenant: set restaurant_id
       });
 
-      return this.reservationRepository.save(reservation);
+      const savedReservation =
+        await this.reservationRepository.save(reservation);
+      await this.emitDomainAudit({
+        action: AuditAction.RESERVATION_CREATED,
+        restaurantId: user.restaurantId,
+        payload: { reservationId: savedReservation.id },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: savedReservation.id,
+            customer_id: savedReservation.customer_id,
+            table_id: savedReservation.table_id,
+            status: savedReservation.status,
+            reservation_time: savedReservation.reservation_time,
+          },
+        }),
+        actor: user,
+        request,
+        context: 'ReservationsService.create',
+      });
+      return savedReservation;
     } catch (error) {
       console.error('Reservation Create Error:', error);
       // Throw a general NestJS error to inform the client something failed on the server
@@ -127,7 +204,8 @@ export class ReservationsService {
   async update(
     id: string,
     updateReservationDto: UpdateReservationDto,
-    user: { restaurantId: string },
+    user: { restaurantId: string } & ReservationActor,
+    request?: Request,
   ): Promise<Reservation> {
     // Find with multi-tenant check
     const reservation = await this.reservationRepository.findOne({
@@ -137,6 +215,13 @@ export class ReservationsService {
     if (!reservation) {
       throw new NotFoundException(`Reservation ${id} not found`);
     }
+    const beforeSnapshot = {
+      customer_id: reservation.customer_id,
+      table_id: reservation.table_id,
+      status: reservation.status,
+      reservation_time: reservation.reservation_time,
+      notes: reservation.notes,
+    };
 
     // Validate new customer belongs to this restaurant if provided
     if (updateReservationDto.customer_id) {
@@ -182,13 +267,33 @@ export class ReservationsService {
     }
 
     Object.assign(reservation, updateReservationDto);
-    return this.reservationRepository.save(reservation);
+    const savedReservation = await this.reservationRepository.save(reservation);
+    await this.emitDomainAudit({
+      action: AuditAction.RESERVATION_UPDATED,
+      restaurantId: user.restaurantId,
+      payload: { reservationId: savedReservation.id },
+      changes: sanitizeAuditChanges({
+        before: beforeSnapshot,
+        after: {
+          customer_id: savedReservation.customer_id,
+          table_id: savedReservation.table_id,
+          status: savedReservation.status,
+          reservation_time: savedReservation.reservation_time,
+          notes: savedReservation.notes,
+        },
+      }),
+      actor: user,
+      request,
+      context: 'ReservationsService.update',
+    });
+    return savedReservation;
   }
 
   async updateStatus(
     id: string,
     status: ReservationStatus,
-    user: { restaurantId: string },
+    user: { restaurantId: string } & ReservationActor,
+    request?: Request,
   ): Promise<Reservation> {
     // Find with multi-tenant check
     const reservation = await this.reservationRepository.findOne({
@@ -198,8 +303,24 @@ export class ReservationsService {
     if (!reservation) {
       throw new NotFoundException(`Reservation ${id} not found`);
     }
+    const beforeSnapshot = {
+      status: reservation.status,
+    };
 
     reservation.status = status;
-    return this.reservationRepository.save(reservation);
+    const savedReservation = await this.reservationRepository.save(reservation);
+    await this.emitDomainAudit({
+      action: AuditAction.RESERVATION_STATUS_UPDATED,
+      restaurantId: user.restaurantId,
+      payload: { reservationId: savedReservation.id },
+      changes: sanitizeAuditChanges({
+        before: beforeSnapshot,
+        after: { status: savedReservation.status },
+      }),
+      actor: user,
+      request,
+      context: 'ReservationsService.updateStatus',
+    });
+    return savedReservation;
   }
 }

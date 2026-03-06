@@ -7,50 +7,83 @@ import {
   Param,
   Patch,
   Delete,
-  UseGuards,
   ValidationPipe,
   Query,
   Res,
-  NotFoundException,
-  Logger,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
-import { CreateStockMovementUseCase } from './use-cases/create-stock-movement.use-case';
+import { BulkUpdateStockUseCase } from './use-cases/bulk-update-stock.use-case';
 import { CreateIngredientDto } from './dto/create-ingredient.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { GetStockMovementsDto } from './dto/get-stock-movements.dto';
-import { GetIngredientsDto } from './dto/get-ingredients.dto'; // Import GetIngredientsDto
+import { GetIngredientsDto } from './dto/get-ingredients.dto';
 import {
   GetCostAnalysisDto,
   GetCountDifferencesDto,
+  GetFoodCostAlertsDto,
 } from './dto/get-cost-analysis.dto';
 import { InventorySummaryDto } from './dto/inventory-summary.dto';
 import { BulkStockUpdateDto } from './dto/bulk-stock-update.dto';
+import { BulkUpdateStockResponseDto } from './dto/bulk-update-stock-response.dto';
+import { UpdateIngredientDto } from './dto/update-ingredient.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '../users/entities/user.entity';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import * as ExcelJS from 'exceljs';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { PaginationMetaDto } from '../../common/dto/pagination-meta.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+
+type InventoryRequest = ExpressRequest & {
+  user: {
+    restaurantId: string;
+  };
+};
 
 @ApiTags('Inventory')
 @Controller('inventory')
 export class InventoryController {
-  private readonly logger = new Logger(InventoryController.name);
-
   constructor(
     private readonly inventoryService: InventoryService,
-    private readonly createStockMovementUseCase: CreateStockMovementUseCase,
+    private readonly bulkUpdateStockUseCase: BulkUpdateStockUseCase,
   ) {}
 
+  private toPaginationMeta(meta: {
+    currentPage: number;
+    itemsPerPage: number;
+    itemCount: number;
+    totalItems?: number;
+    totalPages?: number;
+  }): PaginationMetaDto {
+    const totalItems = Number(meta.totalItems ?? meta.itemCount ?? 0);
+    const totalPages =
+      Number(meta.totalPages ?? 0) ||
+      (meta.itemsPerPage > 0 ? Math.ceil(totalItems / meta.itemsPerPage) : 0);
+
+    return new PaginationMetaDto({
+      page: meta.currentPage,
+      limit: meta.itemsPerPage,
+      itemCount: meta.itemCount,
+      totalItems,
+      totalPages,
+      hasPreviousPage: meta.currentPage > 1,
+      hasNextPage: meta.currentPage < totalPages,
+    });
+  }
+
   @Get('movements')
-  findAllMovements(
-    @Request() req,
+  async findAllMovements(
+    @Request() req: InventoryRequest,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     filters: GetStockMovementsDto,
   ) {
-    return this.inventoryService.findAllMovements(req, filters);
+    const result = await this.inventoryService.findAllMovements(req, filters);
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
   }
 
   @Get('movements/export')
@@ -58,7 +91,7 @@ export class InventoryController {
     summary: 'Filtrelenmiş stok hareketlerini Excel olarak dışa aktar',
   })
   async exportMovements(
-    @Request() req,
+    @Request() req: InventoryRequest,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     queryDto: GetStockMovementsDto,
     @Res() res: Response,
@@ -108,125 +141,257 @@ export class InventoryController {
 
   @Post('ingredients')
   @ApiOperation({ summary: 'Yeni malzeme oluştur' })
-  createIngredient(@Body(ValidationPipe) dto: CreateIngredientDto) {
-    return this.inventoryService.createIngredient(dto);
+  async createIngredient(
+    @Body(ValidationPipe) dto: CreateIngredientDto,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    const data = await this.inventoryService.createIngredient(dto, user, req);
+    return ApiResponseDto.ok(data);
   }
 
   @Get('ingredients')
   @ApiOperation({ summary: 'Restorana ait malzemeleri sayfalı olarak getir' })
-  findAllIngredients(
-    @Request() req,
+  async findAllIngredients(
+    @Request() req: InventoryRequest,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     filters: GetIngredientsDto,
   ) {
-    return this.inventoryService.findAllIngredients(req, filters);
+    const result = await this.inventoryService.findAllIngredients(req, filters);
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
   }
-
-  // ============================================
-  // MALİYET ANALİZ ENDPOINT'LERİ (Parametreli route'lardan ÖNCE!)
-  // ============================================
 
   @Get('ingredients/cost-impact')
   @ApiOperation({ summary: 'Fiyatı en çok artan malzemelerin maliyet etkisi' })
-  calculateCostImpact(
-    @Request() req,
+  async calculateCostImpact(
+    @Request() req: InventoryRequest,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: GetCostAnalysisDto,
   ) {
     const restaurantId = req.user.restaurantId;
-    return this.inventoryService.calculateCostImpact(restaurantId, query.days);
+    const result = await this.inventoryService.calculateCostImpact(
+      restaurantId,
+      query.days,
+      query.page,
+      query.limit,
+    );
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
   }
 
   @Get('ingredients/:id/usage')
   @ApiOperation({ summary: 'Malzemenin kullanıldığı ürünleri getir' })
-  getIngredientUsage(@Param('id') id: string, @Request() req) {
+  async getIngredientUsage(
+    @Param('id') id: string,
+    @Request() req: InventoryRequest,
+  ) {
     const restaurantId = req.user.restaurantId;
-    return this.inventoryService.getIngredientUsage(id, restaurantId);
+    const data = await this.inventoryService.getIngredientUsage(
+      id,
+      restaurantId,
+    );
+    return ApiResponseDto.ok(data);
   }
 
   @Get('ingredients/:id')
   @ApiOperation({ summary: 'Tek bir malzemeyi ID ile getir' })
-  findOneIngredient(@Param('id') id: string) {
-    return this.inventoryService.findOneIngredient(id);
+  async findOneIngredient(@Param('id') id: string, @GetUser() user: User) {
+    const data = await this.inventoryService.findOneIngredient(
+      id,
+      user.restaurant_id,
+    );
+    return ApiResponseDto.ok(data);
   }
 
   @Patch('ingredients/:id')
   @ApiOperation({ summary: 'Malzeme güncelle' })
-  updateIngredient(
+  async updateIngredient(
     @Param('id') id: string,
-    @Body(ValidationPipe) dto: Partial<CreateIngredientDto>,
+    @Body(ValidationPipe) dto: UpdateIngredientDto,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
   ) {
-    return this.inventoryService.updateIngredient(id, dto);
+    const data = await this.inventoryService.updateIngredient(
+      id,
+      dto,
+      user,
+      req,
+    );
+    return ApiResponseDto.ok(data);
   }
 
   @Delete('ingredients/:id')
   @ApiOperation({ summary: 'Malzeme sil' })
-  deleteIngredient(@Param('id') id: string) {
-    return this.inventoryService.deleteIngredient(id);
+  async deleteIngredient(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    await this.inventoryService.deleteIngredient(id, user, req);
+    return ApiResponseDto.empty('Malzeme silindi');
   }
 
   @Get('stocks/restaurant/:restaurantId')
   @ApiOperation({ summary: 'Restorana ait stok durumlarını getir' })
-  getStocks(@Param('restaurantId') restaurantId: string) {
-    return this.inventoryService.getStocks(restaurantId);
+  async getStocks(
+    @Param('restaurantId') restaurantId: string,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    pagination: PaginationDto,
+    @GetUser() user: User,
+  ) {
+    const result = await this.inventoryService.getStocks(
+      restaurantId,
+      pagination.page,
+      pagination.limit,
+      user,
+    );
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
+  }
+
+  @Get('branches/:branchId/stocks')
+  @ApiOperation({ summary: 'Şubeye ait stok durumlarını getir' })
+  async getBranchStocks(
+    @Param('branchId') branchId: string,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    pagination: PaginationDto,
+    @GetUser() user: User,
+  ) {
+    const result = await this.inventoryService.getBranchStocks(
+      branchId,
+      pagination.page,
+      pagination.limit,
+      user,
+    );
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
+  }
+
+  @Post('branches/:branchId/init-stocks')
+  @ApiOperation({
+    summary: 'Şube için brand malzemelerini 0 stokla initialize et',
+  })
+  async initBranchStocks(
+    @Param('branchId') branchId: string,
+    @GetUser() user: User,
+  ) {
+    const data = await this.inventoryService.initBranchStocksForRequester(
+      branchId,
+      user.restaurant_id,
+    );
+    return ApiResponseDto.ok(data);
   }
 
   @Get('summary')
   @ApiOperation({ summary: 'Envanter özet metrikleri' })
   @ApiResponse({ status: 200, type: InventorySummaryDto })
-  getSummary(@GetUser() user: User) {
-    return this.inventoryService.getSummary(user.restaurant_id);
+  async getSummary(@GetUser() user: User) {
+    const data = await this.inventoryService.getSummary(user.restaurant_id);
+    return ApiResponseDto.ok(data);
   }
 
   @Post('movements')
   @ApiOperation({ summary: 'Stok hareketi ekle (Giriş/Çıkış/Düzeltme)' })
-  addMovement(@Body(ValidationPipe) dto: CreateStockMovementDto) {
-    return this.createStockMovementUseCase.execute(dto);
+  async addMovement(
+    @Body(ValidationPipe) dto: CreateStockMovementDto,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    const data = await this.inventoryService.addStockMovement(dto, user, req);
+    return ApiResponseDto.ok(data);
   }
 
   @Post('recipes')
   @ApiOperation({ summary: 'Ürüne reçete kalemi ekle' })
-  createRecipe(@Body(ValidationPipe) dto: CreateRecipeDto) {
-    return this.inventoryService.createRecipe(dto);
+  async createRecipe(
+    @Body(ValidationPipe) dto: CreateRecipeDto,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    const data = await this.inventoryService.createRecipe(dto, user, req);
+    return ApiResponseDto.ok(data);
   }
 
   @Get('recipes/product/:productId')
   @ApiOperation({ summary: 'Ürünün reçetesini getir' })
-  getProductRecipe(@Param('productId') productId: string) {
-    return this.inventoryService.getProductRecipe(productId);
+  async getProductRecipe(@Param('productId') productId: string) {
+    const data = await this.inventoryService.getProductRecipe(productId);
+    return ApiResponseDto.ok(data);
   }
 
   @Delete('recipes/:id')
   @ApiOperation({ summary: 'Reçete kalemini sil' })
-  deleteRecipe(@Param('id') id: string) {
-    return this.inventoryService.deleteRecipe(id);
+  async deleteRecipe(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    await this.inventoryService.deleteRecipe(id, user, req);
+    return ApiResponseDto.empty('Reçete kalemi silindi');
   }
 
   @Post('stocks/bulk-update')
   @ApiOperation({ summary: 'Toplu stok güncelleme (Hızlı Sayım Modu)' })
-  bulkUpdateStock(@Body(ValidationPipe) dto: BulkStockUpdateDto) {
-    return this.inventoryService.bulkUpdateStock(dto.updates);
+  @ApiResponse({ status: 200, type: BulkUpdateStockResponseDto })
+  async bulkUpdateStock(
+    @Body(ValidationPipe) dto: BulkStockUpdateDto,
+    @GetUser() user: User,
+    @Request() req: InventoryRequest,
+  ) {
+    const data = await this.bulkUpdateStockUseCase.execute(
+      dto.updates,
+      user,
+      req,
+    );
+    return ApiResponseDto.ok(data);
   }
-
-  // ============================================
-  // MALİYET ANALİZ ENDPOINT'LERİ
-  // ============================================
 
   @Get('analysis/count-differences')
   @ApiOperation({ summary: 'Sayım farkları raporu' })
-  getCountDifferences(
-    @Request() req,
+  async getCountDifferences(
+    @Request() req: InventoryRequest,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: GetCountDifferencesDto,
   ) {
     const restaurantId = req.user.restaurantId;
-    return this.inventoryService.getCountDifferences(restaurantId, query.weeks);
+    const result = await this.inventoryService.getCountDifferences(
+      restaurantId,
+      query.weeks,
+      query.page,
+      query.limit,
+    );
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
   }
 
   @Get('analysis/food-cost-alerts')
-  @ApiOperation({ summary: 'Food Cost %35 aşan ürünler' })
-  getFoodCostAlerts(@Request() req) {
+  @ApiOperation({ summary: 'Food Cost eşik değerini aşan ürünler' })
+  async getFoodCostAlerts(
+    @Request() req: InventoryRequest,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    query: GetFoodCostAlertsDto,
+  ) {
     const restaurantId = req.user.restaurantId;
-    return this.inventoryService.getFoodCostAlerts(restaurantId);
+    const result = await this.inventoryService.getFoodCostAlerts(
+      restaurantId,
+      query.page,
+      query.limit,
+      query.refresh,
+    );
+    return ApiResponseDto.ok({
+      items: result.items,
+      meta: this.toPaginationMeta(result.meta),
+    });
   }
 }

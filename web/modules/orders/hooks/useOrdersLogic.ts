@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 
 // Store & Hooks
 import { usePosStore } from './usePosStore'
@@ -32,6 +31,7 @@ import {
   hasMorePages,
   getNextPage,
 } from '../utils/order-filters'
+import { resolveDisplayPrice } from '@/modules/shared/utils/pricing'
 
 // ============================================
 // PROPS
@@ -48,6 +48,66 @@ export interface UseOrdersLogicProps {
     totalPages: number
     itemsPerPage: number
   }
+}
+
+type ComparableMenuItemSnapshot = {
+  id: string
+  name: string
+  is_available: boolean
+  price: number | null
+  base_price: number | null
+  effective_price: number | null
+}
+
+function normalizeNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function toComparableSnapshot(item: MenuItem): ComparableMenuItemSnapshot {
+  return {
+    id: item.id,
+    name: item.name,
+    is_available: Boolean(item.is_available),
+    price: normalizeNumber(item.price),
+    base_price: normalizeNumber(item.base_price),
+    effective_price: normalizeNumber(item.effective_price),
+  }
+}
+
+function hasInitialMenuItemsChanged(previous: MenuItem[], next: MenuItem[]): boolean {
+  if (previous.length !== next.length) {
+    return true
+  }
+
+  const previousById = new Map(
+    previous.map((item) => [item.id, toComparableSnapshot(item)]),
+  )
+
+  for (const item of next) {
+    const nextSnapshot = toComparableSnapshot(item)
+    const previousSnapshot = previousById.get(item.id)
+
+    if (!previousSnapshot) {
+      return true
+    }
+
+    if (
+      previousSnapshot.name !== nextSnapshot.name ||
+      previousSnapshot.is_available !== nextSnapshot.is_available ||
+      previousSnapshot.price !== nextSnapshot.price ||
+      previousSnapshot.base_price !== nextSnapshot.base_price ||
+      previousSnapshot.effective_price !== nextSnapshot.effective_price
+    ) {
+      return true
+    }
+  }
+
+  return false
 }
 
 // ============================================
@@ -74,9 +134,6 @@ export function useOrdersLogic({
   const [allItems, setAllItems] = useState<MenuItem[]>(initialMenuItems)
   const [totalPages, setTotalPages] = useState(initialPaginationMeta?.totalPages || 1)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-
-  // Router for refreshing server components
-  const router = useRouter()
 
   // Track previous initialMenuItems to prevent unnecessary resets
   const prevInitialMenuItemsRef = useRef<MenuItem[]>(initialMenuItems)
@@ -133,17 +190,12 @@ export function useOrdersLogic({
     }
   }, [initialTable, setSelectedTable, setOrderType])
 
-  // Reset items when initialMenuItems actually changes
+  // Reset items when initialMenuItems changes (including same id + changed price cases).
   useEffect(() => {
     const prevItems = prevInitialMenuItemsRef.current
-    const hasNewItems = initialMenuItems.some(
-      (item) => !prevItems.some((prev) => prev.id === item.id)
-    )
-    const hasRemovedItems = prevItems.some(
-      (prev) => !initialMenuItems.some((item) => item.id === prev.id)
-    )
+    const hasChanges = hasInitialMenuItemsChanged(prevItems, initialMenuItems)
 
-    if (hasNewItems || hasRemovedItems || initialMenuItems.length !== prevItems.length) {
+    if (hasChanges) {
       setAllItems(initialMenuItems)
       setPage(1)
       setTotalPages(initialPaginationMeta?.totalPages || 1)
@@ -354,10 +406,14 @@ export function useOrdersLogic({
 
   const handleAddToBasket = useCallback(
     (product: MenuItem) => {
+      // In branch context, basket unit price must always come from effective price
+      // (override ?? base). This value is later locked as order item unitPrice.
+      const effectiveUnitPrice = resolveDisplayPrice(product, { branchContext: true })
+
       addToBasket({
         menuItemId: product.id,
         name: product.name,
-        price: product.price,
+        price: effectiveUnitPrice,
         image_url: product.image_url,
       })
       toast.success(`${product.name} eklendi`)

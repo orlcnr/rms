@@ -6,8 +6,9 @@ export interface IAuditLog {
   resource: string;
   payload?: any;
   changes?: {
-    before: any;
-    after: any;
+    before?: any;
+    after?: any;
+    meta?: Record<string, unknown>;
   };
   ip_address?: string;
   user_agent?: string;

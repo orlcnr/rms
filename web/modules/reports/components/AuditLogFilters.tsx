@@ -3,6 +3,9 @@
 import React from 'react'
 import { DateTimePicker } from '@/modules/shared/components/DateTimePicker'
 import { AuditLogFilters as AuditLogFiltersValue } from '../types'
+import { AuditActionFilterSelect } from './AuditActionFilterSelect'
+import { AUDIT_ACTION_OPTIONS } from '../constants/audit-action-options'
+import { AUDIT_RESOURCE_OPTIONS } from '../constants/audit-resource-options'
 
 interface AuditLogFiltersProps {
   filters: AuditLogFiltersValue
@@ -73,31 +76,23 @@ export function AuditLogFilters({
           />
         </label>
 
-        <label className="flex flex-col gap-2">
-          <span className="text-[10px] font-black uppercase tracking-widest text-text-primary">
-            Aksiyon
-          </span>
-          <input
-            className="w-full rounded-sm border border-border-light bg-bg-surface px-4 py-3 text-sm font-bold text-text-primary outline-none transition-colors focus:border-primary-main"
-            type="text"
-            value={filters.action}
-            onChange={(event) => updateField('action', event.target.value)}
-            placeholder="ORDER_UPDATED"
-          />
-        </label>
+        <AuditActionFilterSelect
+          id="audit-action"
+          label="Aksiyon"
+          value={filters.action}
+          onChange={(value) => updateField('action', value)}
+          options={AUDIT_ACTION_OPTIONS}
+          placeholder="Tüm aksiyonlar"
+        />
 
-        <label className="flex flex-col gap-2">
-          <span className="text-[10px] font-black uppercase tracking-widest text-text-primary">
-            Kaynak
-          </span>
-          <input
-            className="w-full rounded-sm border border-border-light bg-bg-surface px-4 py-3 text-sm font-bold text-text-primary outline-none transition-colors focus:border-primary-main"
-            type="text"
-            value={filters.resource}
-            onChange={(event) => updateField('resource', event.target.value)}
-            placeholder="ORDERS"
-          />
-        </label>
+        <AuditActionFilterSelect
+          id="audit-resource"
+          label="Kaynak"
+          value={filters.resource}
+          onChange={(value) => updateField('resource', value)}
+          options={AUDIT_RESOURCE_OPTIONS}
+          placeholder="Tüm kaynaklar"
+        />
 
         <label className="flex flex-col gap-2">
           <span className="text-[10px] font-black uppercase tracking-widest text-text-primary">

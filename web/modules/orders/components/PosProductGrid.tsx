@@ -11,6 +11,7 @@ import { Package } from 'lucide-react'
 import { MenuItem } from '@/modules/products/types'
 import { cn } from '@/modules/shared/utils/cn'
 import { formatCurrency } from '@/modules/shared/utils/numeric'
+import { resolveDisplayPrice } from '@/modules/shared/utils/pricing'
 import { BasketItem } from '../types'
 
 interface PosProductGridProps {
@@ -142,9 +143,9 @@ function ProductCard({ product, onAddToBasket, quantityInBasket, disabled = fals
       <div className="flex items-center justify-between mt-auto pt-3 border-t border-border-light/50">
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">BİRİM FİYAT</span>
-          <span className="text-lg font-bold text-text-primary tabular-nums tracking-tight">
-            {formatCurrency(product.price)}
-          </span>
+            <span className="text-lg font-bold text-text-primary tabular-nums tracking-tight">
+            {formatCurrency(resolveDisplayPrice(product, { branchContext: true }))}
+            </span>
         </div>
       </div>
     </button>

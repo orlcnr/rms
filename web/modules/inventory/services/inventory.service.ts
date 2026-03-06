@@ -1,23 +1,36 @@
 import { http } from '@/modules/shared/api/http'
+import { normalizePaginatedEnvelope } from '@/modules/shared/api/normalize-paginated-envelope'
 import {
     Ingredient,
     Stock,
+    BranchStock,
     StockMovement,
     GetIngredientsDto,
     GetStockMovementsDto,
-    PaginatedResponse,
-    BulkStockUpdate,
+    BulkStockUpdatePayload,
+    BulkUpdateStockResponse,
     IngredientUsage,
     CostImpact,
     CountDifference,
     FoodCostAlert,
     InventorySummary
 } from '../types'
+import type { BackendEnvelope } from '@/modules/shared/api/http'
+import type { EnvelopePaginationMeta } from '@/modules/shared/types'
+
+type PaginationQuery = {
+    page?: number
+    limit?: number
+}
 
 export const inventoryApi = {
     // Ingredients
     getIngredients: async (params: GetIngredientsDto) => {
-        return http.get<PaginatedResponse<Ingredient>>('/inventory/ingredients', { params })
+        const envelope = await http.getEnvelope<Ingredient[] | { items: Ingredient[]; meta: EnvelopePaginationMeta }>(
+            '/inventory/ingredients',
+            { params }
+        ) as BackendEnvelope<Ingredient[] | { items: Ingredient[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     getIngredient: async (id: string) => {
@@ -37,13 +50,29 @@ export const inventoryApi = {
     },
 
     // Stocks
-    getStocks: async (restaurantId: string) => {
-        return http.get<Stock[]>(`/inventory/stocks/restaurant/${restaurantId}`)
+    getStocks: async (restaurantId: string, params?: PaginationQuery) => {
+        const envelope = await http.getEnvelope<Stock[] | { items: Stock[]; meta: EnvelopePaginationMeta }>(
+            `/inventory/stocks/restaurant/${restaurantId}`,
+            { params }
+        ) as BackendEnvelope<Stock[] | { items: Stock[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
+    },
+
+    getBranchStocks: async (branchId: string, params?: PaginationQuery) => {
+        const envelope = await http.getEnvelope<BranchStock[] | { items: BranchStock[]; meta: EnvelopePaginationMeta }>(
+            `/inventory/branches/${branchId}/stocks`,
+            { params }
+        ) as BackendEnvelope<BranchStock[] | { items: BranchStock[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     // Movements
     getStockMovements: async (params: GetStockMovementsDto) => {
-        return http.get<PaginatedResponse<StockMovement>>('/inventory/movements', { params })
+        const envelope = await http.getEnvelope<StockMovement[] | { items: StockMovement[]; meta: EnvelopePaginationMeta }>(
+            '/inventory/movements',
+            { params }
+        ) as BackendEnvelope<StockMovement[] | { items: StockMovement[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     addMovement: async (data: any) => {
@@ -51,8 +80,8 @@ export const inventoryApi = {
     },
 
     // Bulk stock update for quick count mode
-    bulkUpdateStock: async (updates: BulkStockUpdate[]) => {
-        return http.post<{ success: boolean }>('/inventory/stocks/bulk-update', { updates })
+    bulkUpdateStock: async (payload: BulkStockUpdatePayload) => {
+        return http.post<BulkUpdateStockResponse>('/inventory/stocks/bulk-update', payload)
     },
 
     // Recipes
@@ -78,18 +107,30 @@ export const inventoryApi = {
     },
 
     // Maliyet etkisi (fiyatı en çok artanlar)
-    getCostImpact: async (days: number = 7) => {
-        return http.get<CostImpact[]>('/inventory/ingredients/cost-impact', { params: { days } })
+    getCostImpact: async (days: number = 7, params?: PaginationQuery) => {
+        const envelope = await http.getEnvelope<CostImpact[] | { items: CostImpact[]; meta: EnvelopePaginationMeta }>(
+            '/inventory/ingredients/cost-impact',
+            { params: { days, ...params } }
+        ) as BackendEnvelope<CostImpact[] | { items: CostImpact[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     // Sayım farkları
-    getCountDifferences: async (weeks: number = 4) => {
-        return http.get<CountDifference[]>('/inventory/analysis/count-differences', { params: { weeks } })
+    getCountDifferences: async (weeks: number = 4, params?: PaginationQuery) => {
+        const envelope = await http.getEnvelope<CountDifference[] | { items: CountDifference[]; meta: EnvelopePaginationMeta }>(
+            '/inventory/analysis/count-differences',
+            { params: { weeks, ...params } }
+        ) as BackendEnvelope<CountDifference[] | { items: CountDifference[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     // Food Cost uyarıları
-    getFoodCostAlerts: async () => {
-        return http.get<FoodCostAlert[]>('/inventory/analysis/food-cost-alerts')
+    getFoodCostAlerts: async (params?: PaginationQuery) => {
+        const envelope = await http.getEnvelope<FoodCostAlert[] | { items: FoodCostAlert[]; meta: EnvelopePaginationMeta }>(
+            '/inventory/analysis/food-cost-alerts',
+            { params }
+        ) as BackendEnvelope<FoodCostAlert[] | { items: FoodCostAlert[]; meta: EnvelopePaginationMeta }>
+        return normalizePaginatedEnvelope(envelope)
     },
 
     getSummary: async () => {

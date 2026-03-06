@@ -1,32 +1,39 @@
-import { Transform } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-  IsDate,
-  IsEnum,
-} from 'class-validator';
-import { MovementType } from '../entities/stock-movement.entity'; // Import MovementType
+import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { MovementType } from '../entities/stock-movement.entity';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 export class GetStockMovementsDto extends PaginationDto {
+  @ApiPropertyOptional({ description: 'Malzeme adı (ILIKE)' })
   @IsOptional()
   @IsString()
   ingredientName?: string;
 
+  @ApiPropertyOptional({
+    enum: MovementType,
+    description: 'Hareket tipi filtresi (IN/OUT/ADJUST)',
+  })
   @IsOptional()
-  @IsEnum(MovementType) // Add IsEnum validator
-  type?: MovementType; // New filt    er property
+  @IsEnum(MovementType)
+  type?: MovementType;
 
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'Başlangıç tarihi (YYYY-MM-DD)',
+    example: '2026-03-01',
+  })
   @IsOptional()
-  @Transform(({ value }) => (value ? new Date(value) : undefined))
-  @IsDate()
-  startDate?: Date;
+  @IsString()
+  startDate?: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    description: 'Bitiş tarihi (YYYY-MM-DD)',
+    example: '2026-03-06',
+  })
   @IsOptional()
-  @Transform(({ value }) => (value ? new Date(value) : undefined))
-  @IsDate()
-  endDate?: Date;
+  @IsString()
+  endDate?: string;
 }

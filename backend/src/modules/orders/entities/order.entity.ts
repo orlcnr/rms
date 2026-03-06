@@ -75,7 +75,7 @@ export class Order extends BaseEntity {
     type: 'jsonb',
     nullable: true,
   })
-  integrationMetadata: any | null;
+  integrationMetadata: Record<string, unknown> | null;
 
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
@@ -94,6 +94,13 @@ export class Order extends BaseEntity {
 
   @Column({ name: 'order_number', type: 'text', nullable: true })
   orderNumber: string | null;
+
+  @Column({ name: 'merged_into', type: 'uuid', nullable: true })
+  mergedInto: string | null;
+
+  @ManyToOne(() => Order, { nullable: true })
+  @JoinColumn({ name: 'merged_into' })
+  mergedIntoOrder: Order | null;
 
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items: OrderItem[];

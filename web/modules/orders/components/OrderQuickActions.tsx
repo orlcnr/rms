@@ -11,6 +11,7 @@ import { X, Printer, CreditCard, Move } from 'lucide-react'
 interface OrderQuickActionsProps {
   orderGroup: OrderGroup
   onStatusChange: (orderId: string, newStatus: OrderStatus) => void
+  onMoveTable: (orderGroup: OrderGroup) => void
   onClose: () => void
 }
 
@@ -40,6 +41,7 @@ const TAKEAWAY_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 export function OrderQuickActions({
   orderGroup,
   onStatusChange,
+  onMoveTable,
   onClose,
 }: OrderQuickActionsProps) {
   const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
@@ -64,8 +66,7 @@ export function OrderQuickActions({
   }
 
   const handleMoveTable = () => {
-    // TODO: Implement move table functionality
-    console.log('Move table:', latestOrder.id)
+    onMoveTable(orderGroup)
     onClose()
   }
 

@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { Role } from '../../common/enums/role.enum';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
@@ -18,6 +19,9 @@ import { ActivateDeactivateUserDto } from './dto/activate-deactivate-user.dto';
 import * as bcrypt from 'bcrypt';
 
 import { RestaurantsService } from '../restaurants/restaurants.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
 
 interface PaginationMeta {
   itemCount?: number;
@@ -37,6 +41,7 @@ const ROLE_HIERARCHY: Record<Role, number> = {
   [Role.SUPER_ADMIN]: 100,
   [Role.BRAND_OWNER]: 90,
   [Role.BRANCH_MANAGER]: 70,
+  [Role.BRANCH_CASHIER]: 50,
   [Role.BRANCH_WAITER]: 45,
   [Role.BRANCH_CHEF]: 35,
   [Role.RESTAURANT_OWNER]: 80,
@@ -54,7 +59,193 @@ export class UsersService {
     @InjectRepository(UserBranchRole)
     private userBranchRoleRepository: Repository<UserBranchRole>,
     private restaurantsService: RestaurantsService,
+    private auditService: AuditService,
   ) {}
+
+  private buildActorName(user?: User): string | undefined {
+    if (!user?.first_name) {
+      return undefined;
+    }
+    return `${user.first_name} ${user.last_name || ''}`.trim();
+  }
+
+  private getScopedContext(user: User): User & {
+    brandId?: string | null;
+    branchId?: string | null;
+    restaurantId?: string | null;
+  } {
+    return user as User & {
+      brandId?: string | null;
+      branchId?: string | null;
+      restaurantId?: string | null;
+    };
+  }
+
+  private async getActorBrandId(user: User): Promise<string | null> {
+    const brandIdFromToken = this.getScopedContext(user).brandId || null;
+    if (brandIdFromToken) {
+      return brandIdFromToken;
+    }
+
+    if (!user.restaurant_id) {
+      return null;
+    }
+
+    try {
+      const ownRestaurant = await this.restaurantsService.findOne(
+        user.restaurant_id,
+        user,
+      );
+      return ownRestaurant.brand_id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private getActorBranchId(user: User): string | null {
+    const scoped = this.getScopedContext(user);
+    return (
+      scoped.branchId || scoped.restaurant_id || scoped.restaurantId || null
+    );
+  }
+
+  private async assertCanManageTargetBranch(
+    user: User,
+    target: { id: string; brand_id?: string | null },
+  ): Promise<void> {
+    if (user.role === Role.SUPER_ADMIN) {
+      return;
+    }
+
+    if (user.role === Role.BRAND_OWNER || user.role === Role.RESTAURANT_OWNER) {
+      const actorBrandId = await this.getActorBrandId(user);
+      if (actorBrandId && target.brand_id === actorBrandId) {
+        return;
+      }
+      throw new ForbiddenException(
+        'You can only manage users for branches in your brand',
+      );
+    }
+
+    if (user.role === Role.BRANCH_MANAGER) {
+      const actorBranchId = this.getActorBranchId(user);
+      if (actorBranchId && actorBranchId === target.id) {
+        return;
+      }
+      throw new ForbiddenException(
+        'Branch manager can only manage users in own branch',
+      );
+    }
+
+    if (user.role === Role.MANAGER) {
+      if (user.restaurant_id === target.id) {
+        return;
+      }
+      throw new ForbiddenException(
+        'You can only manage users in your restaurant',
+      );
+    }
+
+    throw new ForbiddenException(
+      'You do not have permission for this branch operation',
+    );
+  }
+
+  private async createWithResolvedRestaurantId(
+    createUserDto: CreateUserDto,
+    requesterUser: User,
+    resolvedRestaurantId: string,
+    request?: Request,
+    targetBranchId?: string,
+  ): Promise<User> {
+    const { email, first_name, last_name, role, phone } = createUserDto;
+
+    if (role) {
+      if (role === Role.SUPER_ADMIN) {
+        throw new BadRequestException('Cannot create super_admin users');
+      }
+
+      if (!this.canCreateRole(requesterUser.role, role)) {
+        throw new ForbiddenException(
+          `You do not have permission to create users with role "${role}"`,
+        );
+      }
+    }
+
+    const providedPassword =
+      typeof createUserDto.password === 'string'
+        ? createUserDto.password.trim()
+        : '';
+    const tempPassword =
+      providedPassword || Math.random().toString(36).slice(-8);
+    const salt = await bcrypt.genSalt();
+    const password_hash = await bcrypt.hash(tempPassword, salt);
+
+    const user = this.usersRepository.create({
+      email,
+      password_hash,
+      first_name,
+      last_name,
+      phone,
+      role: role || Role.CUSTOMER,
+      restaurant_id: resolvedRestaurantId,
+    });
+
+    try {
+      const savedUser = await this.usersRepository.save(user);
+      const { password_hash: passwordHash, ...result } = savedUser;
+      void passwordHash;
+
+      await this.auditService.safeEmitLog(
+        {
+          action: AuditAction.USER_CREATED,
+          resource: 'USERS',
+          user_id: requesterUser.id,
+          user_name: this.buildActorName(requesterUser),
+          restaurant_id: savedUser.restaurant_id || requesterUser.restaurant_id,
+          payload: {
+            targetUserId: savedUser.id,
+            ...(targetBranchId ? { targetBranchId } : {}),
+          },
+          changes: sanitizeAuditChanges({
+            after: {
+              id: savedUser.id,
+              email: savedUser.email,
+              first_name: savedUser.first_name,
+              last_name: savedUser.last_name,
+              phone: savedUser.phone,
+              role: savedUser.role,
+              restaurant_id: savedUser.restaurant_id,
+              is_active: savedUser.is_active,
+            },
+          }),
+          ip_address: request?.ip,
+          user_agent: request?.headers['user-agent'],
+        },
+        'UsersService.createWithResolvedRestaurantId',
+      );
+      this.auditService.markRequestAsAudited(
+        request as unknown as Record<string, unknown>,
+      );
+
+      return result as User;
+    } catch (error) {
+      const errorCode =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof (error as { code?: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+
+      if (errorCode === '23505') {
+        throw new ConflictException(
+          `User with email "${email}" already exists`,
+        );
+      }
+      throw new InternalServerErrorException();
+    }
+  }
 
   async getScopedRoles(
     userId: string,
@@ -71,10 +262,9 @@ export class UsersService {
     }
 
     if (branchId) {
-      query.andWhere(
-        '(ubr.branch_id = :branchId OR ubr.branch_id IS NULL)',
-        { branchId },
-      );
+      query.andWhere('(ubr.branch_id = :branchId OR ubr.branch_id IS NULL)', {
+        branchId,
+      });
     }
 
     const roles = await query.getRawMany<{ role: Role }>();
@@ -104,9 +294,12 @@ export class UsersService {
       );
     }
     if (requesterRole === Role.BRANCH_MANAGER) {
-      return [Role.BRANCH_WAITER, Role.BRANCH_CHEF, Role.CUSTOMER].includes(
-        targetRole,
-      );
+      return [
+        Role.BRANCH_CASHIER,
+        Role.BRANCH_WAITER,
+        Role.BRANCH_CHEF,
+        Role.CUSTOMER,
+      ].includes(targetRole);
     }
     // Others cannot create users
     return false;
@@ -135,9 +328,12 @@ export class UsersService {
       );
     }
     if (requesterRole === Role.BRANCH_MANAGER) {
-      return [Role.BRANCH_WAITER, Role.BRANCH_CHEF, Role.CUSTOMER].includes(
-        targetRole,
-      );
+      return [
+        Role.BRANCH_CASHIER,
+        Role.BRANCH_WAITER,
+        Role.BRANCH_CHEF,
+        Role.CUSTOMER,
+      ].includes(targetRole);
     }
     return false;
   }
@@ -167,69 +363,52 @@ export class UsersService {
   async create(
     createUserDto: CreateUserDto,
     requesterUser: User,
+    request?: Request,
   ): Promise<User> {
-    const { email, first_name, last_name, role, restaurant_id, phone } =
-      createUserDto;
+    const { restaurant_id } = createUserDto;
 
-    // Validate role if provided
-    if (role) {
-      // Cannot create super_admin
-      if (role === Role.SUPER_ADMIN) {
-        throw new BadRequestException('Cannot create super_admin users');
-      }
-
-      // Check if requester can create users with this role
-      if (!this.canCreateRole(requesterUser.role, role)) {
-        throw new ForbiddenException(
-          `You do not have permission to create users with role "${role}"`,
-        );
-      }
-    }
-
-    // For non-super-admin requesters, validate restaurant_id
-    let userRestaurantId = restaurant_id;
+    let resolvedRestaurantId = restaurant_id;
     if (requesterUser.role !== Role.SUPER_ADMIN) {
-      userRestaurantId = requesterUser.restaurant_id;
-    } else if (!restaurant_id) {
+      resolvedRestaurantId = requesterUser.restaurant_id;
+    } else if (!resolvedRestaurantId) {
       throw new BadRequestException(
         'Restaurant ID is required for super_admin users',
       );
     }
 
-    // Use provided password when available, otherwise generate a temporary one.
-    const providedPassword =
-      typeof createUserDto.password === 'string'
-        ? createUserDto.password.trim()
-        : '';
-    const tempPassword =
-      providedPassword || Math.random().toString(36).slice(-8);
-    const salt = await bcrypt.genSalt();
-    const password_hash = await bcrypt.hash(tempPassword, salt);
+    return this.createWithResolvedRestaurantId(
+      createUserDto,
+      requesterUser,
+      resolvedRestaurantId,
+      request,
+    );
+  }
 
-    const user = this.usersRepository.create({
-      email,
-      password_hash,
-      first_name,
-      last_name,
-      phone,
-      role: role || Role.CUSTOMER,
-      restaurant_id: userRestaurantId,
+  async createForBranch(
+    branchId: string,
+    createUserDto: CreateUserDto,
+    requesterUser: User,
+    request?: Request,
+  ): Promise<User> {
+    const branch = await this.restaurantsService.findOne(
+      branchId,
+      requesterUser,
+    );
+    await this.assertCanManageTargetBranch(requesterUser, {
+      id: branch.id,
+      brand_id: branch.brand_id,
     });
 
-    try {
-      const savedUser = await this.usersRepository.save(user);
-      // Remove password_hash from response
-      const { password_hash: passwordHash, ...result } = savedUser;
-      void passwordHash;
-      return result as User;
-    } catch (error) {
-      if (error.code === '23505') {
-        throw new ConflictException(
-          `User with email "${email}" already exists`,
-        );
-      }
-      throw new InternalServerErrorException();
-    }
+    return this.createWithResolvedRestaurantId(
+      {
+        ...createUserDto,
+        restaurant_id: undefined,
+      },
+      requesterUser,
+      branch.id,
+      request,
+      branch.id,
+    );
   }
 
   async findByEmail(
@@ -272,10 +451,17 @@ export class UsersService {
       page?: number;
       limit?: number;
       search?: string;
+      branchId?: string;
       includeDeleted?: boolean;
     } = {},
   ): Promise<PaginatedUsers<User>> {
-    const { page = 1, limit = 10, search, includeDeleted = false } = options;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      branchId,
+      includeDeleted = false,
+    } = options;
 
     const queryBuilder = this.usersRepository.createQueryBuilder('user');
 
@@ -284,10 +470,34 @@ export class UsersService {
       queryBuilder.where('user.deleted_at IS NULL');
     }
 
-    // Filter by restaurant for non-super-admins
-    if (requestingUser.role !== Role.SUPER_ADMIN) {
+    if (requestingUser.role === Role.SUPER_ADMIN) {
+      if (branchId) {
+        queryBuilder.andWhere('user.restaurant_id = :branchId', { branchId });
+      }
+    } else if (
+      requestingUser.role === Role.BRAND_OWNER ||
+      requestingUser.role === Role.RESTAURANT_OWNER
+    ) {
+      const branches = await this.restaurantsService.findAll(requestingUser);
+      const branchIds = branches.map((branch) => branch.id);
+
+      if (!branchIds.length) {
+        queryBuilder.andWhere('1 = 0');
+      } else if (branchId) {
+        if (!branchIds.includes(branchId)) {
+          throw new ForbiddenException(
+            'You do not have access to this branch users',
+          );
+        }
+        queryBuilder.andWhere('user.restaurant_id = :branchId', { branchId });
+      } else {
+        queryBuilder.andWhere('user.restaurant_id IN (:...branchIds)', {
+          branchIds,
+        });
+      }
+    } else {
       queryBuilder.andWhere('user.restaurant_id = :restaurantId', {
-        restaurantId: requestingUser.restaurant_id,
+        restaurantId: this.getActorBranchId(requestingUser),
       });
     }
 
@@ -346,8 +556,19 @@ export class UsersService {
     id: string,
     updateUserDto: UpdateUserDto,
     requesterUser: User,
+    request?: Request,
   ): Promise<User> {
     const user = await this.validateUserAccess(id, requesterUser);
+    const beforeSnapshot = {
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      phone: user.phone,
+      role: user.role,
+      restaurant_id: user.restaurant_id,
+      is_active: user.is_active,
+    };
 
     // Check if trying to update to owner role (only super_admin can do this)
     if (
@@ -405,6 +626,39 @@ export class UsersService {
     const savedUser = await this.usersRepository.save(user);
     const { password_hash: passwordHash, ...result } = savedUser;
     void passwordHash;
+
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.USER_UPDATED,
+        resource: 'USERS',
+        user_id: requesterUser.id,
+        user_name: this.buildActorName(requesterUser),
+        restaurant_id: savedUser.restaurant_id || requesterUser.restaurant_id,
+        payload: {
+          targetUserId: savedUser.id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            id: savedUser.id,
+            email: savedUser.email,
+            first_name: savedUser.first_name,
+            last_name: savedUser.last_name,
+            phone: savedUser.phone,
+            role: savedUser.role,
+            restaurant_id: savedUser.restaurant_id,
+            is_active: savedUser.is_active,
+          },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'UsersService.update',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
+
     return result as User;
   }
 
@@ -412,8 +666,15 @@ export class UsersService {
     id: string,
     activateDeactivateDto: ActivateDeactivateUserDto,
     requesterUser: User,
+    request?: Request,
   ): Promise<User> {
     const user = await this.validateUserAccess(id, requesterUser);
+    const beforeSnapshot = {
+      id: user.id,
+      is_active: user.is_active,
+      role: user.role,
+      restaurant_id: user.restaurant_id,
+    };
 
     // Prevent deactivating yourself
     if (user.id === requesterUser.id) {
@@ -451,11 +712,51 @@ export class UsersService {
     const savedUser = await this.usersRepository.save(user);
     const { password_hash: passwordHash, ...result } = savedUser;
     void passwordHash;
+
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.USER_STATUS_CHANGED,
+        resource: 'USERS',
+        user_id: requesterUser.id,
+        user_name: this.buildActorName(requesterUser),
+        restaurant_id: savedUser.restaurant_id || requesterUser.restaurant_id,
+        payload: {
+          targetUserId: savedUser.id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            id: savedUser.id,
+            is_active: savedUser.is_active,
+            role: savedUser.role,
+            restaurant_id: savedUser.restaurant_id,
+          },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'UsersService.setActive',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
+
     return result as User;
   }
 
-  async softDelete(id: string, requesterUser: User): Promise<void> {
+  async softDelete(
+    id: string,
+    requesterUser: User,
+    request?: Request,
+  ): Promise<void> {
     const user = await this.validateUserAccess(id, requesterUser);
+    const beforeSnapshot = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      is_active: user.is_active,
+      restaurant_id: user.restaurant_id,
+    };
 
     // Cannot soft delete owner
     if (user.role === Role.RESTAURANT_OWNER) {
@@ -480,10 +781,36 @@ export class UsersService {
     }
 
     await this.usersRepository.softDelete(id);
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.USER_DELETED,
+        resource: 'USERS',
+        user_id: requesterUser.id,
+        user_name: this.buildActorName(requesterUser),
+        restaurant_id: user.restaurant_id || requesterUser.restaurant_id,
+        payload: {
+          targetUserId: user.id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: { deleted: true },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'UsersService.softDelete',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
   }
 
-  async restore(id: string, requesterUser: User): Promise<User> {
-    const user = await this.validateUserAccess(id, requesterUser);
+  async restore(
+    id: string,
+    requesterUser: User,
+    request?: Request,
+  ): Promise<User> {
+    const targetUser = await this.validateUserAccess(id, requesterUser);
 
     // Only super_admin can restore users
     if (requesterUser.role !== Role.SUPER_ADMIN) {
@@ -493,6 +820,36 @@ export class UsersService {
     await this.usersRepository.restore(id);
 
     const restoredUser = await this.findOne(id, requesterUser);
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.USER_RESTORED,
+        resource: 'USERS',
+        user_id: requesterUser.id,
+        user_name: this.buildActorName(requesterUser),
+        restaurant_id:
+          restoredUser.restaurant_id || requesterUser.restaurant_id,
+        payload: {
+          targetUserId: restoredUser.id,
+        },
+        changes: sanitizeAuditChanges({
+          before: {
+            id: targetUser.id,
+            deleted: true,
+          },
+          after: {
+            id: restoredUser.id,
+            deleted: false,
+            is_active: restoredUser.is_active,
+          },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'UsersService.restore',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
     return restoredUser;
   }
 
@@ -500,14 +857,54 @@ export class UsersService {
     userId: string,
     restaurantId: string,
     adminUser: User,
+    request?: Request,
   ): Promise<User> {
     const user = await this.findOne(userId, adminUser);
+    const beforeSnapshot = {
+      id: user.id,
+      restaurant_id: user.restaurant_id,
+      token_version: user.token_version,
+    };
     const restaurant = await this.restaurantsService.findOne(
       restaurantId,
       adminUser,
     );
+    await this.assertCanManageTargetBranch(adminUser, {
+      id: restaurant.id,
+      brand_id: restaurant.brand_id,
+    });
 
     user.restaurant_id = restaurant.id;
-    return this.usersRepository.save(user);
+    user.token_version = Number(user.token_version || 1) + 1;
+    const savedUser = await this.usersRepository.save(user);
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.USER_ASSIGNED_RESTAURANT,
+        resource: 'USERS',
+        user_id: adminUser.id,
+        user_name: this.buildActorName(adminUser),
+        restaurant_id: savedUser.restaurant_id || adminUser.restaurant_id,
+        payload: {
+          targetUserId: savedUser.id,
+          assignedRestaurantId: restaurant.id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            id: savedUser.id,
+            restaurant_id: savedUser.restaurant_id,
+            token_version: savedUser.token_version,
+          },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'UsersService.assignToRestaurant',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
+
+    return savedUser;
   }
 }

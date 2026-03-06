@@ -21,6 +21,9 @@ import { MenuItemSpecFactory } from './query/menu-item-spec.factory';
 import { BranchMenuOverride } from './entities/branch-menu-override.entity';
 import { EffectiveMenuCacheService } from './services/effective-menu-cache.service';
 import { BranchMenuOverridesService } from './services/branch-menu-overrides.service';
+import { BranchCategoryOverride } from './entities/branch-category-override.entity';
+import { BranchCategoryOverridesService } from './services/branch-category-overrides.service';
+import { EffectiveMenuResolverService } from './services/effective-menu-resolver.service';
 
 @Module({
   imports: [
@@ -32,6 +35,7 @@ import { BranchMenuOverridesService } from './services/branch-menu-overrides.ser
       Stock,
       Restaurant,
       BranchMenuOverride,
+      BranchCategoryOverride,
     ]),
     RulesModule,
   ],
@@ -47,8 +51,10 @@ import { BranchMenuOverridesService } from './services/branch-menu-overrides.ser
     MenuItemQueryService,
     MenuItemSpecFactory,
     EffectiveMenuCacheService,
+    EffectiveMenuResolverService,
     BranchMenuOverridesService,
+    BranchCategoryOverridesService,
   ],
-  exports: [MenusService],
+  exports: [MenusService, EffectiveMenuResolverService],
 })
 export class MenusModule {}

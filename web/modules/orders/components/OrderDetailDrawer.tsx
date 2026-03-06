@@ -6,7 +6,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { X, Clock, User, FileText, Printer, CreditCard } from 'lucide-react'
+import { X, Clock, User, FileText, Printer, CreditCard, Move } from 'lucide-react'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LABELS } from '../types'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { formatDateTime } from '@/modules/shared/utils/date'
@@ -20,6 +20,7 @@ interface OrderDetailDrawerProps {
   onPrint: (group: OrderGroup) => void
   onEditOrder: (group: OrderGroup) => void
   onTakePayment: (group: OrderGroup) => void
+  onMoveTable: (group: OrderGroup) => void
 }
 
 export function OrderDetailDrawer({
@@ -29,6 +30,7 @@ export function OrderDetailDrawer({
   onPrint,
   onEditOrder,
   onTakePayment,
+  onMoveTable,
 }: OrderDetailDrawerProps) {
   const latestOrder = orderGroup ? orderGroup.orders[orderGroup.orders.length - 1] : null
   const activeWaveItems = useMemo(
@@ -88,7 +90,7 @@ export function OrderDetailDrawer({
             <OrderStatusBadge status={order.status} />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <button
               type="button"
               onClick={() => onPrint(orderGroup)}
@@ -104,6 +106,15 @@ export function OrderDetailDrawer({
               className="flex items-center justify-center gap-1 rounded-sm border border-border-light bg-bg-surface px-2 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               Sipariş Güncelle
+            </button>
+            <button
+              type="button"
+              onClick={() => onMoveTable(orderGroup)}
+              disabled={!hasTable}
+              className="flex items-center justify-center gap-1 rounded-sm border border-border-light bg-bg-surface px-2 py-2 text-[10px] font-black uppercase tracking-wider text-text-primary hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Move className="h-3.5 w-3.5" />
+              Masa Taşı
             </button>
             <button
               type="button"

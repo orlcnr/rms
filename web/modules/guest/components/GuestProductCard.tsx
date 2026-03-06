@@ -2,6 +2,7 @@ import { ImageOff, Minus, Plus, Soup } from 'lucide-react'
 import { cn } from '@/modules/shared/utils/cn'
 import type { GuestCatalogItem } from '../types'
 import { formatCurrency } from './guest-view-utils'
+import { resolveDisplayPrice } from '@/modules/shared/utils/pricing'
 
 interface GuestProductCardProps {
   item: GuestCatalogItem
@@ -93,7 +94,7 @@ export function GuestProductCard({
           {item.description || 'Masa servisine uygun, mutfaktan taze hazırlanır.'}
         </p>
         <p className="mt-3 text-sm font-black tabular-nums text-text-primary">
-          {formatCurrency(item.price)}
+          {formatCurrency(resolveDisplayPrice(item, { branchContext: true }))}
         </p>
 
         <div className="mt-3">

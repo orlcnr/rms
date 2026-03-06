@@ -6,7 +6,9 @@ import {
   Param,
   Query,
   Patch,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -29,8 +31,17 @@ export class CustomersController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
-  create(@Body() createCustomerDto: CreateCustomerDto, @GetUser() user: User) {
-    return this.customersService.create(createCustomerDto, user.restaurant_id);
+  create(
+    @Body() createCustomerDto: CreateCustomerDto,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.customersService.create(
+      createCustomerDto,
+      user.restaurant_id,
+      user,
+      request,
+    );
   }
 
   @Patch(':id')
@@ -39,11 +50,14 @@ export class CustomersController {
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
     return this.customersService.update(
       id,
       updateCustomerDto,
       user.restaurant_id,
+      user,
+      request,
     );
   }
 
@@ -72,8 +86,12 @@ export class CustomersController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a customer' })
-  remove(@Param('id') id: string, @GetUser() user: User) {
-    return this.customersService.remove(id, user.restaurant_id);
+  remove(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.customersService.remove(id, user.restaurant_id, user, request);
   }
 
   @Get(':id/orders')

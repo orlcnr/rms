@@ -26,6 +26,33 @@ export class OrderItem extends BaseEntity {
   @Column({ name: 'unit_price', type: 'decimal', precision: 10, scale: 2 })
   unitPrice: number;
 
+  @Column({
+    name: 'base_price',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  basePrice: number | null;
+
+  @Column({
+    name: 'override_price',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  overridePrice: number | null;
+
+  @Column({
+    name: 'unit_price_locked',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  unitPriceLocked: number | null;
+
   @Column({ name: 'subtotal', type: 'decimal', precision: 10, scale: 2 })
   totalPrice: number; // Mapping frontend totalPrice to backend subtotal
 

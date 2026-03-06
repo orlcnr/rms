@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { MenuItem } from '../entities/menu-item.entity';
 import { GetMenuItemsDto } from '../dto/get-menu-items.dto';
 import { QuerySpec } from './specs/query-spec.interface';
-import { SearchSpec } from './specs/search.spec';
-import { CategorySpec } from './specs/category.spec';
-import { SalesStatusSpec } from './specs/sales-status.spec';
-import { PriceRangeSpec } from './specs/price-range.spec';
-import { PosModeSpec } from './specs/pos-mode.spec';
-import { StockStatusSpec } from './specs/stock-status.spec';
+import { SearchSpec } from './specs/search.query-spec';
+import { CategorySpec } from './specs/category.query-spec';
+import { SalesStatusSpec } from './specs/sales-status.query-spec';
+import { PriceRangeSpec } from './specs/price-range.query-spec';
+import { PosModeSpec } from './specs/pos-mode.query-spec';
+import { StockStatusSpec } from './specs/stock-status.query-spec';
 
 @Injectable()
 export class MenuItemSpecFactory {

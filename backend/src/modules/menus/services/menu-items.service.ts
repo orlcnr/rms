@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { MenuItem } from '../entities/menu-item.entity';
 import { CreateMenuItemDto } from '../dto/create-menu-item.dto';
@@ -15,6 +16,10 @@ import { CategoriesService } from './categories.service';
 import { RulesService } from '../../rules/rules.service';
 import { RuleKey } from '../../rules/enums/rule-key.enum';
 import { EffectiveMenuCacheService } from './effective-menu-cache.service';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../../audit/utils/sanitize-audit.util';
+import type { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class MenuItemsService {
@@ -26,9 +31,21 @@ export class MenuItemsService {
     private readonly categoriesService: CategoriesService,
     private readonly rulesService: RulesService,
     private readonly effectiveMenuCacheService: EffectiveMenuCacheService,
+    private readonly auditService: AuditService,
   ) {}
 
-  async create(createMenuItemDto: CreateMenuItemDto): Promise<MenuItem> {
+  private buildActorName(user?: User): string | undefined {
+    if (!user?.first_name) {
+      return undefined;
+    }
+    return `${user.first_name} ${user.last_name || ''}`.trim();
+  }
+
+  async create(
+    createMenuItemDto: CreateMenuItemDto,
+    actor?: User,
+    request?: Request,
+  ): Promise<MenuItem> {
     const { recipes = [], ...itemData } = createMenuItemDto;
     const queryRunner = this.dataSource.createQueryRunner();
 
@@ -76,6 +93,42 @@ export class MenuItemsService {
         );
       }
 
+      await this.auditService.safeEmitLog(
+        {
+          action: AuditAction.MENU_ITEM_CREATED,
+          resource: 'MENUS',
+          user_id: actor?.id,
+          user_name: this.buildActorName(actor),
+          restaurant_id: savedItem.restaurant_id,
+          payload: {
+            menuItemId: savedItem.id,
+            categoryId: savedItem.category_id,
+            restaurantId: savedItem.restaurant_id,
+            brandId: savedItem.brand_id,
+            branchId: savedItem.branch_id,
+          },
+          changes: sanitizeAuditChanges({
+            after: {
+              id: savedItem.id,
+              name: savedItem.name,
+              price: savedItem.price,
+              category_id: savedItem.category_id,
+              restaurant_id: savedItem.restaurant_id,
+              brand_id: savedItem.brand_id,
+              branch_id: savedItem.branch_id,
+              is_available: savedItem.is_available,
+              track_inventory: savedItem.track_inventory,
+            },
+          }),
+          ip_address: request?.ip,
+          user_agent: request?.headers['user-agent'],
+        },
+        'MenuItemsService.create',
+      );
+      this.auditService.markRequestAsAudited(
+        request as unknown as Record<string, unknown>,
+      );
+
       return savedItem;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -88,6 +141,8 @@ export class MenuItemsService {
   async update(
     id: string,
     updateMenuItemDto: UpdateMenuItemDto,
+    actor?: User,
+    request?: Request,
   ): Promise<MenuItem> {
     const { recipes = [], ...itemData } = updateMenuItemDto;
     const queryRunner = this.dataSource.createQueryRunner();
@@ -102,6 +157,18 @@ export class MenuItemsService {
       if (!existingItem) {
         throw new NotFoundException(`MenuItem #${id} not found`);
       }
+
+      const beforeSnapshot = {
+        id: existingItem.id,
+        name: existingItem.name,
+        price: existingItem.price,
+        category_id: existingItem.category_id,
+        restaurant_id: existingItem.restaurant_id,
+        brand_id: existingItem.brand_id,
+        branch_id: existingItem.branch_id,
+        is_available: existingItem.is_available,
+        track_inventory: existingItem.track_inventory,
+      };
 
       Object.assign(existingItem, itemData);
       const savedItem = await this.menuItemRepository.save(
@@ -130,6 +197,43 @@ export class MenuItemsService {
         );
       }
 
+      await this.auditService.safeEmitLog(
+        {
+          action: AuditAction.MENU_ITEM_UPDATED,
+          resource: 'MENUS',
+          user_id: actor?.id,
+          user_name: this.buildActorName(actor),
+          restaurant_id: savedItem.restaurant_id,
+          payload: {
+            menuItemId: savedItem.id,
+            categoryId: savedItem.category_id,
+            restaurantId: savedItem.restaurant_id,
+            brandId: savedItem.brand_id,
+            branchId: savedItem.branch_id,
+          },
+          changes: sanitizeAuditChanges({
+            before: beforeSnapshot,
+            after: {
+              id: savedItem.id,
+              name: savedItem.name,
+              price: savedItem.price,
+              category_id: savedItem.category_id,
+              restaurant_id: savedItem.restaurant_id,
+              brand_id: savedItem.brand_id,
+              branch_id: savedItem.branch_id,
+              is_available: savedItem.is_available,
+              track_inventory: savedItem.track_inventory,
+            },
+          }),
+          ip_address: request?.ip,
+          user_agent: request?.headers['user-agent'],
+        },
+        'MenuItemsService.update',
+      );
+      this.auditService.markRequestAsAudited(
+        request as unknown as Record<string, unknown>,
+      );
+
       return savedItem;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -139,7 +243,7 @@ export class MenuItemsService {
     }
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, actor?: User, request?: Request): Promise<void> {
     const item = await this.menuItemRepository.findByIdWithCategory(id);
 
     if (!item) {
@@ -161,6 +265,42 @@ export class MenuItemsService {
     if (item.branch_id) {
       await this.effectiveMenuCacheService.invalidateBranch(item.branch_id);
     }
+
+    await this.auditService.safeEmitLog(
+      {
+        action: AuditAction.MENU_ITEM_DELETED,
+        resource: 'MENUS',
+        user_id: actor?.id,
+        user_name: this.buildActorName(actor),
+        restaurant_id: item.restaurant_id,
+        payload: {
+          menuItemId: id,
+          categoryId: item.category_id,
+          restaurantId: item.restaurant_id,
+          brandId: item.brand_id,
+          branchId: item.branch_id,
+        },
+        changes: sanitizeAuditChanges({
+          before: {
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            category_id: item.category_id,
+            restaurant_id: item.restaurant_id,
+            brand_id: item.brand_id,
+            branch_id: item.branch_id,
+            is_available: item.is_available,
+            track_inventory: item.track_inventory,
+          },
+        }),
+        ip_address: request?.ip,
+        user_agent: request?.headers['user-agent'],
+      },
+      'MenuItemsService.delete',
+    );
+    this.auditService.markRequestAsAudited(
+      request as unknown as Record<string, unknown>,
+    );
   }
 
   async findById(id: string): Promise<MenuItemResponseDto> {

@@ -7,7 +7,9 @@ import {
   UseGuards,
   Query,
   Delete,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CashService } from './cash.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -22,6 +24,9 @@ import {
   CreateCashRegisterDto,
 } from './dto/cash-ops.dto';
 import { GetSessionHistoryDto } from './dto/get-session-history.dto';
+import type { User } from '../users/entities/user.entity';
+
+type CashUser = User & { restaurantId?: string };
 
 @ApiTags('Cash Management')
 @Controller('cash')
@@ -30,36 +35,57 @@ import { GetSessionHistoryDto } from './dto/get-session-history.dto';
 export class CashController {
   constructor(private readonly cashService: CashService) {}
 
+  private getRestaurantId(user: CashUser): string {
+    return user.restaurantId || user.restaurant_id;
+  }
+
   @Get('registers')
   @ApiOperation({
     summary: 'Get all cash registers with their current session status',
   })
-  getRegisters(@GetUser() user: any) {
-    return this.cashService.getRegisters(user.restaurantId);
+  getRegisters(@GetUser() user: CashUser) {
+    return this.cashService.getRegisters(this.getRestaurantId(user));
   }
 
   @Post('registers')
   @ApiOperation({ summary: 'Create a new cash register' })
-  createRegister(@GetUser() user: any, @Body() dto: CreateCashRegisterDto) {
-    return this.cashService.createRegister(user.restaurantId, dto);
+  createRegister(
+    @GetUser() user: CashUser,
+    @Body() dto: CreateCashRegisterDto,
+    @Req() request: Request,
+  ) {
+    return this.cashService.createRegister(
+      this.getRestaurantId(user),
+      dto,
+      user,
+      request,
+    );
   }
 
   @Delete('registers/:registerId')
   @ApiOperation({ summary: 'Kasayı siler' })
-  deleteRegister(@Param('registerId') registerId: string) {
-    return this.cashService.deleteRegister(registerId);
+  deleteRegister(
+    @Param('registerId') registerId: string,
+    @GetUser() user: CashUser,
+    @Req() request: Request,
+  ) {
+    return this.cashService.deleteRegister(registerId, user, request);
   }
 
   @Get('registers/active-sessions')
   @ApiOperation({ summary: 'Tüm açık kasa oturumlarını getirir' })
-  getAllActiveSessions(@GetUser() user: any) {
-    return this.cashService.getAllActiveSessions(user.restaurantId);
+  getAllActiveSessions(@GetUser() user: CashUser) {
+    return this.cashService.getAllActiveSessions(this.getRestaurantId(user));
   }
 
   @Post('registers/ensure-default')
   @ApiOperation({ summary: 'Varsayılan kasayı hazırla' })
-  ensureDefault(@GetUser() user: any) {
-    return this.cashService.ensureDefaultRegister(user.restaurantId);
+  ensureDefault(@GetUser() user: CashUser, @Req() request: Request) {
+    return this.cashService.ensureDefaultRegister(
+      this.getRestaurantId(user),
+      user,
+      request,
+    );
   }
 
   @Get('registers/:registerId/sessions')
@@ -70,18 +96,36 @@ export class CashController {
 
   @Post('sessions/open')
   @ApiOperation({ summary: 'Yeni kasa oturumu açar' })
-  openSession(@GetUser() user: any, @Body() dto: OpenCashSessionDto) {
-    return this.cashService.openSession(user.restaurantId, user.id, dto);
+  openSession(
+    @GetUser() user: CashUser,
+    @Body() dto: OpenCashSessionDto,
+    @Req() request: Request,
+  ) {
+    return this.cashService.openSession(
+      this.getRestaurantId(user),
+      user.id,
+      dto,
+      user,
+      request,
+    );
   }
 
   @Post('sessions/:sessionId/close')
   @ApiOperation({ summary: 'Kasa oturumunu kapatır' })
   closeSession(
-    @GetUser() user: any,
+    @GetUser() user: CashUser,
     @Param() params: SessionIdParamDto,
     @Body() dto: CloseCashSessionDto,
+    @Req() request: Request,
   ) {
-    return this.cashService.closeSession(user.id, params.sessionId, dto);
+    return this.cashService.closeSession(
+      user.id,
+      params.sessionId,
+      dto,
+      undefined,
+      user,
+      request,
+    );
   }
 
   @Get('sessions/:sessionId/movements')
@@ -99,11 +143,11 @@ export class CashController {
   @Get('sessions/:sessionId/reconciliation')
   @ApiOperation({ summary: 'Kasa oturum tam mutabakat raporunu getirir' })
   getReconciliationReport(
-    @GetUser() user: any,
+    @GetUser() user: CashUser,
     @Param() params: SessionIdParamDto,
   ) {
     return this.cashService.getReconciliationReport(
-      user.restaurantId,
+      this.getRestaurantId(user),
       params.sessionId,
     );
   }
@@ -111,11 +155,19 @@ export class CashController {
   @Post('sessions/:sessionId/movements')
   @ApiOperation({ summary: 'Manuel kasa hareketi ekler' })
   addMovement(
-    @GetUser() user: any,
+    @GetUser() user: CashUser,
     @Param() params: SessionIdParamDto,
     @Body() dto: CreateCashMovementDto,
+    @Req() request: Request,
   ) {
-    return this.cashService.addMovement(user.id, params.sessionId, dto);
+    return this.cashService.addMovement(
+      user.id,
+      params.sessionId,
+      dto,
+      undefined,
+      user,
+      request,
+    );
   }
 
   @Get('sessions/history')
@@ -123,10 +175,13 @@ export class CashController {
     summary: 'Tüm kasa oturumlarını filtrelerle getirir (raporlama)',
   })
   getSessionHistory(
-    @GetUser() user: any,
+    @GetUser() user: CashUser,
     @Query() filters: GetSessionHistoryDto,
   ) {
-    return this.cashService.getSessionHistory(user.restaurantId, filters);
+    return this.cashService.getSessionHistory(
+      this.getRestaurantId(user),
+      filters,
+    );
   }
 
   @Get('sessions/:sessionId')

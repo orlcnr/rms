@@ -99,8 +99,14 @@ export const ordersApi = {
    * Move order to different table
    * PATCH /orders/:id/move-to-table
    */
-  moveOrderToTable: async (id: string, tableId: string) => {
-    return http.patch<Order>(`/orders/${id}/move-to-table`, { tableId })
+  moveOrderToTable: async (
+    id: string,
+    payload: {
+      new_table_id: string
+      on_target_occupied?: 'reject' | 'merge'
+    },
+  ) => {
+    return http.patch<Order>(`/orders/${id}/move-to-table`, payload)
   },
 
   /**

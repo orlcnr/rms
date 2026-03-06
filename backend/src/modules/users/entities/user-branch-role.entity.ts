@@ -6,7 +6,12 @@ import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 import { User } from './user.entity';
 
 @Entity('user_branch_roles', { schema: 'business' })
-@Unique('uq_user_branch_roles_scope', ['user_id', 'brand_id', 'branch_id', 'role'])
+@Unique('uq_user_branch_roles_scope', [
+  'user_id',
+  'brand_id',
+  'branch_id',
+  'role',
+])
 @Index('idx_user_branch_roles_user', ['user_id'])
 @Index('idx_user_branch_roles_scope_lookup', ['brand_id', 'branch_id', 'role'])
 export class UserBranchRole extends BaseEntity {

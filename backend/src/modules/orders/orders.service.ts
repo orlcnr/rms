@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import {
@@ -14,13 +15,17 @@ import {
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
-import { MenuItem } from '../menus/entities/menu-item.entity';
 import { Table, TableStatus } from '../tables/entities/table.entity';
 import { MoveOrderUseCase } from './use-cases/move-order.use-case';
 import { RulesService } from '../rules/rules.service';
 import { RuleKey } from '../rules/enums/rule-key.enum';
 import { User } from '../users/entities/user.entity';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
+import { EffectiveMenuResolverService } from '../menus/services/effective-menu-resolver.service';
+import { calculateOrderTotalFromItems } from './utils/order-total.util';
 
 @Injectable()
 export class OrdersService {
@@ -34,7 +39,54 @@ export class OrdersService {
     private readonly moveOrderUseCase: MoveOrderUseCase,
     private readonly rulesService: RulesService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
+    private readonly effectiveMenuResolverService: EffectiveMenuResolverService,
   ) {}
+
+  private buildActorName(actor?: User): string | undefined {
+    if (!actor?.first_name) {
+      return undefined;
+    }
+    return `${actor.first_name} ${actor.last_name || ''}`.trim();
+  }
+
+  private async emitDomainAudit(params: {
+    action: AuditAction;
+    restaurantId?: string;
+    payload?: Record<string, unknown>;
+    changes?: {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    actor?: User;
+    request?: Request;
+    context: string;
+  }): Promise<void> {
+    const headerUserAgent = params.request?.headers?.['user-agent'];
+    const userAgent =
+      typeof headerUserAgent === 'string'
+        ? headerUserAgent
+        : headerUserAgent?.[0];
+
+    await this.auditService.safeEmitLog(
+      {
+        action: params.action,
+        resource: 'ORDERS',
+        user_id: params.actor?.id,
+        user_name: this.buildActorName(params.actor),
+        restaurant_id: params.restaurantId,
+        payload: params.payload,
+        changes: params.changes,
+        ip_address: params.request?.ip,
+        user_agent: userAgent,
+      },
+      params.context,
+    );
+    this.auditService.markRequestAsAudited(
+      params.request as unknown as Record<string, unknown>,
+    );
+  }
 
   async findAll(
     restaurantId: string,
@@ -83,7 +135,11 @@ export class OrdersService {
     return orders;
   }
 
-  async create(createOrderDto: CreateOrderDto, user: User): Promise<Order> {
+  async create(
+    createOrderDto: CreateOrderDto,
+    user: User,
+    request?: Request,
+  ): Promise<Order> {
     const {
       table_id,
       items,
@@ -170,37 +226,49 @@ export class OrdersService {
 
       const savedOrder = await queryRunner.manager.save(order);
 
-      let totalAmount = 0;
+      const requestedMenuIds = [
+        ...new Set(items.map((item) => item.menu_item_id)),
+      ];
+      const resolvedItems =
+        await this.effectiveMenuResolverService.resolveManyForBranch({
+          branchId: user.restaurant_id,
+          menuItemIds: requestedMenuIds,
+        });
+
+      const orderItemsToSave: OrderItem[] = [];
       for (const itemDto of items) {
-        const menuItem = await queryRunner.manager
-          .createQueryBuilder(MenuItem, 'menuItem')
-          .where('menuItem.id = :menuItemId', {
-            menuItemId: itemDto.menu_item_id,
-          })
-          .andWhere('menuItem.restaurant_id = :restaurantId', {
-            restaurantId: user.restaurant_id,
-          })
-          .getOne();
-        if (!menuItem) {
+        const resolved = resolvedItems.get(itemDto.menu_item_id);
+        if (!resolved) {
           throw new NotFoundException(
             `Menu item with ID ${itemDto.menu_item_id} not found`,
           );
         }
+        if (!resolved.isVisible) {
+          throw new BadRequestException(
+            `Menu item with ID ${itemDto.menu_item_id} is hidden or unavailable for this branch`,
+          );
+        }
 
-        const subtotal = menuItem.price * itemDto.quantity;
-        totalAmount += subtotal;
+        const subtotal = resolved.effectivePrice * itemDto.quantity;
 
         const orderItem = queryRunner.manager.create(OrderItem, {
           orderId: savedOrder.id,
-          menuItemId: menuItem.id,
+          menuItemId: itemDto.menu_item_id,
           quantity: itemDto.quantity,
-          unitPrice: menuItem.price,
+          unitPrice: resolved.effectivePrice,
+          basePrice: resolved.basePrice,
+          overridePrice: resolved.customPrice,
+          unitPriceLocked: resolved.effectivePrice,
           totalPrice: subtotal,
         });
-        await queryRunner.manager.save(orderItem);
+        orderItemsToSave.push(orderItem);
       }
 
-      savedOrder.totalAmount = totalAmount;
+      if (orderItemsToSave.length > 0) {
+        await queryRunner.manager.save(orderItemsToSave);
+      }
+
+      savedOrder.totalAmount = calculateOrderTotalFromItems(orderItemsToSave);
       await queryRunner.manager.save(savedOrder);
 
       await queryRunner.commitTransaction();
@@ -223,6 +291,27 @@ export class OrdersService {
           );
         },
       );
+
+      await this.emitDomainAudit({
+        action: AuditAction.ORDER_CREATED,
+        restaurantId: user.restaurant_id,
+        payload: {
+          orderId: finalOrder.id,
+          transactionId: transaction_id,
+        },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: finalOrder.id,
+            status: finalOrder.status,
+            totalAmount: Number(finalOrder.totalAmount),
+            itemCount: finalOrder.items?.length || 0,
+            tableId: finalOrder.tableId || null,
+          },
+        }),
+        actor: user,
+        request,
+        context: 'OrdersService.create',
+      });
 
       return finalOrder;
     } catch (err) {
@@ -258,6 +347,8 @@ export class OrdersService {
     id: string,
     status: OrderStatus,
     transactionId?: string,
+    actor?: User,
+    request?: Request,
   ): Promise<Order> {
     const order = await this.findOne(id);
     const previousStatus = order.status;
@@ -368,6 +459,22 @@ export class OrdersService {
         );
       },
     );
+
+    await this.emitDomainAudit({
+      action: AuditAction.ORDER_STATUS_UPDATED,
+      restaurantId: order.restaurantId,
+      payload: {
+        orderId: finalOrder.id,
+        transactionId,
+      },
+      changes: sanitizeAuditChanges({
+        before: { status: previousStatus },
+        after: { status: finalOrder.status },
+      }),
+      actor,
+      request,
+      context: 'OrdersService.updateStatus',
+    });
     return finalOrder;
   }
 
@@ -375,6 +482,8 @@ export class OrdersService {
     orderIds: string[],
     status: OrderStatus,
     transactionId?: string,
+    actor?: User,
+    request?: Request,
   ): Promise<Order[]> {
     if (!orderIds.length) return [];
 
@@ -502,6 +611,30 @@ export class OrdersService {
           error,
         );
       });
+
+      await this.emitDomainAudit({
+        action: AuditAction.ORDER_STATUS_BATCH_UPDATED,
+        restaurantId,
+        payload: {
+          transactionId,
+        },
+        changes: {
+          meta: {
+            operation: 'batch_status_update',
+            itemCount: orderIds.length,
+            affectedCount: updatedOrders.length,
+            failedIds: orderIds.filter(
+              (orderId) => !updatedOrders.find((item) => item.id === orderId),
+            ),
+            context: {
+              targetStatus: status,
+            },
+          },
+        },
+        actor,
+        request,
+        context: 'OrdersService.batchUpdateStatus',
+      });
     }
 
     return updatedOrders;
@@ -511,8 +644,30 @@ export class OrdersService {
     orderId: string,
     newTableId: string,
     restaurantId: string,
+    onTargetOccupied: 'reject' | 'merge' = 'reject',
+    actor?: User,
+    request?: Request,
   ): Promise<Order> {
-    return this.moveOrderUseCase.execute(orderId, newTableId, restaurantId);
+    const beforeOrder = await this.findOne(orderId);
+    const movedOrder = await this.moveOrderUseCase.execute(
+      orderId,
+      newTableId,
+      restaurantId,
+      onTargetOccupied,
+    );
+    await this.emitDomainAudit({
+      action: AuditAction.ORDER_MOVED_TO_TABLE,
+      restaurantId,
+      payload: { orderId: movedOrder.id },
+      changes: sanitizeAuditChanges({
+        before: { tableId: beforeOrder.tableId || null },
+        after: { tableId: movedOrder.tableId || null },
+      }),
+      actor,
+      request,
+      context: 'OrdersService.moveOrder',
+    });
+    return movedOrder;
   }
 
   async updateItems(
@@ -524,6 +679,8 @@ export class OrdersService {
     customer_id?: string,
     address?: string,
     transaction_id?: string,
+    actor?: User,
+    request?: Request,
   ): Promise<Order> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -531,6 +688,10 @@ export class OrdersService {
 
     try {
       const order = await this._validateOrderForUpdate(queryRunner, id);
+      const beforeSnapshot = {
+        status: order.status,
+        totalAmount: Number(order.totalAmount || 0),
+      };
       const previousStatus = order.status;
       let hasNewItems = false;
 
@@ -557,28 +718,27 @@ export class OrdersService {
         .orderBy('orderItem.created_at', 'ASC')
         .getMany();
 
-      const menuItemsById = new Map<string, MenuItem>();
-      if (requestedMenuIds.length > 0) {
-        const menuItems = await queryRunner.manager
-          .createQueryBuilder(MenuItem, 'menuItem')
-          .where('menuItem.id IN (:...menuIds)', {
-            menuIds: requestedMenuIds,
-          })
-          .andWhere('menuItem.restaurant_id = :restaurantId', {
-            restaurantId: restaurantId,
-          })
-          .getMany();
-
-        menuItems.forEach((menuItem) => {
-          menuItemsById.set(menuItem.id, menuItem);
+      const resolvedItems =
+        await this.effectiveMenuResolverService.resolveManyForBranch({
+          branchId: restaurantId,
+          menuItemIds: requestedMenuIds,
         });
-
+      if (requestedMenuIds.length > 0) {
         const missingMenuIds = requestedMenuIds.filter(
-          (menuId) => !menuItemsById.has(menuId),
+          (menuId) => !resolvedItems.has(menuId),
         );
         if (missingMenuIds.length > 0) {
           throw new NotFoundException(
-            `Menu item with ID ${missingMenuIds[0]} not found in this restaurant`,
+            `Menu item with ID ${missingMenuIds[0]} not found in this branch scope`,
+          );
+        }
+
+        const hiddenMenuIds = requestedMenuIds.filter(
+          (menuId) => !resolvedItems.get(menuId)?.isVisible,
+        );
+        if (hiddenMenuIds.length > 0) {
+          throw new BadRequestException(
+            `Menu item with ID ${hiddenMenuIds[0]} is hidden or unavailable for this branch`,
           );
         }
       }
@@ -637,13 +797,16 @@ export class OrdersService {
         }
 
         if (remainingRequestedQty > 0) {
-          const menuItem = menuItemsById.get(menuItemId)!;
-          const unitPrice = Number(menuItem.price);
+          const resolved = resolvedItems.get(menuItemId)!;
+          const unitPrice = Number(resolved.effectivePrice);
           const newItem = queryRunner.manager.create(OrderItem, {
             orderId: order.id,
-            menuItemId: menuItem.id,
+            menuItemId,
             quantity: remainingRequestedQty,
             unitPrice,
+            basePrice: resolved.basePrice,
+            overridePrice: resolved.customPrice,
+            unitPriceLocked: unitPrice,
             totalPrice: unitPrice * remainingRequestedQty,
             status: OrderStatus.PENDING,
           });
@@ -668,10 +831,7 @@ export class OrdersService {
       const finalItems = await queryRunner.manager.find(OrderItem, {
         where: { orderId: order.id },
       });
-      const totalAmount = finalItems.reduce(
-        (sum, item) => sum + Number(item.totalPrice),
-        0,
-      );
+      const totalAmount = calculateOrderTotalFromItems(finalItems);
 
       order.totalAmount = totalAmount;
       if (hasNewItems && order.status !== OrderStatus.PENDING) {
@@ -702,6 +862,26 @@ export class OrdersService {
           '[OrdersService] Failed to notify kitchen load after updateItems:',
           error,
         );
+      });
+
+      await this.emitDomainAudit({
+        action: AuditAction.ORDER_ITEMS_UPDATED,
+        restaurantId,
+        payload: {
+          orderId: finalOrder.id,
+          transactionId: transaction_id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            status: finalOrder.status,
+            totalAmount: Number(finalOrder.totalAmount),
+            itemCount: finalOrder.items?.length || 0,
+          },
+        }),
+        actor,
+        request,
+        context: 'OrdersService.updateItems',
       });
 
       return finalOrder;

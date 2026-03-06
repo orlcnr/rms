@@ -67,6 +67,22 @@ async function bootstrap() {
     },
   });
 
+  // RabbitMQ Inventory Domain Events Microservice
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [
+        configService.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672',
+      ],
+      queue:
+        configService.get<string>('RABBITMQ_INVENTORY_QUEUE') ||
+        'inventory_events_queue',
+      queueOptions: {
+        durable: true,
+      },
+    },
+  });
+
   await app.startAllMicroservices();
 
   // Security

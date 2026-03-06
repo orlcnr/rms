@@ -40,6 +40,7 @@ import { ConvertGuestOrderUseCase } from './use-cases';
 
 // Listeners
 import { TableEventsListener } from './listeners';
+import { MenusModule } from '../menus/menus.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { TableEventsListener } from './listeners';
         },
       }),
     }),
+    MenusModule,
   ],
   controllers: [
     GuestSessionsController,

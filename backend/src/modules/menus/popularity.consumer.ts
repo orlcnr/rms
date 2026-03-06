@@ -62,8 +62,7 @@ export class PopularityConsumer {
         .createQueryBuilder()
         .update(MenuItem)
         .set({
-          popularity: () =>
-            `popularity + CASE id ${cases} ELSE 0 END`,
+          popularity: () => `popularity + CASE id ${cases} ELSE 0 END`,
         })
         .where('id IN (:...ids)', { ids })
         .andWhere('restaurant_id = :restaurantId', {

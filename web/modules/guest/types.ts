@@ -3,6 +3,8 @@ export interface GuestCatalogItem {
   name: string
   description?: string | null
   price: number
+  base_price?: number
+  effective_price?: number
   image_url?: string | null
   is_available: boolean
   popularity?: number

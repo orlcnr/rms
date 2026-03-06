@@ -13,4 +13,8 @@ export class CreateRecipeDto {
   @Min(0.001)
   @IsNotEmpty()
   quantity: number;
+
+  @IsString()
+  @IsNotEmpty()
+  unit: string;
 }

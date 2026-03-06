@@ -45,7 +45,11 @@ export class SuperAdminAuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
 
-    if (!user || user.role !== Role.SUPER_ADMIN || user.restaurant_id !== null) {
+    if (
+      !user ||
+      user.role !== Role.SUPER_ADMIN ||
+      user.restaurant_id !== null
+    ) {
       return null;
     }
 
@@ -131,7 +135,10 @@ export class SuperAdminAuthService {
       throw new UnauthorizedException('Refresh token expired');
     }
 
-    const session = JSON.parse(storedSession) as { userId: string; tokenId: string };
+    const session = JSON.parse(storedSession) as {
+      userId: string;
+      tokenId: string;
+    };
 
     if (session.userId !== payload.sub || session.tokenId !== payload.jti) {
       throw new UnauthorizedException('Refresh token expired');
@@ -306,8 +313,14 @@ export class SuperAdminAuthService {
 
   private async registerFailedAttempt(email: string, request: Request) {
     await Promise.all([
-      this.incrementLockState(this.getBurstAttemptsKey(email), EMAIL_BURST_TTL_SECONDS),
-      this.incrementLockState(this.getDailyAttemptsKey(email), EMAIL_DAILY_TTL_SECONDS),
+      this.incrementLockState(
+        this.getBurstAttemptsKey(email),
+        EMAIL_BURST_TTL_SECONDS,
+      ),
+      this.incrementLockState(
+        this.getDailyAttemptsKey(email),
+        EMAIL_DAILY_TTL_SECONDS,
+      ),
     ]);
 
     await this.auditService.emitLog({

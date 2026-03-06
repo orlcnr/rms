@@ -97,7 +97,10 @@ export class SuperAdminAuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const refreshToken = readCookie(request.headers.cookie, 'admin_refresh_token');
+    const refreshToken = readCookie(
+      request.headers.cookie,
+      'admin_refresh_token',
+    );
 
     await this.superAdminAuthService.logout(refreshToken);
 

@@ -22,15 +22,23 @@ import { GeneralTab } from './tabs/GeneralTab'
 import { UsersTab } from './tabs/UsersTab'
 import { PaymentTab } from './tabs/PaymentTab'
 import { CashTab } from './tabs/CashTab'
+import { BrandBranchTab } from './tabs/BrandBranchTab'
+import { AuditTab } from './tabs/AuditTab'
 import { PaymentMethod } from '@/modules/orders/types'
 
 interface SettingsClientProps {
   activeTab: SettingsTab
   restaurantId: string
+  branchId?: string
   userRole: string
 }
 
-export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsClientProps) {
+export function SettingsClient({
+  activeTab,
+  restaurantId,
+  branchId,
+  userRole,
+}: SettingsClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -54,6 +62,19 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
   const loadUsers = useUsersStore((state) => state.loadUsers)
 
   const castedRole = (userRole || UserRole.MANAGER) as UserRole
+  const canAccessBrandBranchTab = [
+    UserRole.SUPER_ADMIN,
+    UserRole.BRAND_OWNER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.RESTAURANT_OWNER,
+  ].includes(castedRole)
+  const effectiveActiveTab: SettingsTab =
+    activeTab === 'brand-branch' && !canAccessBrandBranchTab
+      ? 'general'
+      : activeTab
+  const visibleTabs = canAccessBrandBranchTab
+    ? SETTINGS_TABS
+    : SETTINGS_TABS.filter((tab) => tab.id !== 'brand-branch')
 
   useEffect(() => {
     setMounted(true)
@@ -67,9 +88,9 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
   }, [mounted, restaurantId, loadRestaurant, loadSettings])
 
   useEffect(() => {
-    if (!mounted || activeTab !== 'users') return
+    if (!mounted || effectiveActiveTab !== 'users') return
     loadUsers()
-  }, [mounted, activeTab, loadUsers])
+  }, [mounted, effectiveActiveTab, loadUsers])
 
   useEffect(() => {
     if (!mounted) return
@@ -107,6 +128,10 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
       [SettingKey.REQUIRE_CLOSING_COUNT]: getSetting(
         SettingKey.REQUIRE_CLOSING_COUNT,
         false,
+      ),
+      [SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT]: getSetting(
+        SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT,
+        35,
       ),
     })
   }, [mounted, getSetting, settingsLastFetched])
@@ -157,7 +182,7 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
       await Promise.all([
         loadSettings(restaurantId, true),
         loadRestaurant(restaurantId),
-        activeTab === 'users' ? loadUsers() : Promise.resolve(),
+        effectiveActiveTab === 'users' ? loadUsers() : Promise.resolve(),
       ])
       toast.success('Ayarlar güncellendi')
     } catch {
@@ -167,7 +192,11 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
 
   function handleTabChange(nextTab: SettingsTab) {
     const params = new URLSearchParams(searchParams.toString())
-    params.set('tab', nextTab)
+    const safeTab =
+      nextTab === 'brand-branch' && !canAccessBrandBranchTab
+        ? 'general'
+        : nextTab
+    params.set('tab', safeTab)
     router.push(`${pathname}?${params.toString()}`)
   }
 
@@ -229,12 +258,12 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
       <main className="flex flex-col flex-1 pb-6 min-h-0">
         <FilterSection className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-2 flex-wrap">
-            {SETTINGS_TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 className={cn(
                   'px-4 py-2 text-[10px] font-black uppercase tracking-wider border rounded-sm transition-all',
-                  activeTab === tab.id
+                  effectiveActiveTab === tab.id
                     ? 'bg-primary-main text-text-inverse border-primary-main'
                     : 'bg-bg-app text-text-secondary border-border-light hover:border-primary-main/40',
                 )}
@@ -255,7 +284,7 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
         </FilterSection>
 
         <BodySection>
-          {activeTab === 'general' && (
+          {effectiveActiveTab === 'general' && (
             <GeneralTab
               restaurant={restaurant}
               isLoading={restaurantIsLoading}
@@ -263,9 +292,11 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
             />
           )}
 
-          {activeTab === 'users' && <UsersTab currentUserRole={castedRole} />}
+          {effectiveActiveTab === 'users' && (
+            <UsersTab currentUserRole={castedRole} currentBranchId={branchId} />
+          )}
 
-          {activeTab === 'payment' && (
+          {effectiveActiveTab === 'payment' && (
             <PaymentTab
               values={{
                 enabledPaymentMethods: parseEnabledPaymentMethods(
@@ -300,7 +331,7 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
             />
           )}
 
-          {activeTab === 'cash' && (
+          {effectiveActiveTab === 'cash' && (
             <CashTab
               values={{
                 defaultOpeningBalance: Number(
@@ -310,6 +341,9 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
                 requireClosingCount: Boolean(
                   pendingSettings[SettingKey.REQUIRE_CLOSING_COUNT] ?? false,
                 ),
+                foodCostAlertThresholdPercent: Number(
+                  pendingSettings[SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT] ?? 35,
+                ),
               }}
               isSaving={isSaving}
               onChange={handleSettingChange}
@@ -318,8 +352,18 @@ export function SettingsClient({ activeTab, restaurantId, userRole }: SettingsCl
                   SettingKey.DEFAULT_OPENING_BALANCE,
                   SettingKey.SHIFT_DURATION_HOURS,
                   SettingKey.REQUIRE_CLOSING_COUNT,
+                  SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT,
                 ])
               }
+            />
+          )}
+
+          {effectiveActiveTab === 'audit' && <AuditTab />}
+
+          {effectiveActiveTab === 'brand-branch' && (
+            <BrandBranchTab
+              currentRestaurantId={branchId || restaurantId}
+              userRole={castedRole}
             />
           )}
         </BodySection>

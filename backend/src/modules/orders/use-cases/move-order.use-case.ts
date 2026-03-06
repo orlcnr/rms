@@ -3,25 +3,29 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
-  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, QueryRunner } from 'typeorm';
+import { Repository, In, Not, QueryRunner } from 'typeorm';
 
-import { Order, OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus, OrderType } from '../entities/order.entity';
+import { OrderItem } from '../entities/order-item.entity';
 import { Table, TableStatus } from '../../tables/entities/table.entity';
 import { NotificationsGateway } from '../../notifications/notifications.gateway';
 import { TransactionalHelper } from '../../../common/databases/transactional.helper';
+import { calculateOrderTotalFromItems } from '../utils/order-total.util';
+
+const ACTIVE_ORDER_STATUSES = [
+  OrderStatus.PENDING,
+  OrderStatus.PREPARING,
+  OrderStatus.READY,
+  OrderStatus.SERVED,
+] as const;
 
 @Injectable()
 export class MoveOrderUseCase {
-  private readonly logger = new Logger(MoveOrderUseCase.name);
-
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(Table)
-    private readonly tableRepository: Repository<Table>,
     private readonly notificationsGateway: NotificationsGateway,
     private readonly transactionalHelper: TransactionalHelper,
   ) {}
@@ -29,44 +33,70 @@ export class MoveOrderUseCase {
   async execute(
     orderId: string,
     newTableId: string,
-    user: any,
+    restaurantId: string,
+    onTargetOccupied: 'reject' | 'merge' = 'reject',
   ): Promise<Order> {
     const result = await this.transactionalHelper.runInTransaction(
       async (queryRunner) => {
-        const order = await this.getOrder(
+        const sourceOrder = await this.getOrder(
           queryRunner,
           orderId,
-          user.restaurantId,
+          restaurantId,
         );
-        this.validateOrder(order);
+        this.validateOrder(sourceOrder);
+        this.validateOrderType(sourceOrder);
 
         const newTable = await this.getNewTable(
           queryRunner,
           newTableId,
-          user.restaurantId,
+          restaurantId,
         );
+        this.validateTableChange(sourceOrder, newTable);
 
-        this.validateTableChange(order, newTable);
-        await this.ensureTableIsFree(
+        const targetOrder = await this.findActiveOrderByTable(
           queryRunner,
           newTableId,
-          user.restaurantId,
+          restaurantId,
+          sourceOrder.id,
         );
 
-        const oldTable = order.table;
+        const oldTable = sourceOrder.table;
 
-        await this.moveOrder(queryRunner, order, newTable.id);
-        await this.updateOldTable(queryRunner, oldTable, user.restaurantId);
+        if (targetOrder) {
+          this.validateOrder(targetOrder);
+          this.validateOrderType(targetOrder);
+
+          if (onTargetOccupied !== 'merge') {
+            throw new ConflictException('ORDER_MOVE_TARGET_OCCUPIED');
+          }
+
+          await this.mergeIntoTarget(queryRunner, sourceOrder, targetOrder);
+          await this.updateOldTable(queryRunner, oldTable, restaurantId);
+          await this.updateNewTable(queryRunner, newTable);
+
+          return {
+            finalOrderId: targetOrder.id,
+            oldTable,
+            newTable,
+          };
+        }
+
+        await this.moveOrder(queryRunner, sourceOrder, newTable.id);
+        await this.updateOldTable(queryRunner, oldTable, restaurantId);
         await this.updateNewTable(queryRunner, newTable);
 
-        return { order, oldTable, newTable };
+        return {
+          finalOrderId: sourceOrder.id,
+          oldTable,
+          newTable,
+        };
       },
     );
 
-    const finalOrder = await this.loadFinalOrder(result.order.id);
+    const finalOrder = await this.loadFinalOrder(result.finalOrderId);
 
     this.sendNotifications(
-      user.restaurantId,
+      restaurantId,
       result.oldTable,
       result.newTable,
       finalOrder,
@@ -75,17 +105,11 @@ export class MoveOrderUseCase {
     return finalOrder;
   }
 
-  // ===============================
-  // FETCH
-  // ===============================
-
   private async getOrder(
     qr: QueryRunner,
     orderId: string,
     restaurantId: string,
   ): Promise<Order> {
-    // 1. Önce sadece siparişi kilitleyerek çekiyoruz (Relation olmadan)
-    // Bu, "FOR UPDATE cannot be applied to the nullable side of an outer join" hatasını önler.
     const order = await qr.manager.findOne(Order, {
       where: { id: orderId, restaurantId },
       lock: { mode: 'pessimistic_write' },
@@ -95,8 +119,6 @@ export class MoveOrderUseCase {
       throw new NotFoundException('Order not found.');
     }
 
-    // 2. Kilitleme işleminden sonra ilişkiyi manuel yüklüyoruz
-    // Bu noktada satır zaten kilitli olduğu için güvenlidir.
     if (order.tableId) {
       const table = await qr.manager.findOne(Table, {
         where: { id: order.tableId },
@@ -112,6 +134,19 @@ export class MoveOrderUseCase {
     tableId: string,
     restaurantId: string,
   ): Promise<Table> {
+    const existingTable = await qr.manager.findOne(Table, {
+      where: { id: tableId },
+      select: ['id', 'restaurant_id', 'status'],
+    });
+
+    if (!existingTable) {
+      throw new NotFoundException('Table not found.');
+    }
+
+    if (existingTable.restaurant_id !== restaurantId) {
+      throw new BadRequestException('ORDER_MOVE_CROSS_BRANCH_NOT_ALLOWED');
+    }
+
     const table = await qr.manager.findOne(Table, {
       where: { id: tableId, restaurant_id: restaurantId },
       lock: { mode: 'pessimistic_write' },
@@ -128,13 +163,32 @@ export class MoveOrderUseCase {
     return table;
   }
 
-  // ===============================
-  // VALIDATION
-  // ===============================
+  private async findActiveOrderByTable(
+    qr: QueryRunner,
+    tableId: string,
+    restaurantId: string,
+    sourceOrderId: string,
+  ): Promise<Order | null> {
+    return qr.manager.findOne(Order, {
+      where: {
+        tableId,
+        restaurantId,
+        id: Not(sourceOrderId),
+        status: In([...ACTIVE_ORDER_STATUSES]),
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+  }
 
   private validateOrder(order: Order): void {
     if ([OrderStatus.PAID, OrderStatus.CANCELLED].includes(order.status)) {
       throw new BadRequestException(`Order cannot be moved (${order.status}).`);
+    }
+  }
+
+  private validateOrderType(order: Order): void {
+    if (order.type !== OrderType.DINE_IN) {
+      throw new BadRequestException('ORDER_MOVE_NOT_ALLOWED_FOR_TYPE');
     }
   }
 
@@ -144,48 +198,42 @@ export class MoveOrderUseCase {
     }
   }
 
-  private async ensureTableIsFree(
-    qr: QueryRunner,
-    tableId: string,
-    restaurantId: string,
-  ): Promise<void> {
-    const count = await qr.manager.count(Order, {
-      where: {
-        tableId,
-        restaurantId,
-        status: In([
-          OrderStatus.PENDING,
-          OrderStatus.PREPARING,
-          OrderStatus.READY,
-          OrderStatus.SERVED,
-        ]),
-      },
-    });
-
-    if (count > 0) {
-      throw new ConflictException('Table already has active order.');
-    }
-  }
-
-  // ===============================
-  // DOMAIN ACTIONS
-  // ===============================
-
   private async moveOrder(
     qr: QueryRunner,
     order: Order,
     tableId: string,
   ): Promise<void> {
-    // Nesne üzerinden değil, doğrudan tablo üzerinden güncelleme yaparak cache/relation sorunlarını aşıyoruz.
     await qr.manager.update(Order, order.id, {
-      tableId: tableId,
+      tableId,
+      mergedInto: null,
     });
 
-    // Bellekteki objeyi de güncel tutalım (sonraki adımlar için)
     order.tableId = tableId;
-    console.log(
-      `[MOVE-CASE] Sipariş ${order.id} için table_id ${tableId} olarak güncellendi.`,
+    order.mergedInto = null;
+  }
+
+  private async mergeIntoTarget(
+    qr: QueryRunner,
+    sourceOrder: Order,
+    targetOrder: Order,
+  ): Promise<void> {
+    await qr.manager.update(
+      OrderItem,
+      { orderId: sourceOrder.id },
+      { orderId: targetOrder.id },
     );
+
+    const targetItems = await qr.manager.find(OrderItem, {
+      where: { orderId: targetOrder.id },
+    });
+
+    targetOrder.totalAmount = calculateOrderTotalFromItems(targetItems);
+    await qr.manager.save(Order, targetOrder);
+
+    sourceOrder.status = OrderStatus.CANCELLED;
+    sourceOrder.tableId = null;
+    sourceOrder.mergedInto = targetOrder.id;
+    await qr.manager.save(Order, sourceOrder);
   }
 
   private async updateOldTable(
@@ -199,12 +247,7 @@ export class MoveOrderUseCase {
       where: {
         tableId: table.id,
         restaurantId,
-        status: In([
-          OrderStatus.PENDING,
-          OrderStatus.PREPARING,
-          OrderStatus.READY,
-          OrderStatus.SERVED,
-        ]),
+        status: In([...ACTIVE_ORDER_STATUSES]),
       },
     });
 
@@ -221,10 +264,6 @@ export class MoveOrderUseCase {
     }
   }
 
-  // ===============================
-  // POST TRANSACTION
-  // ===============================
-
   private sendNotifications(
     restaurantId: string,
     oldTable: Table | null,
@@ -236,7 +275,6 @@ export class MoveOrderUseCase {
     }
 
     this.notificationsGateway.notifyOrderStatus(restaurantId, newTable);
-
     this.notificationsGateway.notifyOrderStatus(restaurantId, order);
   }
 

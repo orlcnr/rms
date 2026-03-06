@@ -27,6 +27,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('Invalid token');
     }
+    const payloadTokenVersion = Number(payload.tokenVersion);
+    const currentTokenVersion = Number(user.token_version || 1);
+    if (!Number.isFinite(payloadTokenVersion)) {
+      throw new UnauthorizedException('TOKEN_REVOKED_BRANCH_CHANGED');
+    }
+    if (payloadTokenVersion !== currentTokenVersion) {
+      throw new UnauthorizedException('TOKEN_REVOKED_BRANCH_CHANGED');
+    }
 
     const brandId = user.restaurant?.brand_id || null;
     const branchId = user.restaurant_id || null;
@@ -43,6 +51,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       roles: scopedRoles,
       brandId,
       branchId,
+      tokenVersion: currentTokenVersion,
       restaurantId: user.restaurant_id,
       restaurant_id: user.restaurant_id,
       first_name: user.first_name,

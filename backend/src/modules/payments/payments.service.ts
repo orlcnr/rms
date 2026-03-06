@@ -2,7 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -31,6 +33,15 @@ import {
 } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import { GuestSessionsService } from '../qr-guest/services/guest-sessions.service';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
+
+type AuditActor = {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+};
 
 // Helper function for precise decimal calculations (to avoid floating point errors)
 // Uses integer math: multiply by 100, calculate, then divide by 100
@@ -134,6 +145,7 @@ const normalizeCommissionRate = (value?: number | string | null): number => {
 @Injectable()
 export class PaymentsService {
   private client: ClientProxy;
+  private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
     @InjectRepository(Payment)
@@ -145,6 +157,7 @@ export class PaymentsService {
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
     private readonly guestSessionsService: GuestSessionsService,
+    private readonly auditService: AuditService,
   ) {
     this.client = ClientProxyFactory.create({
       transport: Transport.RMQ,
@@ -161,6 +174,51 @@ export class PaymentsService {
         },
       },
     } as any);
+  }
+
+  private buildActorName(actor?: AuditActor): string | undefined {
+    if (!actor?.first_name) {
+      return undefined;
+    }
+    return `${actor.first_name} ${actor.last_name || ''}`.trim();
+  }
+
+  private async emitDomainAudit(params: {
+    action: AuditAction;
+    restaurantId?: string;
+    payload?: Record<string, unknown>;
+    changes?: {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    actor?: AuditActor;
+    request?: Request;
+    context: string;
+  }): Promise<void> {
+    const headerUserAgent = params.request?.headers?.['user-agent'];
+    const userAgent =
+      typeof headerUserAgent === 'string'
+        ? headerUserAgent
+        : headerUserAgent?.[0];
+
+    await this.auditService.safeEmitLog(
+      {
+        action: params.action,
+        resource: 'PAYMENTS',
+        user_id: params.actor?.id,
+        user_name: this.buildActorName(params.actor),
+        restaurant_id: params.restaurantId,
+        payload: params.payload,
+        changes: params.changes,
+        ip_address: params.request?.ip,
+        user_agent: userAgent,
+      },
+      params.context,
+    );
+    this.auditService.markRequestAsAudited(
+      params.request as unknown as Record<string, unknown>,
+    );
   }
 
   private async getEnabledPaymentMethods(
@@ -192,8 +250,11 @@ export class PaymentsService {
     }
   }
 
-  private getNextServiceCycleVersion(current: string | number | null | undefined): string {
-    const normalized = current === undefined || current === null ? '1' : String(current);
+  private getNextServiceCycleVersion(
+    current: string | number | null | undefined,
+  ): string {
+    const normalized =
+      current === undefined || current === null ? '1' : String(current);
     return (BigInt(normalized) + BigInt(1)).toString();
   }
 
@@ -220,6 +281,8 @@ export class PaymentsService {
   async create(
     createPaymentDto: CreatePaymentDto,
     userId?: string,
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<Payment> {
     const {
       order_id,
@@ -236,9 +299,11 @@ export class PaymentsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    let updatedTableAfterPayment:
-      | { id: string; oldStatus: TableStatus; nextVersion: string }
-      | null = null;
+    let updatedTableAfterPayment: {
+      id: string;
+      oldStatus: TableStatus;
+      nextVersion: string;
+    } | null = null;
 
     try {
       // 1. Fetch Order with Table and Items
@@ -254,6 +319,9 @@ export class PaymentsService {
       if (order.status === OrderStatus.PAID) {
         throw new BadRequestException('Order is already paid');
       }
+      const beforeSnapshot = {
+        orderStatus: order.status,
+      };
 
       const enabledMethods = await this.getEnabledPaymentMethods(
         order.restaurantId,
@@ -307,8 +375,16 @@ export class PaymentsService {
       order.status = OrderStatus.PAID;
       await queryRunner.manager.save(order);
 
-      // 4. Decrease stock
-      await this.inventoryService.decreaseStockForOrder(order, queryRunner);
+      // 4. Decrease stock (non-blocking for payment completion)
+      try {
+        await this.inventoryService.decreaseStockForOrder(order, queryRunner);
+      } catch (stockError) {
+        this.logger.warn(
+          `Stock deduction failed after payment commit path for order ${order.id}: ${
+            stockError instanceof Error ? stockError.message : 'unknown'
+          }`,
+        );
+      }
 
       // 4.5. Check if there's an active cash session BEFORE committing
       // Use centralized register retrieval as source of truth
@@ -423,6 +499,27 @@ export class PaymentsService {
         });
       }
 
+      await this.emitDomainAudit({
+        action: AuditAction.PAYMENT_CREATED,
+        restaurantId: order.restaurantId,
+        payload: {
+          orderId: order.id,
+          paymentId: savedPayment.id,
+          transactionId: transaction_id,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            orderStatus: OrderStatus.PAID,
+            finalAmount: Number(savedPayment.final_amount),
+            paymentMethod: savedPayment.payment_method,
+          },
+        }),
+        actor: actor || { id: userId },
+        request,
+        context: 'PaymentsService.create',
+      });
+
       return savedPayment;
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -449,6 +546,8 @@ export class PaymentsService {
   async createSplitPayment(
     dto: CreateSplitPaymentDto,
     userId?: string,
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<{ payments: Payment[]; change: number }> {
     const {
       order_id,
@@ -461,9 +560,11 @@ export class PaymentsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    let updatedSplitPaymentTable:
-      | { id: string; oldStatus: TableStatus; nextVersion: string }
-      | null = null;
+    let updatedSplitPaymentTable: {
+      id: string;
+      oldStatus: TableStatus;
+      nextVersion: string;
+    } | null = null;
 
     try {
       // 1. Siparişi getir
@@ -479,6 +580,9 @@ export class PaymentsService {
       if (order.status === OrderStatus.PAID) {
         throw new BadRequestException('Bu sipariş zaten ödenmiş');
       }
+      const beforeSnapshot = {
+        orderStatus: order.status,
+      };
 
       const enabledMethods = await this.getEnabledPaymentMethods(
         order.restaurantId,
@@ -718,7 +822,15 @@ export class PaymentsService {
       await queryRunner.manager.save(order);
 
       // 7. Stok düş
-      await this.inventoryService.decreaseStockForOrder(order, queryRunner);
+      try {
+        await this.inventoryService.decreaseStockForOrder(order, queryRunner);
+      } catch (stockError) {
+        this.logger.warn(
+          `Stock deduction failed for split payment order ${order.id}: ${
+            stockError instanceof Error ? stockError.message : 'unknown'
+          }`,
+        );
+      }
 
       if (order.table) {
         const table = await queryRunner.manager.findOneBy(Table, {
@@ -793,6 +905,37 @@ export class PaymentsService {
         });
       }
 
+      await this.emitDomainAudit({
+        action: AuditAction.PAYMENT_SPLIT_CREATED,
+        restaurantId: order.restaurantId,
+        payload: {
+          orderId: order.id,
+          paymentIds: savedPayments.map((payment) => payment.id),
+        },
+        changes: {
+          ...sanitizeAuditChanges({
+            before: beforeSnapshot,
+            after: { orderStatus: OrderStatus.PAID },
+          }),
+          // Split payment lines are variable in count/composition; summary meta is the canonical audit representation.
+          meta: {
+            operation: 'split_payment',
+            itemCount: payments.length,
+            affectedCount: savedPayments.length,
+            failedIds: [],
+            context: {
+              orderId: order.id,
+              totalPaid,
+              finalOrderTotal,
+              openAccountLineCount: openAccountPayments.length,
+            },
+          },
+        },
+        actor: actor || { id: userId },
+        request,
+        context: 'PaymentsService.createSplitPayment',
+      });
+
       return { payments: savedPayments, change: totalChange };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -811,7 +954,12 @@ export class PaymentsService {
    * 3. Nakit ise kasa hareketi oluşturur
    * 4. Sipariş durumunu günceller
    */
-  async revertPayment(paymentId: string, reason: string): Promise<Payment> {
+  async revertPayment(
+    paymentId: string,
+    reason: string,
+    actor?: AuditActor,
+    request?: Request,
+  ): Promise<Payment> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -832,6 +980,10 @@ export class PaymentsService {
       ) {
         throw new BadRequestException('Bu ödeme zaten iade edilmiş');
       }
+      const beforeSnapshot = {
+        paymentStatus: payment.status,
+        orderStatus: payment.order?.status,
+      };
 
       // Ödemeyi iptal et
       payment.status = PaymentStatus.REFUNDED;
@@ -882,6 +1034,26 @@ export class PaymentsService {
         orderId: payment.order_id,
         restaurantId: payment.order?.restaurantId,
         reason,
+      });
+
+      await this.emitDomainAudit({
+        action: AuditAction.PAYMENT_REVERTED,
+        restaurantId: payment.order?.restaurantId,
+        payload: {
+          paymentId: payment.id,
+          orderId: payment.order_id,
+          reason,
+        },
+        changes: sanitizeAuditChanges({
+          before: beforeSnapshot,
+          after: {
+            paymentStatus: refundedPayment.status,
+            orderStatus: payment.order?.status,
+          },
+        }),
+        actor,
+        request,
+        context: 'PaymentsService.revertPayment',
       });
 
       return refundedPayment;

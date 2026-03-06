@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner, QueryFailedError } from 'typeorm';
 import { CashRegister } from './entities/cash-register.entity';
@@ -27,6 +28,20 @@ import { SettingsService } from '../settings/settings.service';
 import { ReconciliationReportDto } from './dto/reconciliation-report.dto';
 import { CashSummaryDto } from './dto/cash-summary.dto';
 import { getNow } from '../../common/utils/date.utils';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
+
+type AuditActor = {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+export type EnsureDefaultRegisterResult = {
+  register: CashRegister;
+  created: boolean;
+};
 
 @Injectable()
 export class CashService {
@@ -42,7 +57,53 @@ export class CashService {
     private readonly dataSource: DataSource,
     private readonly tablesService: TablesService,
     private readonly settingsService: SettingsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  private buildActorName(actor?: AuditActor): string | undefined {
+    if (!actor?.first_name) {
+      return undefined;
+    }
+    return `${actor.first_name} ${actor.last_name || ''}`.trim();
+  }
+
+  private async emitDomainAudit(params: {
+    action: AuditAction;
+    restaurantId?: string;
+    payload?: Record<string, unknown>;
+    changes?: {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+      meta?: Record<string, unknown>;
+    };
+    actor?: AuditActor;
+    request?: Request;
+    context: string;
+  }): Promise<void> {
+    const headerUserAgent = params.request?.headers?.['user-agent'];
+    const userAgent =
+      typeof headerUserAgent === 'string'
+        ? headerUserAgent
+        : headerUserAgent?.[0];
+
+    await this.auditService.safeEmitLog(
+      {
+        action: params.action,
+        resource: 'CASH',
+        user_id: params.actor?.id,
+        user_name: this.buildActorName(params.actor),
+        restaurant_id: params.restaurantId,
+        payload: params.payload,
+        changes: params.changes,
+        ip_address: params.request?.ip,
+        user_agent: userAgent,
+      },
+      params.context,
+    );
+    this.auditService.markRequestAsAudited(
+      params.request as unknown as Record<string, unknown>,
+    );
+  }
 
   /**
    * Restoran için aktif kasayı getirir (tek doğru kaynak).
@@ -63,11 +124,16 @@ export class CashService {
   /**
    * Restoran için varsayılan kasayı döner veya yoksa oluşturur.
    */
-  async ensureDefaultRegister(restaurantId: string): Promise<CashRegister> {
+  async ensureDefaultRegister(
+    restaurantId: string,
+    actor?: AuditActor,
+    request?: Request,
+  ): Promise<EnsureDefaultRegisterResult> {
     let register = await this.registerRepository.findOneBy({
       restaurantId,
       name: 'Genel Kasa',
     });
+    let created = false;
 
     if (!register) {
       register = this.registerRepository.create({
@@ -76,9 +142,28 @@ export class CashService {
         active: true,
       });
       register = await this.registerRepository.save(register);
+      created = true;
     }
 
-    return register;
+    if (created) {
+      await this.emitDomainAudit({
+        action: AuditAction.CASH_DEFAULT_REGISTER_ENSURED,
+        restaurantId,
+        payload: { registerId: register.id, name: register.name },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: register.id,
+            name: register.name,
+            active: register.active,
+          },
+        }),
+        actor,
+        request,
+        context: 'CashService.ensureDefaultRegister',
+      });
+    }
+
+    return { register, created };
   }
 
   /**
@@ -88,6 +173,8 @@ export class CashService {
     restaurantId: string,
     userId: string,
     dto: OpenCashSessionDto,
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<CashSession> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -150,6 +237,26 @@ export class CashService {
       }
 
       await queryRunner.commitTransaction();
+      await this.emitDomainAudit({
+        action: AuditAction.CASH_SESSION_OPENED,
+        restaurantId,
+        payload: {
+          sessionId: savedSession.id,
+          registerId: savedSession.cashRegisterId,
+          openingBalance: Number(savedSession.openingBalance),
+        },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: savedSession.id,
+            status: savedSession.status,
+            openingBalance: Number(savedSession.openingBalance),
+            cashRegisterId: savedSession.cashRegisterId,
+          },
+        }),
+        actor: actor || { id: userId },
+        request,
+        context: 'CashService.openSession',
+      });
       return savedSession;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -185,6 +292,8 @@ export class CashService {
     sessionId: string,
     dto: CloseCashSessionDto,
     queryRunner?: QueryRunner,
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<CashSession> {
     const ownsTransaction = !queryRunner;
     const activeQueryRunner =
@@ -218,6 +327,12 @@ export class CashService {
       });
 
       if (!session) throw new NotFoundException('Oturum bulunamadı');
+      const beforeSnapshot = {
+        id: session.id,
+        status: session.status,
+        closingBalance: Number(session.closingBalance || 0),
+        countedBalance: Number(session.countedBalance || 0),
+      };
 
       const sessionRestaurantId =
         session.restaurantId || session.cashRegister?.restaurantId;
@@ -280,6 +395,27 @@ export class CashService {
         await activeQueryRunner.commitTransaction();
       }
 
+      if (ownsTransaction) {
+        await this.emitDomainAudit({
+          action: AuditAction.CASH_SESSION_CLOSED,
+          restaurantId: sessionRestaurantId,
+          payload: { sessionId: savedSession.id },
+          changes: sanitizeAuditChanges({
+            before: beforeSnapshot,
+            after: {
+              id: savedSession.id,
+              status: savedSession.status,
+              closingBalance: Number(savedSession.closingBalance || 0),
+              countedBalance: Number(savedSession.countedBalance || 0),
+              difference: Number(savedSession.difference || 0),
+            },
+          }),
+          actor: actor || { id: userId },
+          request,
+          context: 'CashService.closeSession',
+        });
+      }
+
       return savedSession;
     } catch (error) {
       if (ownsTransaction) {
@@ -330,6 +466,8 @@ export class CashService {
     sessionId: string,
     dto: CreateCashMovementDto,
     queryRunner?: QueryRunner, // Add queryRunner as an optional parameter
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<CashMovement> {
     const repository = queryRunner
       ? queryRunner.manager.getRepository(CashMovement)
@@ -366,12 +504,41 @@ export class CashService {
         !dto.isVoid,
     });
 
-    return repository.save(movement);
+    const savedMovement = await repository.save(movement);
+
+    if (!queryRunner) {
+      await this.emitDomainAudit({
+        action: AuditAction.CASH_MOVEMENT_ADDED,
+        restaurantId: session.restaurantId,
+        payload: {
+          sessionId,
+          movementId: savedMovement.id,
+          type: savedMovement.type,
+          amount: Number(savedMovement.amount),
+        },
+        changes: sanitizeAuditChanges({
+          after: {
+            id: savedMovement.id,
+            type: savedMovement.type,
+            amount: Number(savedMovement.amount),
+            paymentMethod: savedMovement.paymentMethod,
+            cashSessionId: savedMovement.cashSessionId,
+          },
+        }),
+        actor: actor || { id: userId },
+        request,
+        context: 'CashService.addMovement',
+      });
+    }
+
+    return savedMovement;
   }
 
   async createRegister(
     restaurantId: string,
     dto: CreateCashRegisterDto,
+    actor?: AuditActor,
+    request?: Request,
   ): Promise<CashRegister> {
     const existingRegister = await this.registerRepository.findOneBy({
       restaurantId,
@@ -386,7 +553,23 @@ export class CashService {
       ...dto,
       restaurantId,
     });
-    return this.registerRepository.save(register);
+    const savedRegister = await this.registerRepository.save(register);
+    await this.emitDomainAudit({
+      action: AuditAction.CASH_REGISTER_CREATED,
+      restaurantId,
+      payload: { registerId: savedRegister.id, name: savedRegister.name },
+      changes: sanitizeAuditChanges({
+        after: {
+          id: savedRegister.id,
+          name: savedRegister.name,
+          active: savedRegister.active,
+        },
+      }),
+      actor,
+      request,
+      context: 'CashService.createRegister',
+    });
+    return savedRegister;
   }
 
   /**
@@ -895,7 +1078,33 @@ export class CashService {
    * Belirli bir kasa kaydını siler.
    * DİKKAT: Bu işlem geri alınamaz.
    */
-  async deleteRegister(registerId: string): Promise<void> {
+  async deleteRegister(
+    registerId: string,
+    actor?: AuditActor,
+    request?: Request,
+  ): Promise<void> {
+    const register = await this.registerRepository.findOneBy({
+      id: registerId,
+    });
+    if (!register) {
+      throw new NotFoundException('Kasa bulunamadı');
+    }
     await this.registerRepository.delete({ id: registerId });
+    await this.emitDomainAudit({
+      action: AuditAction.CASH_REGISTER_DELETED,
+      restaurantId: register.restaurantId,
+      payload: { registerId },
+      changes: sanitizeAuditChanges({
+        before: {
+          id: register.id,
+          name: register.name,
+          active: register.active,
+        },
+        after: { deleted: true },
+      }),
+      actor,
+      request,
+      context: 'CashService.deleteRegister',
+    });
   }
 }

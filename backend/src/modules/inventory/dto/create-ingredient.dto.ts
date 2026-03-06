@@ -19,18 +19,19 @@ export class CreateIngredientDto {
   unit: string; // kg, gr, adet, lt, vb.
 
   @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  @IsOptional()
   critical_level?: number;
 
-  @ApiProperty({ example: 'uuid-of-restaurant' })
-  @IsString()
-  @IsNotEmpty()
-  restaurant_id: string;
+  @ApiPropertyOptional({ example: 6, description: 'paket/koli için çarpan' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pack_size?: number;
 
   @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
-  @IsString()
   @IsOptional()
+  @IsString()
   transaction_id?: string;
 }

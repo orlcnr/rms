@@ -8,7 +8,10 @@ import { UserBranchRole } from './entities/user-branch-role.entity';
 import { RestaurantsModule } from '../restaurants/restaurants.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, UserBranchRole]), RestaurantsModule],
+  imports: [
+    TypeOrmModule.forFeature([User, UserBranchRole]),
+    RestaurantsModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

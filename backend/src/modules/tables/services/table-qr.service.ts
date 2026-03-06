@@ -84,8 +84,10 @@ export class TableQrService {
       throw new Error('Table not found');
     }
 
+    const resolvedRestaurantId = table.restaurant_id || restaurantId;
+
     // Generate QR token
-    const qrToken = await this.generateQrToken(tableId, restaurantId);
+    const qrToken = await this.generateQrToken(tableId, resolvedRestaurantId);
 
     // Generate guest URL
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
@@ -112,7 +114,7 @@ export class TableQrService {
     return {
       tableId,
       tableName: table.name,
-      restaurantId,
+      restaurantId: resolvedRestaurantId,
       restaurantName: restaurantName || table.restaurant?.name || 'Restaurant',
       qrToken,
       qrUrl,

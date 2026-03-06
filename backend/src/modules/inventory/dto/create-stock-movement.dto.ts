@@ -31,6 +31,13 @@ export class CreateStockMovementDto {
   quantity: number;
 
   @ApiPropertyOptional({
+    description: 'Girilen miktarın birimi (kg, gr, lt, ml, adet, paket, koli)',
+  })
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @ApiPropertyOptional({
     description: 'Hareket nedeni (SALE, PURCHASE, WASTE, COUNT, ADJUSTMENT)',
   })
   @IsString()

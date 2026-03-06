@@ -1,4 +1,4 @@
-import { Entity, Column, Index, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, Index, OneToOne } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Stock } from './stock.entity';
 
@@ -17,19 +17,32 @@ export class Ingredient extends BaseEntity {
   @Column()
   restaurant_id: string;
 
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  brand_id: string | null;
+
+  @Column({ default: 'adet' })
+  base_unit: string;
+
+  @Column({ default: 'piece' })
+  unit_group: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  pack_size: number | null;
+
   // Maliyet alanları
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  average_cost: number; // Ortalama maliyet
+  average_cost: number | null; // Ortalama maliyet
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  last_price: number; // Son alış fiyatı
+  last_price: number | null; // Son alış fiyatı
 
   // Fiyat geçmişi takibi için yeni alanlar
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  previous_price: number; // Önceki fiyat (analiz için)
+  previous_price: number | null; // Önceki fiyat (analiz için)
 
   @Column({ type: 'timestamp', nullable: true })
-  price_updated_at: Date; // Fiyat güncelleme tarihi
+  price_updated_at: Date | null; // Fiyat güncelleme tarihi
 
   @OneToOne(() => Stock, (stock) => stock.ingredient)
   stock: Stock;

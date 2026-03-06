@@ -34,6 +34,7 @@ export class AuthService {
       restaurantId: user.restaurant_id,
       branchId,
       brandId,
+      tokenVersion: Number(user.token_version || 1),
       first_name: user.first_name,
       last_name: user.last_name,
     };

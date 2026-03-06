@@ -53,9 +53,11 @@ export class GuestSessionsService {
     // Validate QR token
     const payload = await this.validateQrToken(dto.qrToken);
 
-    // Verify table exists and belongs to restaurant
+    // Resolve table from DB as single source of truth.
+    // We do not rely on token restaurantId for ownership checks because
+    // older/generated tokens may carry stale restaurantId values.
     const table = await this.tableRepository.findOne({
-      where: { id: payload.tableId, restaurant_id: payload.restaurantId },
+      where: { id: payload.tableId },
       relations: ['restaurant'],
     });
 
@@ -80,7 +82,7 @@ export class GuestSessionsService {
 
     const session: GuestSession = {
       id: sessionId,
-      restaurantId: payload.restaurantId,
+      restaurantId: table.restaurant_id,
       restaurantName: table.restaurant?.name,
       tableId: payload.tableId,
       serviceCycleVersion: this.normalizeServiceCycleVersion(
@@ -218,7 +220,9 @@ export class GuestSessionsService {
   }
 
   async getCurrentServiceCycleVersion(tableId: string): Promise<string | null> {
-    const cached = await this.redis.get(this.getServiceCycleVersionCacheKey(tableId));
+    const cached = await this.redis.get(
+      this.getServiceCycleVersionCacheKey(tableId),
+    );
 
     if (cached) {
       return this.normalizeServiceCycleVersion(cached);
@@ -233,7 +237,9 @@ export class GuestSessionsService {
       return null;
     }
 
-    const normalized = this.normalizeServiceCycleVersion(table.serviceCycleVersion);
+    const normalized = this.normalizeServiceCycleVersion(
+      table.serviceCycleVersion,
+    );
     await this.setServiceCycleVersionCache(tableId, normalized);
     return normalized;
   }
@@ -294,7 +300,9 @@ export class GuestSessionsService {
     const session: GuestSession = JSON.parse(data);
 
     if (!session.serviceCycleVersion) {
-      const currentVersion = await this.getCurrentServiceCycleVersion(session.tableId);
+      const currentVersion = await this.getCurrentServiceCycleVersion(
+        session.tableId,
+      );
       session.serviceCycleVersion = currentVersion || '1';
       await this.saveSession(session);
     }

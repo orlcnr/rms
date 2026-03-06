@@ -24,6 +24,9 @@ import { OrdersByStatus, OrderType, OrderStatus, OrderGroup } from '../types'
 import { PrintFormatModal } from '@/modules/shared/printing/PrintFormatModal'
 import { useOrderPrint } from '@/modules/shared/printing/useOrderPrint'
 import { PrintFormat } from '@/modules/shared/printing/types'
+import { ordersApi } from '../services'
+import { tablesApi } from '@/modules/tables/services/tables.service'
+import { Table, TableStatus } from '@/modules/tables/types'
 
 interface OrdersBoardClientProps {
   restaurantId: string
@@ -80,6 +83,11 @@ export function OrdersBoardClient({
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
   const [printTarget, setPrintTarget] = useState<OrderGroup | null>(null)
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+  const [isMoveTableModalOpen, setIsMoveTableModalOpen] = useState(false)
+  const [moveOrderGroup, setMoveOrderGroup] = useState<OrderGroup | null>(null)
+  const [availableTables, setAvailableTables] = useState<Table[]>([])
+  const [isLoadingTables, setIsLoadingTables] = useState(false)
+  const [isMovingTable, setIsMovingTable] = useState(false)
 
   useEffect(() => {
     if (!isArchiveOpen) return
@@ -240,6 +248,73 @@ export function OrdersBoardClient({
     setPrintTarget(null)
   }, [printOrder, printTarget])
 
+  const handleOpenMoveTable = useCallback(async (orderGroup: OrderGroup) => {
+    const latestOrder = orderGroup.orders[orderGroup.orders.length - 1]
+    if (!latestOrder?.tableId) {
+      toast.error('Bu sipariş masa bağlı olmadığı için taşınamaz.')
+      return
+    }
+
+    setMoveOrderGroup(orderGroup)
+    setIsMoveTableModalOpen(true)
+    setIsLoadingTables(true)
+    try {
+      const tables = await tablesApi.getTables(restaurantId)
+      setAvailableTables(tables)
+    } catch (error) {
+      console.error('[OrdersBoardClient] Failed to load tables for move:', error)
+      toast.error('Masalar yüklenemedi.')
+      setIsMoveTableModalOpen(false)
+      setMoveOrderGroup(null)
+    } finally {
+      setIsLoadingTables(false)
+    }
+  }, [restaurantId])
+
+  const handleMoveToTable = useCallback(async (targetTable: Table) => {
+    if (!moveOrderGroup) return
+
+    const latestOrder = moveOrderGroup.orders[moveOrderGroup.orders.length - 1]
+    if (!latestOrder?.id || !latestOrder?.tableId) {
+      toast.error('Taşınacak sipariş bilgisi eksik.')
+      return
+    }
+
+    if (latestOrder.tableId === targetTable.id) {
+      toast.error('Sipariş zaten bu masada.')
+      return
+    }
+
+    let onTargetOccupied: 'merge' | undefined
+    if (targetTable.status === TableStatus.OCCUPIED) {
+      const confirmed = window.confirm(
+        `${targetTable.name} masası dolu. Siparişler birleştirilsin mi?`,
+      )
+      if (!confirmed) {
+        return
+      }
+      onTargetOccupied = 'merge'
+    }
+
+    setIsMovingTable(true)
+    try {
+      await ordersApi.moveOrderToTable(latestOrder.id, {
+        new_table_id: targetTable.id,
+        ...(onTargetOccupied ? { on_target_occupied: onTargetOccupied } : {}),
+      })
+      toast.success('Masa transferi tamamlandı.')
+      setIsMoveTableModalOpen(false)
+      setMoveOrderGroup(null)
+      closeDetail()
+      await refetch(false)
+    } catch (error) {
+      console.error('[OrdersBoardClient] move order failed:', error)
+      toast.error('Masa transferi başarısız oldu.')
+    } finally {
+      setIsMovingTable(false)
+    }
+  }, [moveOrderGroup, closeDetail, refetch])
+
   // Handle reconnect
   const handleReconnect = () => {
     disconnect()
@@ -374,6 +449,7 @@ export function OrdersBoardClient({
         onPrint={handlePrintRequest}
         onEditOrder={navigateToPosOrder}
         onTakePayment={navigateToPosOrder}
+        onMoveTable={handleOpenMoveTable}
       />
 
       <PrintFormatModal
@@ -403,6 +479,49 @@ export function OrdersBoardClient({
           focusOrderId={guestApprovalsFocusOrderId}
           notificationId={guestApprovalsNotificationId}
         />
+      </Modal>
+
+      <Modal
+        isOpen={isMoveTableModalOpen}
+        onClose={() => {
+          if (isMovingTable) return
+          setIsMoveTableModalOpen(false)
+          setMoveOrderGroup(null)
+        }}
+        title="Masa Değiştir"
+        maxWidth="max-w-2xl"
+      >
+        {isLoadingTables ? (
+          <div className="text-sm text-text-muted">Masalar yükleniyor...</div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+              Hedef masa seçin. Dolu masa seçerseniz birleştirme onayı istenir.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {availableTables.map((table) => {
+                const isCurrent =
+                  table.id ===
+                  moveOrderGroup?.orders[moveOrderGroup.orders.length - 1]?.tableId
+                const isOutOfService = table.status === TableStatus.OUT_OF_SERVICE
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    disabled={isCurrent || isOutOfService || isMovingTable}
+                    onClick={() => void handleMoveToTable(table)}
+                    className="flex items-center justify-between rounded-sm border border-border-light px-3 py-2 text-left hover:bg-bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-sm font-bold text-text-primary">{table.name}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
+                      {table.status}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

@@ -41,15 +41,14 @@ function readPersistedBasket(storageKey: string | null): PersistedGuestBasket | 
     return null
   }
 
-  const raw = window.localStorage.getItem(storageKey)
-  const rawSession = window.sessionStorage.getItem(storageKey)
+  const raw = window.sessionStorage.getItem(storageKey)
 
-  if (!raw && !rawSession) {
+  if (!raw) {
     return null
   }
 
   try {
-    const parsed = JSON.parse(rawSession || raw || '') as Partial<PersistedGuestBasket>
+    const parsed = JSON.parse(raw) as Partial<PersistedGuestBasket>
 
     if (!Array.isArray(parsed.items) || typeof parsed.updatedAt !== 'string') {
       return null
@@ -75,7 +74,6 @@ function clearPersistedBasket(storageKey: string | null) {
   }
 
   window.sessionStorage.removeItem(storageKey)
-  window.localStorage.removeItem(storageKey)
 }
 
 export function useGuestBasket({
@@ -127,6 +125,10 @@ export function useGuestBasket({
     name: string
     price: number
   }) => {
+    // Caller passes branch-effective unit price (override ?? base).
+    // Once sent to backend, this gets locked as order item unitPrice snapshot.
+    const effectiveUnitPrice = Number(item.price)
+
     setBasketItems((current) => {
       const existing = current.find((entry) => entry.menuItemId === item.id)
 
@@ -136,7 +138,7 @@ export function useGuestBasket({
           {
             menuItemId: item.id,
             name: item.name,
-            unitPrice: Number(item.price),
+            unitPrice: effectiveUnitPrice,
             quantity: 1,
           },
         ]

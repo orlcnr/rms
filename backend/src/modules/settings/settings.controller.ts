@@ -6,14 +6,14 @@ import {
   Param,
   Query,
   UseGuards,
-  ForbiddenException,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { SettingsService } from './settings.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '../../modules/users/entities/user.entity';
-import { Role } from '../../common/enums/role.enum';
 import { GetSettingsDto } from './dto/get-settings.dto';
 import { UpdateSettingDto } from './dto/update-setting.dto';
 
@@ -31,10 +31,7 @@ export class SettingsController {
     @Query() query: GetSettingsDto,
     @GetUser() user: User,
   ) {
-    // Multi-tenant control + SUPER_ADMIN exception
-    if (user.role !== Role.SUPER_ADMIN && user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException('Bu restorana erişim yetkiniz yok');
-    }
+    this.settingsService.assertRestaurantAccess(user, restaurantId);
 
     return this.settingsService.getSettingsByGroup(
       restaurantId,
@@ -50,10 +47,7 @@ export class SettingsController {
     @Param('key') key: string,
     @GetUser() user: User,
   ) {
-    // Multi-tenant control + SUPER_ADMIN exception
-    if (user.role !== Role.SUPER_ADMIN && user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException('Bu restorana erişim yetkiniz yok');
-    }
+    this.settingsService.assertRestaurantAccess(user, restaurantId);
 
     const value = await this.settingsService.getSetting(restaurantId, key);
     return { key, value };
@@ -65,11 +59,9 @@ export class SettingsController {
     @Param('restaurantId') restaurantId: string,
     @Body() dto: UpdateSettingDto,
     @GetUser() user: User,
+    @Req() request: Request,
   ) {
-    // Multi-tenant control + SUPER_ADMIN exception
-    if (user.role !== Role.SUPER_ADMIN && user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException('Bu restorana erişim yetkiniz yok');
-    }
+    this.settingsService.assertRestaurantAccess(user, restaurantId);
 
     return this.settingsService.updateSetting(
       restaurantId,
@@ -77,6 +69,8 @@ export class SettingsController {
       dto.value,
       dto.type,
       dto.group,
+      user,
+      request,
     );
   }
 }

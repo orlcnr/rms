@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Ingredient } from './ingredient.entity';
+import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 
 export enum MovementType {
   IN = 'IN',
@@ -25,6 +26,19 @@ export class StockMovement extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 10, scale: 3 })
   quantity: number;
+
+  @Column({ type: 'uuid', nullable: true })
+  branch_id: string | null;
+
+  @ManyToOne(() => Restaurant, { nullable: true })
+  @JoinColumn({ name: 'branch_id' })
+  branch: Restaurant | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  unit: string | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  base_quantity: number | null;
 
   @Column({ nullable: true })
   reason: string; // SALE, PURCHASE, WASTE, COUNT, ADJUSTMENT

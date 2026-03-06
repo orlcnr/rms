@@ -7,6 +7,7 @@ import { FormSection } from '@/modules/shared/components/FormSection';
 import { handleNumericInput, formatNumericDisplay, formatCurrency } from '@/modules/shared/utils/numeric';
 import { AlertTriangle } from 'lucide-react';
 import { RecipeItem } from '../types';
+import { cn } from '@/modules/shared/utils/cn';
 
 // ============================================
 // PROPS
@@ -34,6 +35,7 @@ interface ProductPricingProps {
     id: string;
     average_cost?: number;
   }>;
+  className?: string;
 }
 
 // ============================================
@@ -44,7 +46,8 @@ export function ProductPricing({
   formData, 
   setFormData,
   recipes = [],
-  ingredientOptions = []
+  ingredientOptions = [],
+  className,
 }: ProductPricingProps) {
   const handlePriceChange = (value: string) => {
     setFormData({ ...formData, price: value });
@@ -84,7 +87,7 @@ export function ProductPricing({
   }, [recipes, ingredientOptions, formData.price]);
 
   return (
-    <div className="md:col-span-4 border-r border-border-light pr-6">
+    <div className={cn('md:col-span-4 border-r border-border-light pr-6', className)}>
       <FormSection 
         title="FİYAT VE DURUM" 
         variant="success"
@@ -115,16 +118,6 @@ export function ProductPricing({
             labelOn="AKTİF"
             labelOff="PASİF"
             theme="success"
-          />
-
-          {/* Inventory Tracking Toggle */}
-          <RmsSwitch
-            checked={formData.track_inventory}
-            onChange={(checked) => setFormData({ ...formData, track_inventory: checked })}
-            label="Stok Takibi"
-            labelOn="EVET"
-            labelOff="HAYIR"
-            theme="info"
           />
         </div>
 

@@ -1,6 +1,14 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SettingType } from '../entities/restaurant-setting.entity';
+
+const SETTING_GROUPS = ['payment', 'cash', 'general'] as const;
 
 export class UpdateSettingDto {
   @ApiProperty({ example: 'tip_commission_rate' })
@@ -13,14 +21,14 @@ export class UpdateSettingDto {
     description: 'Value can be number, string, or boolean',
   })
   @IsNotEmpty()
-  value: any;
+  value: unknown;
 
   @ApiProperty({ enum: SettingType })
   @IsEnum(SettingType)
   type: SettingType;
 
-  @ApiPropertyOptional({ example: 'payment' })
+  @ApiPropertyOptional({ example: 'payment', enum: SETTING_GROUPS })
   @IsOptional()
-  @IsString()
-  group?: string;
+  @IsIn(SETTING_GROUPS)
+  group?: (typeof SETTING_GROUPS)[number];
 }

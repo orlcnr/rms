@@ -73,6 +73,12 @@ export interface MenuItem extends BaseEntity {
     name: string
     description?: string
     price: number
+    base_price?: number
+    effective_price?: number
+    override?: {
+        is_hidden: boolean
+        custom_price: number | null
+    }
     image_url?: string
     is_available: boolean
     track_inventory: boolean

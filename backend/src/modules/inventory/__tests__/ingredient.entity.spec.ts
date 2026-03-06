@@ -39,7 +39,7 @@ describe('Ingredient.updateCosts', () => {
       ingredient.updateCosts(5, 200, 100);
 
       expect(ingredient.last_price).toBe(200);
-      expect(ingredient.average_cost).toBeCloseTo(59.09, 1);
+      expect(ingredient.average_cost).toBeCloseTo(57.14, 1);
     });
 
     it('should handle zero quantity addition gracefully', () => {
@@ -78,9 +78,9 @@ describe('Ingredient.updateCosts', () => {
       expect(ingredient.last_price).toBe(50);
 
       // Üçüncü giriş: 30 kg @ 75 TL
-      // 30 kg @ 66.67 + 20 kg @ 50 = 3001 / 60 = 50.02
+      // 30 kg @ 66.67 + 20 kg @ 75 = 3500.1 / 50 = 70.00
       ingredient.updateCosts(20, 75, 30);
-      expect(Number(ingredient.average_cost)).toBeCloseTo(64.17, 1);
+      expect(Number(ingredient.average_cost)).toBeCloseTo(70, 1);
       expect(ingredient.last_price).toBe(75);
     });
 

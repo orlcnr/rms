@@ -63,10 +63,20 @@ export function groupOrderItemsByMenuItem(items: any[]): Map<string, OrderItemDa
       const existing = itemsMap.get(menuItemId)!
       existing.quantity += item.quantity || 1
     } else {
+      const resolvedUnitPrice = Number(
+        item.unitPrice ??
+          item.unit_price ??
+          item.unitPriceLocked ??
+          item.unit_price_locked ??
+          item.price ??
+          item.menuItem?.price ??
+          0,
+      )
+
       itemsMap.set(menuItemId, {
         menuItemId,
         name: item.menuItem?.name || item.name || 'Ürün',
-        price: item.menuItem?.price || item.price || 0,
+        price: Number.isFinite(resolvedUnitPrice) ? resolvedUnitPrice : 0,
         image_url: item.menuItem?.image_url,
         quantity: item.quantity || 1,
       })
