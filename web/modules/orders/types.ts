@@ -249,7 +249,6 @@ export interface BasketSummary {
 // ============================================
 
 export interface CreateOrderInput {
-  restaurant_id: string
   transaction_id?: string
   table_id?: string
   customer_id?: string
@@ -283,8 +282,8 @@ export interface UpdateOrderItemsInput {
 export interface GetOrdersParams {
   page?: number
   limit?: number
-  status?: OrderStatus
-  type?: OrderType
+  status?: OrderStatus | OrderStatus[] | string
+  type?: OrderType | OrderType[] | string
   tableId?: string
   search?: string
   startDate?: string
@@ -300,6 +299,18 @@ export interface PaginatedOrdersResponse {
     totalPages: number
     currentPage: number
   }
+}
+
+export interface BatchUpdateOrderStatusFailedItem {
+  order_id: string
+  code: string
+  message: string
+}
+
+export interface BatchUpdateOrderStatusResponse {
+  updated: Order[]
+  failed: BatchUpdateOrderStatusFailedItem[]
+  isPartial: boolean
 }
 
 // ============================================
@@ -428,6 +439,7 @@ export interface RevertPaymentRequest {
   payment_id: string
   transaction_id?: string // UUID v4 for idempotency
   reason: string
+  refund_method?: PaymentMethod
   approved_by?: string
 }
 

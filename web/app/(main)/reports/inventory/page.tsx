@@ -1,6 +1,7 @@
 import { getRestaurantContext } from '@/modules/auth/server/getServerUser'
 import { InventoryReportsClient } from '@/modules/reports/components/InventoryReportsClient'
 import { getDefaultReportDateRange, reportsService } from '@/modules/reports/service'
+import { InventoryReportBundle } from '@/modules/reports/types'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -13,7 +14,7 @@ export default async function InventoryReportsPage() {
   }
 
   const initialFilters = getDefaultReportDateRange(7)
-  let initialData = {
+  let initialData: InventoryReportBundle = {
     stockStatus: [],
     stockMovements: [],
     wastage: [],

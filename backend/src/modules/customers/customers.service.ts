@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,6 +20,8 @@ import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
 
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(
     @InjectRepository(Customer)
     private readonly customerRepository: Repository<Customer>,
@@ -53,23 +56,31 @@ export class CustomersService {
         ? headerUserAgent
         : headerUserAgent?.[0];
 
-    await this.auditService.safeEmitLog(
-      {
-        action: params.action,
-        resource: 'CUSTOMERS',
-        user_id: params.actor?.id,
-        user_name: this.buildActorName(params.actor),
-        restaurant_id: params.restaurantId,
-        payload: params.payload,
-        changes: params.changes,
-        ip_address: params.request?.ip,
-        user_agent: userAgent,
-      },
-      params.context,
-    );
-    this.auditService.markRequestAsAudited(
-      params.request as unknown as Record<string, unknown>,
-    );
+    try {
+      await this.auditService.safeEmitLog(
+        {
+          action: params.action,
+          resource: 'CUSTOMERS',
+          user_id: params.actor?.id,
+          user_name: this.buildActorName(params.actor),
+          restaurant_id: params.restaurantId,
+          payload: params.payload,
+          changes: params.changes,
+          ip_address: params.request?.ip,
+          user_agent: userAgent,
+        },
+        params.context,
+      );
+      this.auditService.markRequestAsAudited(
+        params.request as unknown as Record<string, unknown>,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Audit fail-open in ${params.context}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   async create(
@@ -83,9 +94,12 @@ export class CustomersService {
       throw new BadRequestException('Phone number is required');
     }
 
-    const existing = await this.customerRepository.findOne({
-      where: { phone: createCustomerDto.phone, restaurantId },
-    });
+    const existing = await this.customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.phone = :phone', { phone: createCustomerDto.phone })
+      .andWhere('customer.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('customer.deleted_at IS NULL')
+      .getOne();
     if (existing) {
       throw new ConflictException(
         'Bu telefon numarası ile kayıtlı bir müşteri zaten var',
@@ -143,9 +157,11 @@ export class CustomersService {
     const queryBuilder = this.customerRepository.createQueryBuilder('customer');
 
     // Multi-tenant: Always filter by restaurant
-    queryBuilder.where('customer.restaurantId = :restaurantId', {
-      restaurantId,
-    });
+    queryBuilder
+      .where('customer.restaurantId = :restaurantId', {
+        restaurantId,
+      })
+      .andWhere('customer.deleted_at IS NULL');
 
     if (search) {
       queryBuilder.andWhere(
@@ -166,9 +182,12 @@ export class CustomersService {
   }
 
   async findOne(id: string, restaurantId: string): Promise<Customer> {
-    const customer = await this.customerRepository.findOne({
-      where: { id, restaurantId },
-    });
+    const customer = await this.customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.id = :id', { id })
+      .andWhere('customer.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('customer.deleted_at IS NULL')
+      .getOne();
     if (!customer)
       throw new NotFoundException(`Customer with ID ${id} not found`);
     return customer;
@@ -181,6 +200,7 @@ export class CustomersService {
     return this.customerRepository
       .createQueryBuilder('customer')
       .where('customer.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('customer.deleted_at IS NULL')
       .andWhere(
         'customer.phone LIKE :query OR customer.first_name ILIKE :query OR customer.last_name ILIKE :query',
         { query: `%${query}%` },
@@ -193,7 +213,12 @@ export class CustomersService {
     phone: string,
     restaurantId: string,
   ): Promise<Customer | null> {
-    return this.customerRepository.findOne({ where: { phone, restaurantId } });
+    return this.customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.phone = :phone', { phone })
+      .andWhere('customer.restaurantId = :restaurantId', { restaurantId })
+      .andWhere('customer.deleted_at IS NULL')
+      .getOne();
   }
 
   async update(
@@ -213,9 +238,12 @@ export class CustomersService {
 
     // If phone is being updated, check for existing
     if (updateCustomerDto.phone && updateCustomerDto.phone !== customer.phone) {
-      const existing = await this.customerRepository.findOne({
-        where: { phone: updateCustomerDto.phone, restaurantId },
-      });
+      const existing = await this.customerRepository
+        .createQueryBuilder('customer')
+        .where('customer.phone = :phone', { phone: updateCustomerDto.phone })
+        .andWhere('customer.restaurantId = :restaurantId', { restaurantId })
+        .andWhere('customer.deleted_at IS NULL')
+        .getOne();
       if (existing) {
         throw new ConflictException(
           'Bu telefon numarası ile kayıtlı bir müşteri zaten var',
@@ -282,7 +310,7 @@ export class CustomersService {
     request?: Request,
   ): Promise<void> {
     const customer = await this.findOne(id, restaurantId);
-    await this.customerRepository.remove(customer);
+    await this.customerRepository.softRemove(customer);
     await this.emitDomainAudit({
       action: AuditAction.CUSTOMER_DELETED,
       restaurantId,

@@ -1,10 +1,10 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Drawer } from '@/modules/shared/components/Drawer'
+import { Modal } from '@/modules/shared/components/Modal'
 import { Customer } from '../types'
 import { Order } from '@/modules/orders/types'
-import { customerService } from '../services'
+import { customerService } from '../services/customers.service'
 import { useTranslation } from '@/modules/i18n/hooks/useTranslation'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -43,11 +43,11 @@ export function CustomerDetails({ isOpen, onClose, customer }: CustomerDetailsPr
     if (!customer) return null
 
     return (
-        <Drawer
+        <Modal
             isOpen={isOpen}
             onClose={onClose}
             title={customerT.details.title}
-            className="max-w-xl"
+            maxWidth="max-w-2xl"
         >
             <div className="space-y-8 pb-12">
                 {/* Profile Card */}
@@ -74,18 +74,18 @@ export function CustomerDetails({ isOpen, onClose, customer }: CustomerDetailsPr
                     <div className="grid grid-cols-3 gap-3">
                         <div className="p-3 bg-bg-surface border border-border-light rounded-sm flex flex-col">
                             <span className="text-[9px] font-bold text-text-muted uppercase mb-1">{customerT.details.visitCount}</span>
-                            <span className="text-lg font-black text-text-primary">{customer.visit_count}</span>
+                            <span className="text-lg font-black text-text-primary">{customer.visit_count ?? 0}</span>
                         </div>
                         <div className="p-3 bg-bg-surface border border-border-light rounded-sm flex flex-col">
                             <span className="text-[9px] font-bold text-text-muted uppercase mb-1">{customerT.details.totalSpent}</span>
                             <span className="text-lg font-black text-success-main tabular-nums">
-                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.total_spent)}
+                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.total_spent ?? 0)}
                             </span>
                         </div>
                         <div className="p-3 bg-bg-surface border border-border-light rounded-sm flex flex-col">
                             <span className="text-[9px] font-bold text-text-muted uppercase mb-1">{customerT.details.currentDebt}</span>
                             <span className="text-lg font-black text-danger-main tabular-nums">
-                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.current_debt)}
+                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.current_debt ?? 0)}
                             </span>
                         </div>
                     </div>
@@ -128,6 +128,6 @@ export function CustomerDetails({ isOpen, onClose, customer }: CustomerDetailsPr
                     </div>
                 </div>
             </div>
-        </Drawer>
+        </Modal>
     )
 }

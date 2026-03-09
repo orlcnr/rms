@@ -23,10 +23,16 @@ import { OrderDetailDrawer } from './OrderDetailDrawer'
 import { OrdersByStatus, OrderType, OrderStatus, OrderGroup } from '../types'
 import { PrintFormatModal } from '@/modules/shared/printing/PrintFormatModal'
 import { useOrderPrint } from '@/modules/shared/printing/useOrderPrint'
-import { PrintFormat } from '@/modules/shared/printing/types'
+import { PrintFormat, PrinterProfilesSettingV1 } from '@/modules/shared/printing/types'
+import {
+  normalizePrinterProfilesSetting,
+  resolvePrinterProfile,
+} from '@/modules/shared/printing/printer-profile-resolver'
 import { ordersApi } from '../services'
 import { tablesApi } from '@/modules/tables/services/tables.service'
 import { Table, TableStatus } from '@/modules/tables/types'
+import { extractOrderErrorCode, getOrderErrorMessage } from '../utils/order-errors'
+import { settingsService } from '@/modules/settings/services/settings.service'
 
 interface OrdersBoardClientProps {
   restaurantId: string
@@ -83,8 +89,17 @@ export function OrdersBoardClient({
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
   const [printTarget, setPrintTarget] = useState<OrderGroup | null>(null)
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfilesSettingV1>({
+    version: 1,
+    profiles: [],
+  })
+  const [recommendedPrintFormat, setRecommendedPrintFormat] =
+    useState<PrintFormat>('receipt_80mm')
+  const [printProfileName, setPrintProfileName] = useState<string | undefined>()
+  const [printGuidance, setPrintGuidance] = useState<string | undefined>()
   const [isMoveTableModalOpen, setIsMoveTableModalOpen] = useState(false)
   const [moveOrderGroup, setMoveOrderGroup] = useState<OrderGroup | null>(null)
+  const [moveTargetTable, setMoveTargetTable] = useState<Table | null>(null)
   const [availableTables, setAvailableTables] = useState<Table[]>([])
   const [isLoadingTables, setIsLoadingTables] = useState(false)
   const [isMovingTable, setIsMovingTable] = useState(false)
@@ -93,6 +108,26 @@ export function OrdersBoardClient({
     if (!isArchiveOpen) return
     void fetchArchiveOrders(true)
   }, [fetchArchiveOrders, isArchiveOpen])
+
+  const fetchPrinterProfiles = useCallback(async () => {
+    try {
+      const settings = await settingsService.getSettingsByGroup(
+        restaurantId,
+        'general',
+      )
+      const printerProfilesSetting = normalizePrinterProfilesSetting(
+        settings.printer_profiles?.value,
+      )
+      setPrinterProfiles(printerProfilesSetting)
+    } catch (error) {
+      console.error('[OrdersBoardClient] Failed to load printer profiles:', error)
+      setPrinterProfiles({ version: 1, profiles: [] })
+    }
+  }, [restaurantId])
+
+  useEffect(() => {
+    void fetchPrinterProfiles()
+  }, [fetchPrinterProfiles])
 
   const refreshPendingGuestApprovalsCount = useCallback(async () => {
     try {
@@ -211,7 +246,11 @@ export function OrdersBoardClient({
   })
 
   const handleStatusChange = async (orderId: string | string[], newStatus: Parameters<typeof updateStatus>[1]) => {
-    await updateStatus(orderId, newStatus)
+    try {
+      await updateStatus(orderId, newStatus)
+    } catch (error) {
+      toast.error(getOrderErrorMessage(extractOrderErrorCode(error)))
+    }
   }
 
   const handleOrderClick = (orderGroup: Parameters<typeof selectOrderGroup>[0]) => {
@@ -232,9 +271,18 @@ export function OrdersBoardClient({
       toast.error('Önce yazdırılacak bir sipariş seçin.')
       return
     }
+
+    const resolved = resolvePrinterProfile({
+      restaurantId,
+      purpose: 'adisyon',
+      setting: printerProfiles,
+    })
     setPrintTarget(orderGroup)
+    setRecommendedPrintFormat(resolved.format)
+    setPrintProfileName(resolved.profile?.name)
+    setPrintGuidance(resolved.profile?.guidance)
     setIsPrintModalOpen(true)
-  }, [])
+  }, [printerProfiles, restaurantId])
 
   const handlePrintFormatSelect = useCallback((format: PrintFormat) => {
     if (!printTarget) return
@@ -259,19 +307,20 @@ export function OrdersBoardClient({
     setIsMoveTableModalOpen(true)
     setIsLoadingTables(true)
     try {
-      const tables = await tablesApi.getTables(restaurantId)
+      const tables = await tablesApi.getTables()
       setAvailableTables(tables)
     } catch (error) {
       console.error('[OrdersBoardClient] Failed to load tables for move:', error)
       toast.error('Masalar yüklenemedi.')
       setIsMoveTableModalOpen(false)
       setMoveOrderGroup(null)
+      setMoveTargetTable(null)
     } finally {
       setIsLoadingTables(false)
     }
   }, [restaurantId])
 
-  const handleMoveToTable = useCallback(async (targetTable: Table) => {
+  const executeMoveToTable = useCallback(async (targetTable: Table) => {
     if (!moveOrderGroup) return
 
     const latestOrder = moveOrderGroup.orders[moveOrderGroup.orders.length - 1]
@@ -285,16 +334,8 @@ export function OrdersBoardClient({
       return
     }
 
-    let onTargetOccupied: 'merge' | undefined
-    if (targetTable.status === TableStatus.OCCUPIED) {
-      const confirmed = window.confirm(
-        `${targetTable.name} masası dolu. Siparişler birleştirilsin mi?`,
-      )
-      if (!confirmed) {
-        return
-      }
-      onTargetOccupied = 'merge'
-    }
+    const onTargetOccupied: 'merge' | undefined =
+      targetTable.status === TableStatus.OCCUPIED ? 'merge' : undefined
 
     setIsMovingTable(true)
     try {
@@ -305,15 +346,25 @@ export function OrdersBoardClient({
       toast.success('Masa transferi tamamlandı.')
       setIsMoveTableModalOpen(false)
       setMoveOrderGroup(null)
+      setMoveTargetTable(null)
       closeDetail()
       await refetch(false)
     } catch (error) {
       console.error('[OrdersBoardClient] move order failed:', error)
-      toast.error('Masa transferi başarısız oldu.')
+      toast.error(getOrderErrorMessage(extractOrderErrorCode(error)))
     } finally {
       setIsMovingTable(false)
     }
   }, [moveOrderGroup, closeDetail, refetch])
+
+  const handleSelectMoveTarget = useCallback((table: Table) => {
+    setMoveTargetTable(table)
+  }, [])
+
+  const handleConfirmMoveTarget = useCallback(async () => {
+    if (!moveTargetTable) return
+    await executeMoveToTable(moveTargetTable)
+  }, [executeMoveToTable, moveTargetTable])
 
   // Handle reconnect
   const handleReconnect = () => {
@@ -459,6 +510,9 @@ export function OrdersBoardClient({
           setPrintTarget(null)
         }}
         onSelect={handlePrintFormatSelect}
+        defaultFormat={recommendedPrintFormat}
+        profileName={printProfileName}
+        guidance={printGuidance}
       />
 
       <Modal
@@ -478,6 +532,7 @@ export function OrdersBoardClient({
           mode="modal"
           focusOrderId={guestApprovalsFocusOrderId}
           notificationId={guestApprovalsNotificationId}
+          onPendingCountChange={setPendingGuestApprovalsCount}
         />
       </Modal>
 
@@ -487,16 +542,58 @@ export function OrdersBoardClient({
           if (isMovingTable) return
           setIsMoveTableModalOpen(false)
           setMoveOrderGroup(null)
+          setMoveTargetTable(null)
         }}
         title="Masa Değiştir"
         maxWidth="max-w-2xl"
       >
         {isLoadingTables ? (
           <div className="text-sm text-text-muted">Masalar yükleniyor...</div>
+        ) : moveTargetTable ? (
+          <div className="space-y-4">
+            <p className="text-sm font-semibold text-text-primary">
+              {moveTargetTable.name} masasına taşıma işlemini onaylıyor musunuz?
+            </p>
+            <div className="rounded-sm border border-border-light bg-bg-muted/40 p-3">
+              <p className="text-xs font-semibold text-text-muted">
+                Kaynak Masa:{' '}
+                <span className="text-text-primary">
+                  {moveOrderGroup?.orders[moveOrderGroup.orders.length - 1]?.table?.name || '-'}
+                </span>
+              </p>
+              <p className="mt-1 text-xs font-semibold text-text-muted">
+                Hedef Masa:{' '}
+                <span className="text-text-primary">{moveTargetTable.name}</span>
+              </p>
+              {moveTargetTable.status === TableStatus.OCCUPIED ? (
+                <p className="mt-2 text-xs font-bold text-warning-main">
+                  Hedef masa dolu olduğu için siparişler birleştirilerek taşınacak.
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isMovingTable}
+                onClick={() => setMoveTargetTable(null)}
+                className="rounded-sm border border-border-light px-3 py-2 text-xs font-black uppercase tracking-wider text-text-muted hover:bg-bg-muted disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                disabled={isMovingTable}
+                onClick={() => void handleConfirmMoveTarget()}
+                className="rounded-sm bg-primary-main px-3 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-primary-dark disabled:opacity-50"
+              >
+                {isMovingTable ? 'Taşınıyor...' : 'Onayla ve Taşı'}
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-              Hedef masa seçin. Dolu masa seçerseniz birleştirme onayı istenir.
+              Hedef masa seçin. Seçim sonrası onay ekranı açılır.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {availableTables.map((table) => {
@@ -509,7 +606,7 @@ export function OrdersBoardClient({
                     key={table.id}
                     type="button"
                     disabled={isCurrent || isOutOfService || isMovingTable}
-                    onClick={() => void handleMoveToTable(table)}
+                    onClick={() => handleSelectMoveTarget(table)}
                     className="flex items-center justify-between rounded-sm border border-border-light px-3 py-2 text-left hover:bg-bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-bold text-text-primary">{table.name}</span>

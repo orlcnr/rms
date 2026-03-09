@@ -33,6 +33,7 @@ interface GuestApprovalsClientProps {
   mode?: 'page' | 'modal'
   focusOrderId?: string | null
   notificationId?: string | null
+  onPendingCountChange?: (count: number) => void
 }
 
 export function GuestApprovalsClient({
@@ -41,6 +42,7 @@ export function GuestApprovalsClient({
   mode = 'page',
   focusOrderId: focusOrderIdProp,
   notificationId: notificationIdProp,
+  onPendingCountChange,
 }: GuestApprovalsClientProps) {
   const searchParams = useSearchParams()
   const focusOrderId = focusOrderIdProp ?? searchParams.get('focus')
@@ -62,6 +64,10 @@ export function GuestApprovalsClient({
   const autoReadRetryTimeoutRef = React.useRef<number | null>(null)
   const shouldToastOnStableReconnectRef = React.useRef(false)
   const itemRefs = React.useRef<Record<string, HTMLElement | null>>({})
+
+  React.useEffect(() => {
+    onPendingCountChange?.(items.length)
+  }, [items.length, onPendingCountChange])
 
   const playOrderAlert = React.useCallback(() => {
     playNotificationAudio('/orders.mp3')

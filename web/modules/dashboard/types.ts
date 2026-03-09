@@ -26,6 +26,7 @@ export interface ReservationItem {
   id: string
   guestName: string
   guestCount: number
+  tableCode: string
   time: string
   status: ReservationStatus
 }

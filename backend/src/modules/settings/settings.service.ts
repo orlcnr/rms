@@ -54,6 +54,7 @@ export class SettingsService {
     value: unknown,
     type: SettingType = SettingType.STRING,
     group = 'general',
+    lastKnownUpdatedAt?: string,
     actor?: User,
     request?: Request,
   ): Promise<RestaurantSetting> {
@@ -63,6 +64,7 @@ export class SettingsService {
       value,
       type,
       group,
+      lastKnownUpdatedAt,
       actor,
       request,
     );

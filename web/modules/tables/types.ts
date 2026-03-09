@@ -31,18 +31,22 @@ export interface Table extends BaseEntity {
     area?: Area
     // Active order data for operation mode
     active_order?: ActiveOrder
+    reservations?: Array<{
+        id: string
+        table_id: string
+        reservation_time: string
+        status: string
+    }>
 }
 
 export interface CreateAreaInput {
     name: string
-    restaurant_id: string
 }
 
 export interface CreateTableInput {
     name: string
     capacity: number
     status?: TableStatus
-    restaurant_id: string
     area_id?: string
 }
 

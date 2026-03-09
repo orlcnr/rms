@@ -4,6 +4,7 @@
 // ============================================
 
 import { BaseEntity } from '@/modules/shared/types'
+import type { EnvelopePaginationMeta } from '@/modules/shared/types'
 
 // ============================================
 // ENUMS (Backend'den)
@@ -16,6 +17,7 @@ import { BaseEntity } from '@/modules/shared/types'
 export enum ReservationStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  ARRIVED = 'arrived',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   NO_SHOW = 'no_show',
@@ -28,6 +30,7 @@ export enum ReservationStatus {
 export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   [ReservationStatus.PENDING]: 'Bekliyor',
   [ReservationStatus.CONFIRMED]: 'Onaylandı',
+  [ReservationStatus.ARRIVED]: 'Geldi',
   [ReservationStatus.COMPLETED]: 'Tamamlandı',
   [ReservationStatus.CANCELLED]: 'İptal Edildi',
   [ReservationStatus.NO_SHOW]: 'Gelmedi',
@@ -44,6 +47,10 @@ export const RESERVATION_STATUS_CONFIG: Record<
   [ReservationStatus.CONFIRMED]: {
     label: 'Onaylandı',
     color: 'success',
+  },
+  [ReservationStatus.ARRIVED]: {
+    label: 'Geldi',
+    color: 'info',
   },
   [ReservationStatus.COMPLETED]: {
     label: 'Tamamlandı',
@@ -120,6 +127,11 @@ export interface GetReservationsParams {
 // Note: restaurantId is now handled by JWT on backend - not needed in frontend
 export interface GetReservationsQueryParams extends GetReservationsParams {
   // Removed: restaurantId is now obtained from JWT token on backend
+}
+
+export interface ReservationListData {
+  items: Reservation[]
+  meta: EnvelopePaginationMeta
 }
 
 // ============================================

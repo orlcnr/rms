@@ -81,7 +81,7 @@ export const useSettingsStore = create<SettingsStore>()(
         set({ isLoading: true, error: null })
 
         try {
-          const groups: SettingGroup[] = ['payment', 'cash']
+          const groups: SettingGroup[] = ['general', 'payment', 'cash']
           const responses = await Promise.all(
             groups.map((group) =>
               settingsService.getSettingsByGroup(restaurantId, group, true),
@@ -137,13 +137,27 @@ export const useSettingsStore = create<SettingsStore>()(
 
         try {
           const activeMeta = get().meta[key] || fallbackMeta
-          await settingsService.updateSetting(restaurantId, {
+          const updated = await settingsService.updateSetting(restaurantId, {
             key,
             value,
             type: activeMeta.type,
             group: activeMeta.group,
+            lastKnownUpdatedAt: activeMeta.updatedAt,
           })
-          set({ lastFetched: Date.now() })
+          set((state) => ({
+            lastFetched: Date.now(),
+            meta: {
+              ...state.meta,
+              [key]: {
+                ...(state.meta[key] || fallbackMeta),
+                value,
+                updatedAt:
+                  typeof updated?.updated_at === 'string'
+                    ? updated.updated_at
+                    : state.meta[key]?.updatedAt,
+              },
+            },
+          }))
         } catch (error) {
           set((state) => {
             const nextSettings = { ...state.settings }

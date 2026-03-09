@@ -4,7 +4,7 @@
  * @returns Formatted string
  */
 export function formatPhoneNumber(value: string): string {
-  const cleaned = value.replace(/\\D/g, '');
+  const cleaned = value.replace(/\D/g, '');
 
   // Limit to 11 digits (0 + 10 digits)
   const truncated = cleaned.slice(0, 11);
@@ -43,7 +43,7 @@ export function formatPhoneNumber(value: string): string {
  * @returns Masked string
  */
 export function maskPhoneNumber(value: string): string {
-  const cleaned = value.replace(/\\D/g, '');
+  const cleaned = value.replace(/\D/g, '');
   if (cleaned.length === 0) return '';
 
   // Mask all but the last 4 digits
@@ -73,5 +73,5 @@ export function maskPhoneNumber(value: string): string {
  * @returns Raw digits
  */
 export function cleanPhoneNumber(value: string): string {
-  return value.replace(/\\D/g, '');
+  return value.replace(/\D/g, '');
 }

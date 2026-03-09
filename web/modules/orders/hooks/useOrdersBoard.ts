@@ -5,8 +5,9 @@
 
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { revalidateTag } from 'next/cache'
+import { toast } from 'sonner'
 import {
   OrderGroup,
   OrdersByStatus,
@@ -15,7 +16,7 @@ import {
   OrderType,
   Order,
 } from '../types'
-import { ordersApi, ORDERS_CACHE_TAGS } from '../services'
+import { ordersApi, ORDERS_CACHE_TAGS, parseOrderDto } from '../services'
 import { usePendingQueue } from '@/modules/shared/hooks/usePendingQueue'
 import { useRef } from 'react'
 import {
@@ -99,7 +100,11 @@ function shouldUpdateItemForTransition(itemStatus: OrderStatus, targetOrderStatu
   }
 
   if (targetOrderStatus === OrderStatus.SERVED) {
-    return itemStatus === OrderStatus.READY
+    return (
+      itemStatus === OrderStatus.PENDING ||
+      itemStatus === OrderStatus.PREPARING ||
+      itemStatus === OrderStatus.READY
+    )
   }
 
   if (targetOrderStatus === OrderStatus.PAID) {
@@ -254,6 +259,8 @@ export function useOrdersBoard({
   userId,
   initialOrdersByStatus,
 }: UseOrdersBoardProps) {
+  void restaurantId
+  void userId
   // State
   const [ordersByStatus, setOrdersByStatus] = useState<OrdersByStatus>(initialOrdersByStatus)
   const [filters, setFilters] = useState<BoardFilters>({})
@@ -266,9 +273,19 @@ export function useOrdersBoard({
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [archiveLastFetchedAt, setArchiveLastFetchedAt] = useState<number | null>(null)
   const archiveLastFetchedAtRef = useRef<number | null>(null)
+  const isMountedRef = useRef(true)
+  const refetchRequestIdRef = useRef(0)
+  const archiveRequestIdRef = useRef(0)
 
   const pendingQueue = usePendingQueue()
   const suppressedTransactionIds = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Tüm siparişleri birleştir (filtreleme için)
   const allOrders = useMemo(() => {
@@ -317,29 +334,35 @@ export function useOrdersBoard({
 
   // Siparişleri yeniden fetch et
   const refetch = useCallback(async (withLoader = true) => {
+    const requestId = ++refetchRequestIdRef.current
     if (withLoader) setIsLoading(true)
     try {
       try { revalidateTag(ORDERS_CACHE_TAGS.BOARD) } catch (e) { }
 
       const response = await ordersApi.getOrders({
-        restaurantId,
         limit: 100,
         type: OrderType.DINE_IN,
-        status: ACTIVE_STATUSES.join(',') as any,
+        status: ACTIVE_STATUSES,
       })
-      const freshOrders = response.items || (response as any) || []
+      if (!isMountedRef.current || requestId !== refetchRequestIdRef.current) {
+        return
+      }
+      const freshOrders = response.items || []
 
       const grouped = groupOrdersByTableAndStatus(freshOrders)
       setOrdersByStatus(grouped)
     } catch (error) {
       console.error('Refetch failed:', error)
     } finally {
-      if (withLoader) setIsLoading(false)
+      if (withLoader && isMountedRef.current && requestId === refetchRequestIdRef.current) {
+        setIsLoading(false)
+      }
     }
-  }, [restaurantId])
+  }, [])
 
   const fetchArchiveOrders = useCallback(
     async (force = false) => {
+      const requestId = ++archiveRequestIdRef.current
       const isFresh =
         archiveLastFetchedAtRef.current !== null &&
         Date.now() - archiveLastFetchedAtRef.current < 60 * 1000
@@ -350,12 +373,14 @@ export function useOrdersBoard({
 
       try {
         const response = await ordersApi.getOrders({
-          restaurantId,
           limit: 200,
           type: OrderType.DINE_IN,
-          status: `${OrderStatus.PAID},${OrderStatus.CANCELLED}` as any,
+          status: [OrderStatus.PAID, OrderStatus.CANCELLED],
         })
-        const fetchedOrders = (response.items || (response as any) || []) as Order[]
+        if (!isMountedRef.current || requestId !== archiveRequestIdRef.current) {
+          return
+        }
+        const fetchedOrders = response.items as Order[]
         const todayOrders = filterOrdersByIstanbulToday(fetchedOrders)
         const grouped = groupOrdersByTableAndStatus(todayOrders)
 
@@ -365,12 +390,16 @@ export function useOrdersBoard({
         setArchiveLastFetchedAt(fetchedAt)
       } catch (error) {
         console.error('Archive fetch failed:', error)
-        setArchiveError('Arşiv siparişleri alınamadı')
+        if (isMountedRef.current && requestId === archiveRequestIdRef.current) {
+          setArchiveError('Arşiv siparişleri alınamadı')
+        }
       } finally {
-        setArchiveLoading(false)
+        if (isMountedRef.current && requestId === archiveRequestIdRef.current) {
+          setArchiveLoading(false)
+        }
       }
     },
-    [restaurantId],
+    [],
   )
 
   // Sipariş durumunu güncelle
@@ -382,9 +411,11 @@ export function useOrdersBoard({
 
       const txId = crypto.randomUUID()
       setIsSyncing(true)
+      let previousStateSnapshot: OrdersByStatus | null = null
 
       // ========= 1. Optimistic Update (Group-Aware) =========
       setOrdersByStatus(prev => {
+        previousStateSnapshot = JSON.parse(JSON.stringify(prev)) as OrdersByStatus
         // Deep clone to avoid mutation
         const nextState: OrdersByStatus = JSON.parse(JSON.stringify(prev))
         // For each orderId, find current snapshot and upsert with transition matrix
@@ -420,7 +451,21 @@ export function useOrdersBoard({
           })
         } else {
           // Multiple orders: use batch endpoint (avoids N requests → 429)
-          await ordersApi.batchUpdateOrderStatus(orderIds, newStatus, txId)
+          const batchResult = await ordersApi.batchUpdateOrderStatus(
+            orderIds,
+            newStatus,
+            txId,
+          )
+          if (batchResult.isPartial || batchResult.failed.length > 0) {
+            if (previousStateSnapshot) {
+              setOrdersByStatus(previousStateSnapshot)
+            }
+            await refetch(false)
+            toast.warning(
+              `Bazı siparişler güncellenemedi (${batchResult.failed.length}/${orderIds.length}).`,
+            )
+            return
+          }
         }
 
         // İşlem başarılıysa cache'leri invalidate et
@@ -436,6 +481,9 @@ export function useOrdersBoard({
         // Hata alınırsa Refetch (Rollback) yaparak UI ile sunucuyu eşitler
         suppressedTransactionIds.current.delete(txId)
         console.error('Status update failed, reverting optimistic update:', error)
+        if (previousStateSnapshot) {
+          setOrdersByStatus(previousStateSnapshot)
+        }
 
         // Network hatası ise kuyruğa ekle
         if (error.code === 'ERR_NETWORK' || !error.response) {
@@ -448,7 +496,7 @@ export function useOrdersBoard({
           })
         }
 
-        refetch()
+        await refetch(false)
         throw error
       } finally {
         setIsSyncing(false)
@@ -476,7 +524,7 @@ export function useOrdersBoard({
 
     setOrdersByStatus(prev => {
       const newState = JSON.parse(JSON.stringify(prev)) as OrdersByStatus
-      const incomingOrder = event.order
+      const incomingOrder = parseOrderDto(event.order as any)
       const localOrder = findOrderInState(newState, incomingOrder.id)
 
       if (localOrder) {

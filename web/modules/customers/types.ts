@@ -4,18 +4,21 @@ export interface Customer {
     last_name: string
     phone: string
     email?: string
-    restaurantId: string
-    visit_count: number
-    total_spent: number
-    current_debt: number
-    credit_limit: number
-    credit_limit_enabled: boolean
-    max_open_orders: number
+    restaurant_id?: string
+    restaurantId?: string
+    visit_count?: number
+    total_spent?: number
+    total_debt?: number
+    current_debt?: number
+    credit_limit?: number
+    credit_limit_enabled?: boolean
+    max_open_orders?: number
     last_visit?: string
     notes?: string
     tags?: string[]
-    createdAt: string
-    updatedAt: string
+    deleted_at?: string | null
+    created_at?: string
+    updated_at?: string
 }
 
 export interface CreateCustomerDto {

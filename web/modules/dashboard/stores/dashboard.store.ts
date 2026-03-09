@@ -72,7 +72,11 @@ function formatTime(iso: string): string {
   })
 }
 
-function mapRecentOrders(orders: Order[]): RecentOrder[] {
+function mapRecentOrders(orders: Order[] | unknown): RecentOrder[] {
+  if (!Array.isArray(orders)) {
+    return []
+  }
+
   return orders
     .filter((order) => isActiveRecentOrderStatus(order.status))
     .map((order) => ({
@@ -94,6 +98,7 @@ function mapReservations(reservations: Reservation[]): ReservationItem[] {
     id: reservation.id,
     guestName: `${reservation.customer?.first_name || ''} ${reservation.customer?.last_name || ''}`.trim() || '-',
     guestCount: reservation.guest_count,
+    tableCode: reservation.table?.name || '-',
     time: formatTime(reservation.reservation_time),
     status: reservation.status,
   }))

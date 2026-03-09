@@ -32,6 +32,7 @@ import {
   getNextPage,
 } from '../utils/order-filters'
 import { resolveDisplayPrice } from '@/modules/shared/utils/pricing'
+import { extractOrderErrorCode, getOrderErrorMessage } from '../utils/order-errors'
 
 // ============================================
 // PROPS
@@ -247,7 +248,7 @@ export function useOrdersLogic({
       const itemsMap = groupOrderItemsByMenuItem(existingOrder.items)
       const basketItems = groupedItemsToArray(itemsMap)
       setBasketForTable(selectedTable.id, basketItems, {
-        strategy: 'auto',
+        strategy: 'server',
         serverOrderStatus: existingOrder.status,
         serverOrderUpdatedAt:
           (existingOrder as unknown as { updated_at?: string }).updated_at ||
@@ -321,7 +322,7 @@ export function useOrdersLogic({
         const itemsMap = groupOrderItemsByMenuItem(updatedOrder.items)
         const basketItems = groupedItemsToArray(itemsMap)
         setBasketForTable(selectedTable.id, basketItems, {
-          strategy: 'auto',
+          strategy: 'server',
           serverOrderStatus: updatedOrder.status as OrderStatus,
           serverOrderUpdatedAt: updatedOrder.updatedAt || updatedOrder.updated_at || updatedOrder.createdAt || updatedOrder.created_at,
         })
@@ -331,7 +332,7 @@ export function useOrdersLogic({
             const itemsMap = groupOrderItemsByMenuItem(order.items)
             const basketItems = groupedItemsToArray(itemsMap)
             setBasketForTable(selectedTable.id, basketItems, {
-              strategy: 'auto',
+              strategy: 'server',
               serverOrderStatus: order.status,
               serverOrderUpdatedAt:
                 (order as unknown as { updated_at?: string }).updated_at ||
@@ -459,7 +460,6 @@ export function useOrdersLogic({
       } else {
         const newOrder = await ordersApi.createOrder({
           ...payload,
-          restaurant_id: restaurantId,
           table_id: selectedTable.id,
           type: orderType,
         })
@@ -480,12 +480,12 @@ export function useOrdersLogic({
       }
     } catch (e: any) {
       suppressedTransactionIds.current.delete(transactionId)
-      toast.error('Sipariş işlemi başarısız')
+      toast.error(getOrderErrorMessage(extractOrderErrorCode(e)))
       return null
     } finally {
       setIsSubmitting(false)
     }
-  }, [selectedTable, basket, orders, restaurantId, orderType, existingOrder, setIsSubmitting, setOrders, setBasketForTable])
+  }, [selectedTable, basket, orders, orderType, existingOrder, setIsSubmitting, setOrders, setBasketForTable])
 
   // ============ RETURN ============
   return {

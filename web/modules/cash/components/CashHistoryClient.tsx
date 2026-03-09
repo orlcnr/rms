@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   SubHeaderSection,
@@ -22,7 +22,7 @@ import { DateTimePicker } from '@/modules/shared/components/DateTimePicker'
 import { toInputDateString } from '@/modules/shared/utils/date'
 
 interface CashHistoryClientProps {
-  initialData: PaginatedResponse<CashSession> | CashSession[]
+  initialData: PaginatedResponse<CashSession>
   registers: CashRegister[]
   filters: CashSessionHistoryFilters
 }
@@ -36,23 +36,7 @@ export function CashHistoryClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  // Handle both paginated and non-paginated initial data
-  const normalizedData = useMemo(() => (
-    Array.isArray(initialData)
-      ? {
-        items: initialData,
-        meta: {
-          totalItems: initialData.length,
-          itemCount: initialData.length,
-          itemsPerPage: 10,
-          totalPages: 1,
-          currentPage: 1
-        }
-      }
-      : initialData
-  ), [initialData])
-
-  const [data, setData] = useState<PaginatedResponse<CashSession>>(normalizedData)
+  const [data, setData] = useState<PaginatedResponse<CashSession>>(initialData)
   const [isLoading, setIsLoading] = useState(false)
   const [filters, setFilters] = useState(initialFilters)
 
@@ -123,9 +107,9 @@ export function CashHistoryClient({
   }
 
   useEffect(() => {
-    setData(normalizedData)
+    setData(initialData)
     setFilters(initialFilters)
-  }, [initialFilters, normalizedData])
+  }, [initialData, initialFilters])
 
   useEffect(() => {
     const normalized = normalizeFilters(initialFilters)

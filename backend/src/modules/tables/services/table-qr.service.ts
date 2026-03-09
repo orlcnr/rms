@@ -97,7 +97,14 @@ export class TableQrService {
     const qrUrl = `${normalizeFrontendUrl(frontendUrl)}/guest?token=${encodeURIComponent(qrToken)}`;
 
     // Generate QR code image as data URL - High quality for scanning
-    const qrImageDataUrl = await QRCode.toDataURL(qrUrl, {
+    const qrCodeLib = QRCode as unknown as {
+      toDataURL: (
+        text: string,
+        options: Record<string, unknown>,
+      ) => Promise<string>;
+    };
+
+    const qrImageDataUrl = await qrCodeLib.toDataURL(qrUrl, {
       width: 800,
       margin: 1,
       errorCorrectionLevel: 'L', // Low error correction for smaller QR modules

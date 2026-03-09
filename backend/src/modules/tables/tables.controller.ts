@@ -1,146 +1,119 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
+  Controller,
+  Delete,
+  Get,
   Param,
   Patch,
-  Delete,
-  UseGuards,
-  Res,
+  Post,
   Query,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { TablesService } from './tables.service';
-import { TableQrService } from './services/table-qr.service';
-import { CreateTableDto } from './dto/create-table.dto';
-import { CreateAreaDto } from './dto/create-area.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-import { TableStatus } from './entities/table.entity';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { GetUser } from '../../common/decorators/get-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { Role } from '../../common/enums/role.enum';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '../../common/enums/role.enum';
+import type { User } from '../users/entities/user.entity';
+import { CreateAreaDto } from './dto/create-area.dto';
+import { CreateTableDto } from './dto/create-table.dto';
+import { GetAreasDto } from './dto/get-areas.dto';
+import { GetTablesDto } from './dto/get-tables.dto';
+import { UpdateTableStatusDto } from './dto/update-table-status.dto';
+import { TablesService } from './tables.service';
 
 @ApiTags('Tables')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tables')
 export class TablesController {
-  constructor(
-    private readonly tablesService: TablesService,
-    private readonly tableQrService: TableQrService,
-  ) {}
+  constructor(private readonly tablesService: TablesService) {}
 
-  @Post('areas')
-  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
-  @ApiOperation({ summary: 'Create a new area' })
-  createArea(@Body() createAreaDto: CreateAreaDto) {
-    return this.tablesService.createArea(createAreaDto);
-  }
-
-  @Get('restaurants/:restaurantId/areas')
-  @ApiOperation({ summary: 'Get all areas for a restaurant' })
-  findAllAreas(@Param('restaurantId') restaurantId: string) {
-    return this.tablesService.findAllAreasByRestaurant(restaurantId);
-  }
-
-  @Patch('areas/:id')
-  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
-  @ApiOperation({ summary: 'Update an area' })
-  updateArea(
-    @Param('id') id: string,
-    @Body() updateAreaDto: Partial<CreateAreaDto>,
-  ) {
-    return this.tablesService.updateArea(id, updateAreaDto);
-  }
-
-  @Delete('areas/:id')
-  @Roles(Role.RESTAURANT_OWNER)
-  @ApiOperation({ summary: 'Delete an area' })
-  deleteArea(@Param('id') id: string) {
-    return this.tablesService.deleteArea(id);
+  @Get()
+  @ApiOperation({ summary: 'Get tables board for current restaurant' })
+  findAllTables(@GetUser() user: User, @Query() filters: GetTablesDto) {
+    return this.tablesService
+      .getTables(user, filters)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post()
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
   @ApiOperation({ summary: 'Create a new table' })
-  createTable(@Body() createTableDto: CreateTableDto) {
-    return this.tablesService.createTable(createTableDto);
+  createTable(@GetUser() user: User, @Body() createTableDto: CreateTableDto) {
+    return this.tablesService
+      .createTable(user, createTableDto)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
-  @Get('restaurants/:restaurantId')
-  @ApiOperation({ summary: 'Get all tables for a restaurant' })
-  findAllTables(@Param('restaurantId') restaurantId: string) {
-    return this.tablesService.findAllTablesByRestaurant(restaurantId);
+  @Get('areas')
+  @ApiOperation({ summary: 'Get areas for current restaurant' })
+  getAreas(@GetUser() user: User, @Query() filters: GetAreasDto) {
+    return this.tablesService
+      .getAreas(user, filters)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
-  @Patch(':id/status')
-  @ApiOperation({ summary: 'Update table status' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        status: { type: 'string', enum: Object.values(TableStatus) },
-      },
-    },
-  })
-  updateStatus(@Param('id') id: string, @Body('status') status: TableStatus) {
-    return this.tablesService.updateTableStatus(id, status);
-  }
-
-  @Patch(':id')
+  @Post('areas')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
-  @ApiOperation({ summary: 'Update a table' })
-  updateTable(
+  @ApiOperation({ summary: 'Create area' })
+  createArea(@GetUser() user: User, @Body() dto: CreateAreaDto) {
+    return this.tablesService
+      .createArea(user, dto)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Patch('areas/:id')
+  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
+  @ApiOperation({ summary: 'Update area' })
+  updateArea(
+    @GetUser() user: User,
     @Param('id') id: string,
-    @Body() updateTableDto: Partial<CreateTableDto>,
+    @Body() dto: Partial<CreateAreaDto>,
   ) {
-    return this.tablesService.updateTable(id, updateTableDto);
+    return this.tablesService
+      .updateArea(user, id, dto)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get a single table detail' })
-  findOne(@Param('id') id: string) {
-    return this.tablesService.findOne(id);
-  }
-
-  @Delete(':id')
+  @Delete('areas/:id')
   @Roles(Role.RESTAURANT_OWNER)
-  @ApiOperation({ summary: 'Delete a table' })
-  deleteTable(@Param('id') id: string) {
-    return this.tablesService.deleteTable(id);
+  @ApiOperation({ summary: 'Delete area' })
+  deleteArea(@GetUser() user: User, @Param('id') id: string) {
+    return this.tablesService
+      .deleteArea(user, id)
+      .then(() => ApiResponseDto.empty('Alan silindi'));
   }
-
-  // QR Code Endpoints
 
   @Get(':id/qr')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER)
   @ApiOperation({ summary: 'Get QR code data for a table' })
-  async getTableQrCode(
+  getTableQrCode(
+    @GetUser() user: User,
     @Param('id') id: string,
-    @Query('restaurantId') restaurantId: string,
     @Query('restaurantName') restaurantName?: string,
   ) {
-    return this.tableQrService.generateQrCodeForTable(
-      id,
-      restaurantId,
-      restaurantName,
-    );
+    return this.tablesService
+      .getTableQr(user, id, restaurantName)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get(':id/qr/pdf')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER, Role.WAITER)
   @ApiOperation({ summary: 'Download QR code PDF for a single table' })
   async getTableQrPdf(
+    @GetUser() user: User,
     @Param('id') id: string,
-    @Query('restaurantId') restaurantId: string,
     @Query('restaurantName') restaurantName: string,
     @Res() res: Response,
   ) {
-    const pdfBuffer = await this.tableQrService.generateSingleQrPdf(
+    const pdfBuffer = await this.tablesService.getTableQrPdf(
+      user,
       id,
-      restaurantId,
       restaurantName,
     );
 
@@ -152,51 +125,90 @@ export class TablesController {
     res.send(pdfBuffer);
   }
 
-  @Get('restaurants/:restaurantId/qr/all')
+  @Get('qr/all')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
-  @ApiOperation({ summary: 'Get QR codes for all tables in a restaurant' })
-  async getAllTableQrCodes(
-    @Param('restaurantId') restaurantId: string,
+  @ApiOperation({
+    summary: 'Get QR codes for all tables in current restaurant',
+  })
+  getAllTableQrCodes(
+    @GetUser() user: User,
     @Query('restaurantName') restaurantName?: string,
   ) {
-    return this.tableQrService.generateQrCodesForRestaurant(
-      restaurantId,
-      restaurantName,
-    );
+    return this.tablesService
+      .getAllTableQrs(user, restaurantName)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
-  @Get('restaurants/:restaurantId/qr/pdf')
+  @Get('qr/pdf')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
   @ApiOperation({ summary: 'Download PDF with QR codes for all tables' })
   async getBulkQrPdf(
-    @Param('restaurantId') restaurantId: string,
+    @GetUser() user: User,
     @Query('restaurantName') restaurantName: string,
     @Res() res: Response,
   ) {
-    const pdfBuffer = await this.tableQrService.generateBulkQrPdf(
-      restaurantId,
+    const pdfBuffer = await this.tablesService.getRestaurantQrPdf(
+      user,
       restaurantName,
     );
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="all-tables-qr.pdf"`,
+      'attachment; filename="all-tables-qr.pdf"',
     );
     res.send(pdfBuffer);
   }
 
   @Post(':id/qr/rotate')
   @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
-  @ApiOperation({
-    summary: 'Rotate QR code for a table (invalidates old QR codes)',
-  })
-  async rotateQrCode(@Param('id') id: string) {
-    const newToken = await this.tableQrService.rotateQrCode(id);
-    return {
-      success: true,
-      message: 'QR code rotated successfully',
-      token: newToken,
-    };
+  @ApiOperation({ summary: 'Rotate table QR token/version' })
+  rotateQrCode(@GetUser() user: User, @Param('id') id: string) {
+    return this.tablesService
+      .rotateQrCode(user, id)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get table detail' })
+  findOne(@GetUser() user: User, @Param('id') id: string) {
+    return this.tablesService
+      .getTableById(user, id)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Patch(':id')
+  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
+  @ApiOperation({ summary: 'Update table' })
+  updateTable(
+    @GetUser() user: User,
+    @Param('id') id: string,
+    @Body() updateTableDto: Partial<CreateTableDto>,
+  ) {
+    return this.tablesService
+      .updateTable(user, id, updateTableDto)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Patch(':id/status')
+  @Roles(Role.RESTAURANT_OWNER, Role.MANAGER)
+  @ApiOperation({ summary: 'Update table status (OUT_OF_SERVICE management)' })
+  updateStatus(
+    @GetUser() user: User,
+    @Param('id') id: string,
+    @Body() dto: UpdateTableStatusDto,
+  ) {
+    return this.tablesService
+      .updateTableStatus(user, id, dto)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Delete(':id')
+  @Roles(Role.RESTAURANT_OWNER)
+  @ApiOperation({ summary: 'Delete table' })
+  deleteTable(@GetUser() user: User, @Param('id') id: string) {
+    return this.tablesService
+      .deleteTable(user, id)
+      .then(() => ApiResponseDto.empty('Masa silindi'));
   }
 }

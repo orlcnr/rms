@@ -58,7 +58,11 @@ export function groupOrderItemsByMenuItem(items: any[]): Map<string, OrderItemDa
   const itemsMap = new Map<string, OrderItemData>()
 
   items.forEach((item) => {
-    const menuItemId = item.menuItem?.id || item.menuItemId
+    const menuItemPayload = item.menuItem || item.menu_item
+    const menuItemId = item.menuItem?.id || item.menu_item?.id || item.menuItemId || item.menu_item_id
+    if (!menuItemId) {
+      return
+    }
     if (itemsMap.has(menuItemId)) {
       const existing = itemsMap.get(menuItemId)!
       existing.quantity += item.quantity || 1
@@ -66,18 +70,33 @@ export function groupOrderItemsByMenuItem(items: any[]): Map<string, OrderItemDa
       const resolvedUnitPrice = Number(
         item.unitPrice ??
           item.unit_price ??
+          item.unit_price_locked ??
           item.unitPriceLocked ??
           item.unit_price_locked ??
           item.price ??
           item.menuItem?.price ??
+          item.menu_item?.price ??
           0,
       )
+      const quantity = Number(item.quantity || 1) || 1
+      const subtotal = Number(item.subtotal ?? item.totalPrice ?? item.total_price ?? 0)
+      const fallbackUnitPrice =
+        Number.isFinite(resolvedUnitPrice) && resolvedUnitPrice > 0
+          ? resolvedUnitPrice
+          : Number.isFinite(subtotal) && subtotal > 0
+            ? subtotal / quantity
+            : 0
 
       itemsMap.set(menuItemId, {
         menuItemId,
-        name: item.menuItem?.name || item.name || 'Ürün',
-        price: Number.isFinite(resolvedUnitPrice) ? resolvedUnitPrice : 0,
-        image_url: item.menuItem?.image_url,
+        name:
+          item.menuItem?.name ||
+          item.menu_item?.name ||
+          item.menu_item_name ||
+          item.name ||
+          'Ürün',
+        price: fallbackUnitPrice,
+        image_url: menuItemPayload?.image_url,
         quantity: item.quantity || 1,
       })
     }

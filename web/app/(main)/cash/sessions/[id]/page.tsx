@@ -14,15 +14,10 @@ export default async function CashSessionDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { restaurantId } = await getRestaurantContext()
+  await getRestaurantContext()
   const { id } = await params
 
-  // Get session history to find this specific session
-  const historyData = await cashApi.getSessionHistory({ limit: 100 })
-  
-  // Handle both paginated and non-paginated responses
-  const sessions = Array.isArray(historyData) ? historyData : (historyData?.items || [])
-  const session = sessions.find(s => s.id === id)
+  const session = await cashApi.getSessionById(id)
 
   if (!session) {
     notFound()

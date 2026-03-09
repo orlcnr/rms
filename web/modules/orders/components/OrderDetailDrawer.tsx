@@ -11,6 +11,7 @@ import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LAB
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { formatDateTime } from '@/modules/shared/utils/date'
 import { cn } from '@/modules/shared/utils/cn'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
 
 interface OrderDetailDrawerProps {
@@ -193,7 +194,7 @@ export function OrderDetailDrawer({
                         <span className="text-[10px] text-text-muted mt-0.5 uppercase font-bold tracking-tight">Eklendi: {formatDateTime(item.created_at)}</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-sm font-black text-text-primary">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
+                        <span className="text-sm font-black text-text-primary">{formatCurrency(Number(item.totalPrice || 0))}</span>
                         <span className="text-[9px] text-primary-main uppercase font-black mt-1 bg-primary-main/10 px-1.5 py-0.5 rounded-full">{ORDER_STATUS_LABELS[item.status]}</span>
                       </div>
                     </div>
@@ -227,7 +228,7 @@ export function OrderDetailDrawer({
                           <span className="text-[10px] text-text-muted mt-0.5 uppercase font-bold tracking-tight">{formatDateTime(item.created_at)}</span>
                         </div>
                         <div className="flex flex-col items-end">
-                          <span className="text-sm font-bold text-text-primary">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
+                          <span className="text-sm font-bold text-text-primary">{formatCurrency(Number(item.totalPrice || 0))}</span>
                           <span
                             className={cn(
                               'text-[9px] uppercase font-bold mt-1 px-1.5 py-0.5 rounded-full border',
@@ -276,7 +277,7 @@ export function OrderDetailDrawer({
           <div className="bg-bg-app border border-border-light rounded-sm p-5 mt-8">
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-text-muted uppercase tracking-[0.2em]">Öngörülen Toplam</span>
-              <span className="text-2xl font-black text-primary-main tabular-nums tracking-tighter">{Number(orderGroup.totalAmount || 0).toFixed(2)} TL</span>
+              <span className="text-2xl font-black text-primary-main tabular-nums tracking-tighter">{formatCurrency(Number(orderGroup.totalAmount || 0))}</span>
             </div>
             <div className="flex justify-between items-center mt-3 pt-3 border-t border-border-light/50">
               <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{orderGroup.totalItems} Toplam Ürün</span>

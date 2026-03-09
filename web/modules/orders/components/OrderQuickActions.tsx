@@ -17,8 +17,8 @@ interface OrderQuickActionsProps {
 
 // Status transitions for different order types
 const DINE_IN_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-  [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
+  [OrderStatus.PENDING]: [OrderStatus.PREPARING, OrderStatus.SERVED, OrderStatus.CANCELLED],
+  [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.SERVED, OrderStatus.CANCELLED],
   [OrderStatus.READY]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
   [OrderStatus.SERVED]: [OrderStatus.PAID],
   [OrderStatus.PAID]: [],

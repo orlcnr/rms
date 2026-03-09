@@ -60,6 +60,7 @@ export class SettingsQueryService {
             value: parsedValue,
             type: setting.type,
             group: setting.group,
+            updatedAt: setting.updated_at?.toISOString(),
           }
         : parsedValue;
       return acc;
@@ -74,6 +75,10 @@ export class SettingsQueryService {
 
     if (setting.key === this.valueNormalizer.getEnabledPaymentMethodsKey()) {
       return this.valueNormalizer.parseEnabledPaymentMethods(parsedValue);
+    }
+
+    if (setting.key === this.valueNormalizer.getPrinterProfilesKey()) {
+      return this.valueNormalizer.parsePrinterProfiles(parsedValue);
     }
 
     return parsedValue;

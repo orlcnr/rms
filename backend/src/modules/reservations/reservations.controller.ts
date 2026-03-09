@@ -1,33 +1,36 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
+  Controller,
+  Delete,
+  Get,
   Param,
-  Query,
   Patch,
-  UseGuards,
+  Post,
+  Query,
   Req,
+  UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { ReservationsService } from './reservations.service';
-import { CreateReservationDto } from './dto/create-reservation.dto';
-import { ReservationStatus } from './entities/reservation.entity';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
   ApiQuery,
-  ApiBearerAuth,
+  ApiTags,
 } from '@nestjs/swagger';
-
-import { UpdateReservationDto } from './dto/update-reservation.dto';
-import { RolesGuard } from '../../common/guards/roles.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import type { User } from '../users/entities/user.entity';
+import { CreateReservationDto } from './dto/create-reservation.dto';
+import { GetReservationsDto } from './dto/get-reservations.dto';
+import { UpdateReservationStatusDto } from './dto/update-reservation-status.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { ReservationsService } from './reservations.service';
 
 @ApiTags('Reservations')
-@Controller('reservations')
 @ApiBearerAuth()
+@Controller('reservations')
 export class ReservationsController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
@@ -47,46 +50,41 @@ export class ReservationsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Create a new reservation with conflict check' })
+  @ApiOperation({ summary: 'Create reservation with conflict check' })
   create(
-    @Body() createReservationDto: CreateReservationDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    createReservationDto: CreateReservationDto,
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.reservationsService.create(
-      createReservationDto,
-      this.toReservationUser(user),
-      request,
-    );
+    return this.reservationsService
+      .create(createReservationDto, this.toReservationUser(user), request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get()
   @UseGuards(RolesGuard)
-  @ApiOperation({
-    summary: 'Get reservations, optionally filtered by date or date range',
-  })
+  @ApiOperation({ summary: 'Get reservations (paginated)' })
   @ApiQuery({ name: 'date', required: false })
   @ApiQuery({ name: 'startDate', required: false })
   @ApiQuery({ name: 'endDate', required: false })
   findAll(
-    @Query('date') date?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @GetUser() user?: User,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    filters: GetReservationsDto,
+    @GetUser() user: User,
   ) {
-    let normalizedDate = date;
+    return this.reservationsService
+      .findAll(filters, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
+  }
 
-    if (date && date.toLowerCase() === 'today') {
-      // Format today's date as YYYY-MM-DD for consistency ensuring Istanbul timezone
-      normalizedDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Europe/Istanbul',
-      }).format(new Date());
-    }
-
-    return this.reservationsService.findAll(
-      { date: normalizedDate, startDate, endDate },
-      user?.restaurant_id,
-    );
+  @Get(':id')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Get reservation by id' })
+  findOne(@Param('id') id: string, @GetUser() user: User) {
+    return this.reservationsService
+      .findOne(id, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Patch(':id')
@@ -94,32 +92,41 @@ export class ReservationsController {
   @ApiOperation({ summary: 'Update reservation details' })
   update(
     @Param('id') id: string,
-    @Body() updateReservationDto: UpdateReservationDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    updateReservationDto: UpdateReservationDto,
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.reservationsService.update(
-      id,
-      updateReservationDto,
-      this.toReservationUser(user),
-      request,
-    );
+    return this.reservationsService
+      .update(id, updateReservationDto, this.toReservationUser(user), request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Patch(':id/status')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Update reservation status' })
+  @ApiOperation({ summary: 'Update reservation status (manual NO_SHOW supported)' })
   updateStatus(
     @Param('id') id: string,
-    @Body('status') status: ReservationStatus,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: UpdateReservationStatusDto,
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.reservationsService.updateStatus(
-      id,
-      status,
-      this.toReservationUser(user),
-      request,
-    );
+    return this.reservationsService
+      .updateStatus(id, dto.status, this.toReservationUser(user), request)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Soft delete reservation' })
+  delete(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.reservationsService
+      .delete(id, this.toReservationUser(user), request)
+      .then(() => ApiResponseDto.empty('Rezervasyon silindi'));
   }
 }

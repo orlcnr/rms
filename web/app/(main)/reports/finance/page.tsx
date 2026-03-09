@@ -1,6 +1,7 @@
 import { getRestaurantContext } from '@/modules/auth/server/getServerUser'
 import { FinanceReportsClient } from '@/modules/reports/components/FinanceReportsClient'
 import { getDefaultReportDateRange, reportsService } from '@/modules/reports/service'
+import { FinanceReportBundle } from '@/modules/reports/types'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -13,7 +14,7 @@ export default async function FinanceReportsPage() {
   }
 
   const initialFilters = getDefaultReportDateRange(30)
-  let initialData = {
+  let initialData: FinanceReportBundle = {
     dailySales: [],
     paymentStats: [],
     discountStats: {

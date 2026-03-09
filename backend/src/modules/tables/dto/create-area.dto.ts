@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAreaDto {
@@ -6,9 +6,4 @@ export class CreateAreaDto {
   @IsString()
   @IsNotEmpty()
   name: string;
-
-  @ApiProperty({ example: 'uuid-of-restaurant' })
-  @IsUUID()
-  @IsNotEmpty()
-  restaurant_id: string;
 }

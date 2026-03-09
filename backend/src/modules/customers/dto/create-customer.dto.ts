@@ -4,8 +4,13 @@ import {
   IsOptional,
   IsString,
   Matches,
+  IsNumber,
+  IsBoolean,
+  IsInt,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 
 export class CreateCustomerDto {
   @ApiProperty({ example: 'Ahmet' })
@@ -26,6 +31,9 @@ export class CreateCustomerDto {
   phone: string;
 
   @ApiPropertyOptional({ example: 'ahmet@example.com' })
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === '' ? undefined : value,
+  )
   @IsOptional()
   @IsEmail()
   email?: string;
@@ -39,4 +47,30 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional({ example: 0, description: 'Müşteri kredi limiti' })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  credit_limit?: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Kredi limiti kontrolü aktif mi',
+  })
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsOptional()
+  @IsBoolean()
+  credit_limit_enabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Maksimum açık sipariş sayısı',
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  max_open_orders?: number;
 }

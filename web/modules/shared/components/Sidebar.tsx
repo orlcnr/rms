@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList, Bell, BarChart3 } from 'lucide-react'
+import { LayoutGrid, LogOut, Settings, Package, Users, BookOpen, Wallet, Calendar, ShieldCheck, Grid2X2, ClipboardList, Bell, BarChart3, CreditCard } from 'lucide-react'
 import { authService } from '@/modules/auth/services/auth.service'
 import { useUI } from '@/modules/shared/context/UIContext'
 import { cn } from '../utils/cn'
@@ -19,6 +19,7 @@ export function Sidebar() {
         { icon: Grid2X2, label: 'Masa Yönetimi', href: '/tables' },
         { icon: ClipboardList, label: 'Siparişler', href: '/orders' },
         { icon: Wallet, label: 'Kasa', href: '/cash' },
+        { icon: CreditCard, label: 'Ödemeler', href: '/payments' },
         { icon: BarChart3, label: 'Raporlar', href: '/reports' },
         { icon: BookOpen, label: 'Ürün Kataloğu', href: '/products' },
         { icon: Package, label: 'Stok ve Envanter', href: '/inventory' },

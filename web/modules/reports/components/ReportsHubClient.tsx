@@ -85,7 +85,6 @@ export function ReportsHubClient() {
                 icon={category.icon}
                 status={category.status}
                 previewItems={category.previewItems}
-                isDisabled={category.isDisabled}
               />
             ))}
           </div>

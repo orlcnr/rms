@@ -23,19 +23,15 @@ export class CreateTableDto {
   @Min(1)
   capacity: number;
 
-  @ApiProperty({ example: 'uuid-of-restaurant' })
-  @IsString()
-  @IsUUID()
-  @IsNotEmpty()
-  restaurant_id: string;
-
   @ApiPropertyOptional({ example: 'uuid-of-area' })
   @IsString()
   @IsUUID()
   @IsOptional()
   area_id?: string;
 
-  @ApiPropertyOptional({ enum: TableStatus, example: TableStatus.AVAILABLE })
+  @ApiPropertyOptional({
+    enum: [TableStatus.AVAILABLE, TableStatus.OUT_OF_SERVICE],
+  })
   @IsEnum(TableStatus, { message: 'Geçersiz masa durumu' })
   @IsOptional()
   status?: TableStatus;

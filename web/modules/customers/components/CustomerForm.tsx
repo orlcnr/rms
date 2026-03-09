@@ -8,7 +8,7 @@ import { Button } from '@/modules/shared/components/Button'
 import { RmsSwitch } from '@/modules/shared/components/RmsSwitch'
 import { Customer, CreateCustomerDto, UpdateCustomerDto } from '../types'
 import { useTranslation } from '@/modules/i18n/hooks/useTranslation'
-import { customerService } from '../services'
+import { customerService } from '../services/customers.service'
 import { toast } from 'sonner'
 
 interface CustomerFormProps {

@@ -101,6 +101,11 @@ export class CreateCashMovementDto {
   orderId?: string;
 
   @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  referencePaymentId?: string;
+
+  @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
   transaction_id?: string;

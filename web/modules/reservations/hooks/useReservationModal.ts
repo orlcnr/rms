@@ -71,7 +71,7 @@ export function useReservationModal({
       reservationsApi.getAll({ date })
         .then(res => {
           // Geliştirme: Ana ekranın bozulmaması için store yerine local state kullanıyoruz.
-          setModalReservations(res)
+          setModalReservations(res.items)
         })
         .catch(console.error)
     }
@@ -82,7 +82,7 @@ export function useReservationModal({
     if (isOpen && restaurantId) {
       setIsLoadingTables(true)
       tablesApi
-        .getTables(restaurantId)
+        .getTables()
         .then(setTables)
         .catch(console.error)
         .finally(() => setIsLoadingTables(false))

@@ -14,8 +14,8 @@ export default async function TablesPage() {
 
     // Fetch initial data in parallel from backend
     const [areas, tables] = await Promise.all([
-        tablesApi.getAreas(restaurantId),
-        tablesApi.getTables(restaurantId)
+        tablesApi.getAreas(),
+        tablesApi.getTables()
     ])
 
     return (

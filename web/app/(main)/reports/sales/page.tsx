@@ -1,6 +1,7 @@
 import { getRestaurantContext } from '@/modules/auth/server/getServerUser'
 import { SalesReportsClient } from '@/modules/reports/components/SalesReportsClient'
 import { getDefaultReportDateRange, reportsService } from '@/modules/reports/service'
+import { SalesReportBundle } from '@/modules/reports/types'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -13,7 +14,7 @@ export default async function SalesReportsPage() {
   }
 
   const initialFilters = getDefaultReportDateRange(30)
-  let initialData = {
+  let initialData: SalesReportBundle = {
     dailySales: [],
     productSales: [],
     categorySales: [],

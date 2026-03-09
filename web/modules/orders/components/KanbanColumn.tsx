@@ -13,6 +13,7 @@ import { OrderGroup, OrderStatus } from '../types'
 import { OrderCard } from './OrderCard'
 import { Clock, ChefHat, Check, Utensils, Truck, CheckCircle, CreditCard, XCircle, MoreHorizontal, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/modules/shared/utils/cn'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 
 interface KanbanColumnProps {
   status: OrderStatus
@@ -185,7 +186,7 @@ export function KanbanColumn({
       {!isCompact && orderGroups.length > 0 && (
         <div className="px-3 pb-2 flex items-center justify-between text-xs text-text-muted">
           <span>{totalItems} ürün</span>
-          <span className="font-medium">{Number(totalAmount || 0).toFixed(2)} TL</span>
+          <span className="font-medium">{formatCurrency(Number(totalAmount || 0))}</span>
         </div>
       )}
 

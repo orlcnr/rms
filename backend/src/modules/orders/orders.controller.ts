@@ -24,6 +24,8 @@ import { User } from '../users/entities/user.entity';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { MoveOrderDto } from './dto/move-order.dto';
 import { BatchUpdateStatusDto } from './dto/batch-update-status.dto';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { GetOrdersDto } from './dto/get-orders.dto';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -42,22 +44,12 @@ export class OrdersController {
   ) // Updated roles
   @Get()
   @ApiOperation({ summary: 'Get filtered orders' })
-  findAll(
-    @GetUser() user: User,
-    @Query('status') status?: string,
-    @Query('waiterId') waiterId?: string,
-    @Query('type') type?: string,
-    @Query('tableId') tableId?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const parsedLimit = limit ? Number(limit) : undefined;
-    return this.ordersService.findAll(
-      user.restaurant_id,
-      status,
-      waiterId,
-      type,
-      tableId,
-      parsedLimit,
+  findAll(@GetUser() user: User, @Query() query: GetOrdersDto) {
+    return this.ordersService.findAll(user.restaurant_id, query).then((data) =>
+      ApiResponseDto.ok({
+        items: data.items,
+        meta: data.meta,
+      }),
     );
   }
 
@@ -76,7 +68,9 @@ export class OrdersController {
     @GetUser() user: User,
     @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.create(createOrderDto, user, request);
+    return this.ordersService
+      .create(createOrderDto, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -88,7 +82,9 @@ export class OrdersController {
   @Get('restaurants/:restaurantId')
   @ApiOperation({ summary: 'Get all orders for a restaurant' })
   findAllByRestaurant(@GetUser() user: User) {
-    return this.ordersService.findAllByRestaurant(user.restaurant_id);
+    return this.ordersService
+      .findAllByRestaurant(user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -104,7 +100,9 @@ export class OrdersController {
   @Get(':id')
   @ApiOperation({ summary: 'Get order details' })
   findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(id);
+    return this.ordersService
+      .findOne(id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -136,13 +134,9 @@ export class OrdersController {
     @GetUser() user: User,
     @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.updateStatus(
-      id,
-      status,
-      transactionId,
-      user,
-      request,
-    );
+    return this.ordersService
+      .updateStatus(id, status, transactionId, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -165,13 +159,15 @@ export class OrdersController {
     @GetUser() user: User,
     @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.batchUpdateStatus(
-      dto.order_ids,
-      dto.status,
-      dto.transaction_id,
-      user,
-      request,
-    );
+    return this.ordersService
+      .batchUpdateStatus(
+        dto.order_ids,
+        dto.status,
+        dto.transaction_id,
+        user,
+        request,
+      )
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -191,14 +187,16 @@ export class OrdersController {
     @GetUser() user: User,
     @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.moveOrder(
-      orderId,
-      dto.new_table_id,
-      user.restaurant_id,
-      dto.on_target_occupied,
-      user,
-      request,
-    );
+    return this.ordersService
+      .moveOrder(
+        orderId,
+        dto.new_table_id,
+        user.restaurant_id,
+        dto.on_target_occupied,
+        user,
+        request,
+      )
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Roles(
@@ -216,17 +214,8 @@ export class OrdersController {
     @Body() dto: UpdateOrderItemsDto,
     @Req() request: ExpressRequest,
   ) {
-    return this.ordersService.updateItems(
-      id,
-      dto.items,
-      user.restaurant_id,
-      dto.notes,
-      dto.type,
-      dto.customer_id,
-      dto.address,
-      dto.transaction_id,
-      user,
-      request,
-    );
+    return this.ordersService
+      .updateItems(id, dto, user.restaurant_id, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 }

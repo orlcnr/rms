@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 import { useOrdersLogic } from '../hooks/useOrdersLogic'
 import { PosCategoryTabs } from './PosCategoryTabs'
@@ -99,6 +100,19 @@ export function OrdersClient({
       .filter((item): item is (typeof hook.basket)[number] => item !== null)
   }, [hook, localExistingOrder])
 
+  const hasUnsubmittedItemsInBasket = confirmItems.length > 0
+
+  const handlePayClick = () => {
+    if (hasUnsubmittedItemsInBasket) {
+      toast.warning(
+        'Sepette siparişe gönderilmemiş ürünler var. Önce "Siparişi Güncelle" yapın.',
+      )
+      return
+    }
+
+    setIsPaymentOpen(true)
+  }
+
   if (!hook.mounted) return null
 
   return (
@@ -179,7 +193,7 @@ export function OrdersClient({
               onRemove={hook.removeFromBasket}
               onClear={hook.clearBasket}
               onSubmit={handleOrderSubmit}
-              onPay={() => setIsPaymentOpen(true)}
+              onPay={handlePayClick}
               onTrackOrder={() => router.push('/orders')}
               isLoading={hook.isSubmitting}
               disabled={hook.isSubmitting}

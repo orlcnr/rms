@@ -84,6 +84,10 @@ export function UpcomingReservations({ reservations, isLoading, error, onRetry }
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-text-muted font-semibold tracking-widest uppercase">{res.guestCount} KİŞİ</span>
                       <span className="w-0.5 h-0.5 rounded-full bg-border-medium" />
+                      <span className="text-xs text-text-secondary font-semibold tracking-widest uppercase">
+                        MASA: {res.tableCode}
+                      </span>
+                      <span className="w-0.5 h-0.5 rounded-full bg-border-medium" />
                       <span className="text-xs text-info-main font-semibold tabular-nums tracking-widest">{res.time}</span>
                     </div>
                   </div>

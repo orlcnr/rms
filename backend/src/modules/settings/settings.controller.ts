@@ -69,6 +69,7 @@ export class SettingsController {
       dto.value,
       dto.type,
       dto.group,
+      dto.lastKnownUpdatedAt,
       user,
       request,
     );

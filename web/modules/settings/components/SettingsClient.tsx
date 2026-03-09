@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import { Button } from '@/modules/shared/components/Button'
 import { BodySection, FilterSection, SubHeaderSection } from '@/modules/shared/components/layout'
@@ -11,6 +12,7 @@ import { useRestaurantStore } from '../stores/restaurant.store'
 import { useUsersStore } from '../stores/users.store'
 import {
   RestaurantFormInput,
+  PrinterProfilesSettingV1,
   SettingKey,
   SettingValue,
   SETTINGS_TABS,
@@ -25,6 +27,10 @@ import { CashTab } from './tabs/CashTab'
 import { BrandBranchTab } from './tabs/BrandBranchTab'
 import { AuditTab } from './tabs/AuditTab'
 import { PaymentMethod } from '@/modules/orders/types'
+import {
+  normalizePrinterProfilesSetting,
+  serializePrinterProfilesSetting,
+} from '@/modules/shared/printing/printer-profile-resolver'
 
 interface SettingsClientProps {
   activeTab: SettingsTab
@@ -112,6 +118,10 @@ export function SettingsClient({
         SettingKey.TIP_COMMISSION_ENABLED,
         true,
       ),
+      [SettingKey.RESERVATION_SLOT_MINUTES]: getSetting(
+        SettingKey.RESERVATION_SLOT_MINUTES,
+        120,
+      ),
       [SettingKey.TIP_COMMISSION_RATE]: getSetting(
         SettingKey.TIP_COMMISSION_RATE,
         0.02,
@@ -132,6 +142,9 @@ export function SettingsClient({
       [SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT]: getSetting(
         SettingKey.FOOD_COST_ALERT_THRESHOLD_PERCENT,
         35,
+      ),
+      [SettingKey.PRINTER_PROFILES]: normalizePrinterProfilesSetting(
+        getSetting(SettingKey.PRINTER_PROFILES, ''),
       ),
     })
   }, [mounted, getSetting, settingsLastFetched])
@@ -228,9 +241,48 @@ export function SettingsClient({
     if (!restaurantId) return
 
     try {
-      await updateRestaurant(restaurantId, values)
+      const printerProfilesValue = pendingSettings[SettingKey.PRINTER_PROFILES]
+      const normalizedPrinterProfiles = normalizePrinterProfilesSetting(
+        printerProfilesValue,
+      )
+
+      await Promise.all([
+        updateRestaurant(restaurantId, values),
+        updateSetting(
+          restaurantId,
+          SettingKey.RESERVATION_SLOT_MINUTES,
+          Number(pendingSettings[SettingKey.RESERVATION_SLOT_MINUTES] ?? 120),
+        ),
+        updateSetting(
+          restaurantId,
+          SettingKey.PRINTER_PROFILES,
+          serializePrinterProfilesSetting(normalizedPrinterProfiles),
+        ),
+      ])
+      await loadSettings(restaurantId, true)
       toast.success('Firma bilgileri güncellendi')
-    } catch {
+    } catch (error) {
+      const message = (() => {
+        if (isAxiosError(error)) {
+          const rawMessage = error.response?.data?.message
+          if (Array.isArray(rawMessage)) return rawMessage.join(', ')
+          if (typeof rawMessage === 'string') return rawMessage
+        }
+        if (error instanceof Error) return error.message
+        if (typeof error === 'string') return error
+        return ''
+      })()
+
+      if (message.includes('SETTINGS_CONFLICT')) {
+        const confirmed = window.confirm(
+          'Yazıcı ayarları başka bir oturumda değişti. Yenilerseniz yaptığınız lokal değişiklikler kaybolacak. Devam etmek istiyor musunuz?',
+        )
+        if (confirmed) {
+          await loadSettings(restaurantId, true)
+        }
+        return
+      }
+
       toast.error('Firma bilgileri güncellenemedi')
     }
   }
@@ -288,7 +340,23 @@ export function SettingsClient({
             <GeneralTab
               restaurant={restaurant}
               isLoading={restaurantIsLoading}
+              reservationSlotMinutes={Number(
+                pendingSettings[SettingKey.RESERVATION_SLOT_MINUTES] ?? 120,
+              )}
+              printerProfiles={normalizePrinterProfilesSetting(
+                pendingSettings[SettingKey.PRINTER_PROFILES] as
+                  | PrinterProfilesSettingV1
+                  | string
+                  | undefined,
+              )}
+              onReservationSlotMinutesChange={(value) =>
+                handleSettingChange(SettingKey.RESERVATION_SLOT_MINUTES, value)
+              }
+              onPrinterProfilesChange={(value: PrinterProfilesSettingV1) =>
+                handleSettingChange(SettingKey.PRINTER_PROFILES, value)
+              }
               onSave={handleSaveGeneral}
+              restaurantId={restaurantId}
             />
           )}
 

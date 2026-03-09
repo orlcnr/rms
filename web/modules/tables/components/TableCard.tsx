@@ -15,6 +15,7 @@ import { Table, TableStatus } from '../types'
 import { Button } from '@/modules/shared/components/Button'
 import { cn } from '@/modules/shared/utils/cn'
 import { formatCurrency } from '@/modules/shared/utils/numeric'
+import { TableReservationBullet } from './TableReservationBullet'
 
 interface TableCardProps {
     table: Table
@@ -61,6 +62,16 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
     const theme = STATUS_THEME[table.status] || STATUS_THEME[TableStatus.AVAILABLE]
     const BottomIcon = theme.bottomIcon
     const [now, setNow] = useState(new Date())
+    const todayKey = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Istanbul',
+    }).format(now)
+
+    const hasReservationToday = (table.reservations || []).some((reservation) => {
+        const reservationDate = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Istanbul',
+        }).format(new Date(reservation.reservation_time))
+        return reservationDate === todayKey
+    })
 
     // Update time every minute for duration calculation
     useEffect(() => {
@@ -163,6 +174,11 @@ export function TableCard({ table, isAdminMode = false, onEdit, onDelete, onShow
                         {table.area?.name || 'Genel Alan'}
                     </span>
                 </div>
+                {hasReservationToday && (
+                    <div className="mt-2">
+                        <TableReservationBullet tableId={table.id} />
+                    </div>
+                )}
             </div>
 
             {/* Bottom: Grouped infos */}

@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not, QueryRunner } from 'typeorm';
 
@@ -13,6 +8,8 @@ import { Table, TableStatus } from '../../tables/entities/table.entity';
 import { NotificationsGateway } from '../../notifications/notifications.gateway';
 import { TransactionalHelper } from '../../../common/databases/transactional.helper';
 import { calculateOrderTotalFromItems } from '../utils/order-total.util';
+import { OrderUseCaseResult } from '../interfaces/order-use-case-result.interface';
+import { OrderErrorCodes } from '../errors/order-error-codes';
 
 const ACTIVE_ORDER_STATUSES = [
   OrderStatus.PENDING,
@@ -23,6 +20,8 @@ const ACTIVE_ORDER_STATUSES = [
 
 @Injectable()
 export class MoveOrderUseCase {
+  private readonly logger = new Logger(MoveOrderUseCase.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -35,91 +34,184 @@ export class MoveOrderUseCase {
     newTableId: string,
     restaurantId: string,
     onTargetOccupied: 'reject' | 'merge' = 'reject',
-  ): Promise<Order> {
-    const result = await this.transactionalHelper.runInTransaction(
-      async (queryRunner) => {
-        const sourceOrder = await this.getOrder(
-          queryRunner,
-          orderId,
-          restaurantId,
-        );
-        this.validateOrder(sourceOrder);
-        this.validateOrderType(sourceOrder);
+  ): Promise<OrderUseCaseResult<Order>> {
+    try {
+      const result: OrderUseCaseResult<{
+        finalOrderId: string;
+        oldTable: Table | null;
+        newTable: Table;
+      }> = await this.transactionalHelper.runInTransaction(
+        async (queryRunner) => {
+          this.logger.debug(
+            JSON.stringify({
+              step: 'move_order.start',
+              orderId,
+              newTableId,
+              restaurantId,
+              onTargetOccupied,
+            }),
+          );
 
-        const newTable = await this.getNewTable(
-          queryRunner,
-          newTableId,
-          restaurantId,
-        );
-        this.validateTableChange(sourceOrder, newTable);
-
-        const targetOrder = await this.findActiveOrderByTable(
-          queryRunner,
-          newTableId,
-          restaurantId,
-          sourceOrder.id,
-        );
-
-        const oldTable = sourceOrder.table;
-
-        if (targetOrder) {
-          this.validateOrder(targetOrder);
-          this.validateOrderType(targetOrder);
-
-          if (onTargetOccupied !== 'merge') {
-            throw new ConflictException('ORDER_MOVE_TARGET_OCCUPIED');
+          const sourceOrder = await this.getOrder(
+            queryRunner,
+            orderId,
+            restaurantId,
+          );
+          if (!sourceOrder) {
+            return {
+              ok: false as const,
+              code: OrderErrorCodes.ORDER_NOT_FOUND,
+              message: 'Order not found.',
+            };
           }
 
-          await this.mergeIntoTarget(queryRunner, sourceOrder, targetOrder);
-          await this.updateOldTable(queryRunner, oldTable, restaurantId);
-          await this.updateNewTable(queryRunner, newTable);
+          const sourceOrderValidation = this.validateOrder(sourceOrder);
+          if (sourceOrderValidation) {
+            return sourceOrderValidation;
+          }
+
+          const typeValidation = this.validateOrderType(sourceOrder);
+          if (typeValidation) {
+            return typeValidation;
+          }
+
+          const newTable = await this.getNewTable(
+            queryRunner,
+            newTableId,
+            restaurantId,
+          );
+          if (!newTable) {
+            return {
+              ok: false as const,
+              code: OrderErrorCodes.ORDER_TABLE_NOT_FOUND,
+              message: 'Table not found.',
+            };
+          }
+
+          const tableChangeValidation = this.validateTableChange(
+            sourceOrder,
+            newTable,
+          );
+          if (tableChangeValidation) {
+            return tableChangeValidation;
+          }
+
+          const targetOrder = await this.findActiveOrderByTable(
+            queryRunner,
+            newTableId,
+            restaurantId,
+            sourceOrder.id,
+          );
+
+          const oldTable = sourceOrder.table;
+
+          if (targetOrder) {
+            const targetValidation = this.validateOrder(targetOrder);
+            if (targetValidation) {
+              return targetValidation;
+            }
+
+            const targetTypeValidation = this.validateOrderType(targetOrder);
+            if (targetTypeValidation) {
+              return targetTypeValidation;
+            }
+
+            if (onTargetOccupied !== 'merge') {
+              return {
+                ok: false as const,
+                code: OrderErrorCodes.ORDER_MOVE_TARGET_OCCUPIED,
+                message: 'ORDER_MOVE_TARGET_OCCUPIED',
+              };
+            }
+
+            await this.mergeIntoTarget(queryRunner, sourceOrder, targetOrder);
+            this.ensureOldTableScope(queryRunner, oldTable, restaurantId);
+
+            return {
+              ok: true as const,
+              value: {
+                finalOrderId: targetOrder.id,
+                oldTable,
+                newTable,
+              },
+            };
+          }
+
+          await this.moveOrder(queryRunner, sourceOrder, newTable.id);
+          this.ensureOldTableScope(queryRunner, oldTable, restaurantId);
 
           return {
-            finalOrderId: targetOrder.id,
-            oldTable,
-            newTable,
+            ok: true as const,
+            value: {
+              finalOrderId: sourceOrder.id,
+              oldTable,
+              newTable,
+            },
           };
-        }
+        },
+      );
 
-        await this.moveOrder(queryRunner, sourceOrder, newTable.id);
-        await this.updateOldTable(queryRunner, oldTable, restaurantId);
-        await this.updateNewTable(queryRunner, newTable);
+      if (!result.ok) {
+        return result;
+      }
 
+      const finalOrder = await this.loadFinalOrder(result.value.finalOrderId);
+      if (!finalOrder) {
         return {
-          finalOrderId: sourceOrder.id,
-          oldTable,
-          newTable,
+          ok: false,
+          code: OrderErrorCodes.ORDER_NOT_FOUND,
+          message: 'Order not found after move.',
         };
-      },
-    );
+      }
 
-    const finalOrder = await this.loadFinalOrder(result.finalOrderId);
+      this.sendNotifications(
+        restaurantId,
+        result.value.oldTable,
+        result.value.newTable,
+        finalOrder,
+      );
 
-    this.sendNotifications(
-      restaurantId,
-      result.oldTable,
-      result.newTable,
-      finalOrder,
-    );
+      return { ok: true, value: finalOrder };
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          step: 'move_order.failed',
+          orderId,
+          newTableId,
+          restaurantId,
+          message: (error as Error)?.message,
+        }),
+      );
 
-    return finalOrder;
+      const message = (error as Error)?.message || 'ORDER_BAD_REQUEST';
+
+      if (message.includes('could not obtain lock')) {
+        return {
+          ok: false,
+          code: OrderErrorCodes.ORDER_LOCK_TIMEOUT,
+          message,
+        };
+      }
+
+      return {
+        ok: false,
+        code: OrderErrorCodes.ORDER_BAD_REQUEST,
+        message,
+      };
+    }
   }
 
   private async getOrder(
     qr: QueryRunner,
     orderId: string,
     restaurantId: string,
-  ): Promise<Order> {
+  ): Promise<Order | null> {
     const order = await qr.manager.findOne(Order, {
       where: { id: orderId, restaurantId },
       lock: { mode: 'pessimistic_write' },
     });
 
-    if (!order) {
-      throw new NotFoundException('Order not found.');
-    }
-
-    if (order.tableId) {
+    if (order?.tableId) {
       const table = await qr.manager.findOne(Table, {
         where: { id: order.tableId },
       });
@@ -133,18 +225,16 @@ export class MoveOrderUseCase {
     qr: QueryRunner,
     tableId: string,
     restaurantId: string,
-  ): Promise<Table> {
+  ): Promise<Table | null> {
     const existingTable = await qr.manager.findOne(Table, {
       where: { id: tableId },
       select: ['id', 'restaurant_id', 'status'],
     });
 
-    if (!existingTable) {
-      throw new NotFoundException('Table not found.');
-    }
+    if (!existingTable) return null;
 
     if (existingTable.restaurant_id !== restaurantId) {
-      throw new BadRequestException('ORDER_MOVE_CROSS_BRANCH_NOT_ALLOWED');
+      throw new Error(OrderErrorCodes.ORDER_MOVE_CROSS_BRANCH_NOT_ALLOWED);
     }
 
     const table = await qr.manager.findOne(Table, {
@@ -152,12 +242,10 @@ export class MoveOrderUseCase {
       lock: { mode: 'pessimistic_write' },
     });
 
-    if (!table) {
-      throw new NotFoundException('Table not found.');
-    }
+    if (!table) return null;
 
     if (table.status === TableStatus.OUT_OF_SERVICE) {
-      throw new BadRequestException('Target table is out of service.');
+      throw new Error('Target table is out of service.');
     }
 
     return table;
@@ -180,22 +268,44 @@ export class MoveOrderUseCase {
     });
   }
 
-  private validateOrder(order: Order): void {
+  private validateOrder(order: Order) {
     if ([OrderStatus.PAID, OrderStatus.CANCELLED].includes(order.status)) {
-      throw new BadRequestException(`Order cannot be moved (${order.status}).`);
+      return {
+        ok: false as const,
+        code: OrderErrorCodes.ORDER_TERMINAL_STATE,
+        message: `Order cannot be moved (${order.status}).`,
+      };
     }
+    if (order.mergedInto) {
+      return {
+        ok: false as const,
+        code: OrderErrorCodes.ORDER_ALREADY_MERGED,
+        message: 'Order already merged.',
+      };
+    }
+    return null;
   }
 
-  private validateOrderType(order: Order): void {
+  private validateOrderType(order: Order) {
     if (order.type !== OrderType.DINE_IN) {
-      throw new BadRequestException('ORDER_MOVE_NOT_ALLOWED_FOR_TYPE');
+      return {
+        ok: false as const,
+        code: OrderErrorCodes.ORDER_MOVE_NOT_ALLOWED_FOR_TYPE,
+        message: 'ORDER_MOVE_NOT_ALLOWED_FOR_TYPE',
+      };
     }
+    return null;
   }
 
-  private validateTableChange(order: Order, table: Table): void {
+  private validateTableChange(order: Order, table: Table) {
     if (order.tableId === table.id) {
-      throw new BadRequestException('Order already on this table.');
+      return {
+        ok: false as const,
+        code: OrderErrorCodes.ORDER_BAD_REQUEST,
+        message: 'Order already on this table.',
+      };
     }
+    return null;
   }
 
   private async moveOrder(
@@ -236,31 +346,14 @@ export class MoveOrderUseCase {
     await qr.manager.save(Order, sourceOrder);
   }
 
-  private async updateOldTable(
+  private ensureOldTableScope(
     qr: QueryRunner,
     table: Table | null,
     restaurantId: string,
-  ): Promise<void> {
-    if (!table) return;
-
-    const remaining = await qr.manager.count(Order, {
-      where: {
-        tableId: table.id,
-        restaurantId,
-        status: In([...ACTIVE_ORDER_STATUSES]),
-      },
-    });
-
-    if (remaining === 0 && table.status !== TableStatus.AVAILABLE) {
-      table.status = TableStatus.AVAILABLE;
-      await qr.manager.save(table);
-    }
-  }
-
-  private async updateNewTable(qr: QueryRunner, table: Table): Promise<void> {
-    if (table.status !== TableStatus.OCCUPIED) {
-      table.status = TableStatus.OCCUPIED;
-      await qr.manager.save(table);
+  ): void {
+    void qr;
+    if (table && table.restaurant_id !== restaurantId) {
+      throw new Error(OrderErrorCodes.ORDER_MOVE_CROSS_BRANCH_NOT_ALLOWED);
     }
   }
 
@@ -278,16 +371,10 @@ export class MoveOrderUseCase {
     this.notificationsGateway.notifyOrderStatus(restaurantId, order);
   }
 
-  private async loadFinalOrder(orderId: string): Promise<Order> {
-    const order = await this.orderRepository.findOne({
+  private async loadFinalOrder(orderId: string): Promise<Order | null> {
+    return this.orderRepository.findOne({
       where: { id: orderId },
       relations: ['items', 'items.menuItem', 'table', 'user'],
     });
-
-    if (!order) {
-      throw new NotFoundException('Order not found after move.');
-    }
-
-    return order;
   }
 }

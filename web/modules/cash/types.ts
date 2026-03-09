@@ -110,6 +110,7 @@ export interface CashMovement extends BaseEntity {
     last_name: string
   }
   orderId?: string
+  referencePaymentId?: string
 
   // Frontend tarafından yönetilen alanlar
   isLiquid?: boolean // Likid mi? (nakit = true, kart = false)
@@ -179,6 +180,7 @@ export interface CashSummaryData {
  * Full end-of-day audit
  */
 export interface ReconciliationReport {
+  is_live: boolean;
   sessionOpenedAt: string;
   sessionClosedAt: string | null;
   openedBy: string;
@@ -201,6 +203,17 @@ export interface ReconciliationReport {
   difference: number | null;
   netBankAmount: number;
   movementCount: number;
+  refundSummary?: {
+    totalRefunded: number;
+    refundCount: number;
+    byMethod: {
+      cash: number;
+      card: number;
+      openAccount: number;
+      mealVoucher: number;
+    };
+    netCash: number;
+  };
 }
 
 /**

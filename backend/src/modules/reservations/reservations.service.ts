@@ -1,27 +1,17 @@
-import {
-  Injectable,
-  ConflictException,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { Request } from 'express';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Reservation, ReservationStatus } from './entities/reservation.entity';
-import { CreateReservationDto } from './dto/create-reservation.dto';
-import { UpdateReservationDto } from './dto/update-reservation.dto';
-import { CustomersService } from '../customers/customers.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/enums/audit-action.enum';
 import { sanitizeAuditChanges } from '../audit/utils/sanitize-audit.util';
+import { CreateReservationDto } from './dto/create-reservation.dto';
+import { GetReservationsDto } from './dto/get-reservations.dto';
+import { ReservationResponseDto } from './dto/reservation-response.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { ReservationStatus } from './entities/reservation.entity';
+import { ReservationsCommandService } from './services/reservations-command.service';
+import { ReservationsQueryService } from './services/reservations-query.service';
 
-interface FindAllQuery {
-  date?: string;
-  startDate?: string;
-  endDate?: string;
-}
-
-type ReservationActor = {
+export type ReservationActor = {
   id?: string;
   first_name?: string;
   last_name?: string;
@@ -31,9 +21,8 @@ type ReservationActor = {
 @Injectable()
 export class ReservationsService {
   constructor(
-    @InjectRepository(Reservation)
-    private readonly reservationRepository: Repository<Reservation>,
-    private readonly customersService: CustomersService,
+    private readonly reservationsQueryService: ReservationsQueryService,
+    private readonly reservationsCommandService: ReservationsCommandService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -77,250 +66,158 @@ export class ReservationsService {
       },
       params.context,
     );
+
     this.auditService.markRequestAsAudited(
       params.request as unknown as Record<string, unknown>,
     );
   }
 
   async create(
-    createReservationDto: CreateReservationDto,
-    user: { restaurantId: string } & ReservationActor,
+    dto: CreateReservationDto,
+    actor: ReservationActor,
     request?: Request,
-  ): Promise<Reservation> {
-    try {
-      const { customer_id, table_id, reservation_time } = createReservationDto;
+  ): Promise<ReservationResponseDto> {
+    const created = await this.reservationsCommandService.create(
+      dto,
+      actor.restaurantId as string,
+    );
 
-      // Validate customer belongs to this restaurant
-      await this.customersService.findOne(customer_id, user.restaurantId);
+    await this.emitDomainAudit({
+      action: AuditAction.RESERVATION_CREATED,
+      restaurantId: actor.restaurantId,
+      payload: { reservationId: created.id },
+      changes: sanitizeAuditChanges({
+        after: {
+          id: created.id,
+          customer_id: created.customer_id,
+          table_id: created.table_id,
+          status: created.status,
+          reservation_time: created.reservation_time,
+        },
+      }),
+      actor,
+      request,
+      context: 'ReservationsService.create',
+    });
 
-      const startTime = new Date(reservation_time);
-      // Assume 2 hours duration for collision check
-      const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
-
-      // Query with multi-tenant filtering
-      const queryBuilder = this.reservationRepository
-        .createQueryBuilder('reservation')
-        .where('reservation.table_id = :tableId', { tableId: table_id })
-        .andWhere('reservation.restaurant_id = :restaurantId', {
-          restaurantId: user.restaurantId,
-        })
-        .andWhere('reservation.status IN (:...statuses)', {
-          statuses: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED],
-        })
-        .andWhere(
-          "(reservation.reservation_time < :endTime AND (reservation.reservation_time + interval '2 hours') > :startTime)",
-          { startTime, endTime },
-        );
-
-      const overlapping = await queryBuilder.getOne();
-
-      if (overlapping) {
-        throw new ConflictException(
-          'Selected table is already booked for this time slot.',
-        );
-      }
-
-      const reservation = this.reservationRepository.create({
-        ...createReservationDto,
-        reservation_time: startTime, // Ensure Date object
-        restaurant_id: user.restaurantId, // Multi-tenant: set restaurant_id
-      });
-
-      const savedReservation =
-        await this.reservationRepository.save(reservation);
-      await this.emitDomainAudit({
-        action: AuditAction.RESERVATION_CREATED,
-        restaurantId: user.restaurantId,
-        payload: { reservationId: savedReservation.id },
-        changes: sanitizeAuditChanges({
-          after: {
-            id: savedReservation.id,
-            customer_id: savedReservation.customer_id,
-            table_id: savedReservation.table_id,
-            status: savedReservation.status,
-            reservation_time: savedReservation.reservation_time,
-          },
-        }),
-        actor: user,
-        request,
-        context: 'ReservationsService.create',
-      });
-      return savedReservation;
-    } catch (error) {
-      console.error('Reservation Create Error:', error);
-      // Throw a general NestJS error to inform the client something failed on the server
-      throw new BadRequestException(
-        'Rezervasyon kaydedilirken bir sunucu hatası oluştu.',
-      );
-    }
+    return created;
   }
 
-  async findAll(
-    query: FindAllQuery,
-    restaurantId?: string,
-  ): Promise<Reservation[]> {
-    const { date, startDate, endDate } = query;
+  findAll(filters: GetReservationsDto, restaurantId: string) {
+    return this.reservationsQueryService.findAll(restaurantId, filters);
+  }
 
-    const qb = this.reservationRepository
-      .createQueryBuilder('reservation')
-      .leftJoinAndSelect('reservation.customer', 'customer')
-      .leftJoinAndSelect('reservation.table', 'table')
-      .orderBy('reservation.reservation_time', 'ASC');
-
-    // Multi-tenant: Always filter by restaurant
-    if (restaurantId) {
-      qb.andWhere('reservation.restaurant_id = :restaurantId', {
-        restaurantId,
-      });
-    }
-
-    if (date) {
-      // Convert UTC to Istanbul local time before comparing the date part
-      qb.andWhere(
-        "CAST(reservation.reservation_time AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' AS DATE) = :date",
-        {
-          date:
-            date.toLowerCase() === 'today'
-              ? new Intl.DateTimeFormat('en-CA', {
-                  timeZone: 'Europe/Istanbul',
-                }).format(new Date())
-              : date,
-        },
-      );
-    } else if (startDate && endDate) {
-      // Convert UTC to Istanbul local time for range checks
-      qb.andWhere(
-        "CAST(reservation.reservation_time AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' AS DATE) BETWEEN :startDate AND :endDate",
-        {
-          startDate,
-          endDate,
-        },
-      );
-    }
-
-    return qb.getMany();
+  findOne(id: string, restaurantId: string): Promise<ReservationResponseDto> {
+    return this.reservationsQueryService.findOne(id, restaurantId);
   }
 
   async update(
     id: string,
-    updateReservationDto: UpdateReservationDto,
-    user: { restaurantId: string } & ReservationActor,
+    dto: UpdateReservationDto,
+    actor: ReservationActor,
     request?: Request,
-  ): Promise<Reservation> {
-    // Find with multi-tenant check
-    const reservation = await this.reservationRepository.findOne({
-      where: { id, restaurant_id: user.restaurantId },
-    });
+  ): Promise<ReservationResponseDto> {
+    const before = await this.reservationsQueryService.findOne(
+      id,
+      actor.restaurantId as string,
+    );
 
-    if (!reservation) {
-      throw new NotFoundException(`Reservation ${id} not found`);
-    }
-    const beforeSnapshot = {
-      customer_id: reservation.customer_id,
-      table_id: reservation.table_id,
-      status: reservation.status,
-      reservation_time: reservation.reservation_time,
-      notes: reservation.notes,
-    };
+    const updated = await this.reservationsCommandService.update(
+      id,
+      dto,
+      actor.restaurantId as string,
+    );
 
-    // Validate new customer belongs to this restaurant if provided
-    if (updateReservationDto.customer_id) {
-      await this.customersService.findOne(
-        updateReservationDto.customer_id,
-        user.restaurantId,
-      );
-    }
-
-    // Should we re-check conflicts? Only if table or time changed
-    if (
-      updateReservationDto.table_id ||
-      updateReservationDto.reservation_time
-    ) {
-      const tableId = updateReservationDto.table_id || reservation.table_id;
-      const timeStr = updateReservationDto.reservation_time
-        ? new Date(updateReservationDto.reservation_time)
-        : reservation.reservation_time;
-      const startTime = new Date(timeStr);
-      const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
-
-      const overlapping = await this.reservationRepository
-        .createQueryBuilder('reservation')
-        .where('reservation.table_id = :tableId', { tableId })
-        .andWhere('reservation.id != :id', { id }) // Exclude self
-        .andWhere('reservation.restaurant_id = :restaurantId', {
-          restaurantId: user.restaurantId,
-        })
-        .andWhere('reservation.status IN (:...statuses)', {
-          statuses: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED],
-        })
-        .andWhere(
-          "(reservation.reservation_time < :endTime AND (reservation.reservation_time + interval '2 hours') > :startTime)",
-          { startTime, endTime },
-        )
-        .getOne();
-
-      if (overlapping) {
-        throw new ConflictException(
-          'Selected table is already booked for this time slot.',
-        );
-      }
-    }
-
-    Object.assign(reservation, updateReservationDto);
-    const savedReservation = await this.reservationRepository.save(reservation);
     await this.emitDomainAudit({
       action: AuditAction.RESERVATION_UPDATED,
-      restaurantId: user.restaurantId,
-      payload: { reservationId: savedReservation.id },
+      restaurantId: actor.restaurantId,
+      payload: { reservationId: id },
       changes: sanitizeAuditChanges({
-        before: beforeSnapshot,
+        before: {
+          customer_id: before.customer_id,
+          table_id: before.table_id,
+          status: before.status,
+          reservation_time: before.reservation_time,
+          notes: before.notes,
+        },
         after: {
-          customer_id: savedReservation.customer_id,
-          table_id: savedReservation.table_id,
-          status: savedReservation.status,
-          reservation_time: savedReservation.reservation_time,
-          notes: savedReservation.notes,
+          customer_id: updated.customer_id,
+          table_id: updated.table_id,
+          status: updated.status,
+          reservation_time: updated.reservation_time,
+          notes: updated.notes,
         },
       }),
-      actor: user,
+      actor,
       request,
       context: 'ReservationsService.update',
     });
-    return savedReservation;
+
+    return updated;
   }
 
   async updateStatus(
     id: string,
     status: ReservationStatus,
-    user: { restaurantId: string } & ReservationActor,
+    actor: ReservationActor,
     request?: Request,
-  ): Promise<Reservation> {
-    // Find with multi-tenant check
-    const reservation = await this.reservationRepository.findOne({
-      where: { id, restaurant_id: user.restaurantId },
-    });
+  ): Promise<ReservationResponseDto> {
+    const before = await this.reservationsQueryService.findOne(
+      id,
+      actor.restaurantId as string,
+    );
 
-    if (!reservation) {
-      throw new NotFoundException(`Reservation ${id} not found`);
-    }
-    const beforeSnapshot = {
-      status: reservation.status,
-    };
+    const updated = await this.reservationsCommandService.updateStatus(
+      id,
+      status,
+      actor.restaurantId as string,
+    );
 
-    reservation.status = status;
-    const savedReservation = await this.reservationRepository.save(reservation);
     await this.emitDomainAudit({
       action: AuditAction.RESERVATION_STATUS_UPDATED,
-      restaurantId: user.restaurantId,
-      payload: { reservationId: savedReservation.id },
+      restaurantId: actor.restaurantId,
+      payload: { reservationId: id },
       changes: sanitizeAuditChanges({
-        before: beforeSnapshot,
-        after: { status: savedReservation.status },
+        before: { status: before.status },
+        after: { status: updated.status },
       }),
-      actor: user,
+      actor,
       request,
       context: 'ReservationsService.updateStatus',
     });
-    return savedReservation;
+
+    return updated;
+  }
+
+  async delete(
+    id: string,
+    actor: ReservationActor,
+    request?: Request,
+  ): Promise<void> {
+    const before = await this.reservationsQueryService.findOne(
+      id,
+      actor.restaurantId as string,
+    );
+
+    await this.reservationsCommandService.delete(id, actor.restaurantId as string);
+
+    await this.emitDomainAudit({
+      action: AuditAction.RESERVATION_UPDATED,
+      restaurantId: actor.restaurantId,
+      payload: { reservationId: id },
+      changes: sanitizeAuditChanges({
+        before: {
+          status: before.status,
+          deleted_at: null,
+        },
+        after: {
+          status: ReservationStatus.CANCELLED,
+          deleted_at: 'soft_deleted',
+        },
+      }),
+      actor,
+      request,
+      context: 'ReservationsService.delete',
+    });
   }
 }

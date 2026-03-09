@@ -12,6 +12,7 @@ import { formatDistance } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS, OrderType, ORDER_TYPE_LABELS } from '../types'
 import { getNow, formatTime, parseISO } from '@/modules/shared/utils/date'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { ChevronDown, ChevronUp, Layers, AlertCircle, Maximize2 } from 'lucide-react'
 import { cn } from '@/modules/shared/utils/cn'
 import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
@@ -76,7 +77,7 @@ export function OrderCard({
   }, [timeElapsed])
 
   // New Wave Badge - if activeWaveTime is less than 2 minutes ago
-  const isVeryNew = timeElapsed < 2
+  const isVeryNew = timeElapsed >= 0 && timeElapsed < 2
   const activeWaveItems = useMemo(
     () => aggregateOrderItemsForDisplay(orderGroup.activeWaveItems),
     [orderGroup.activeWaveItems],
@@ -109,7 +110,7 @@ export function OrderCard({
           </span>
         </div>
         <div className="text-xs text-gray-500 mt-1">
-          {Number(orderGroup.totalAmount || 0).toFixed(2)} TL
+          {formatCurrency(Number(orderGroup.totalAmount || 0))}
         </div>
       </div>
     )
@@ -192,7 +193,7 @@ export function OrderCard({
             )}
           </div>
           <span className="text-sm font-bold text-text-primary tabular-nums">
-            {Number(orderGroup.totalAmount || 0).toFixed(2)} TL
+            {formatCurrency(Number(orderGroup.totalAmount || 0))}
           </span>
         </div>
       </div>
@@ -210,7 +211,7 @@ export function OrderCard({
                 <div key={idx} className="flex justify-between items-center text-xs font-semibold bg-primary-main/5 p-1.5 rounded border border-primary-main/10">
                   <span className="text-text-primary">
                     <span className="text-primary-main mr-1.5 font-black">{item.quantity}x</span>
-                    {item.menuItem?.name}
+                    {item.menuItem?.name || (item as any).menu_item?.name || (item as any).name || 'Ürün'}
                   </span>
                   <span className="text-[9px] text-primary-main uppercase font-black bg-primary-main/10 px-1.5 py-0.5 rounded-full">{ORDER_STATUS_LABELS[item.status]}</span>
                 </div>
@@ -236,7 +237,9 @@ export function OrderCard({
                     "flex justify-between items-center text-[11px] px-1.5 py-1 rounded-sm",
                     isServed ? "opacity-40 grayscale bg-bg-muted" : "font-medium text-text-muted"
                   )}>
-                    <span className={cn(isServed && "line-through italic")}>{item.quantity}x {item.menuItem?.name}</span>
+                    <span className={cn(isServed && "line-through italic")}>
+                      {item.quantity}x {item.menuItem?.name || (item as any).menu_item?.name || (item as any).name || 'Ürün'}
+                    </span>
                     <span
                       className={cn(
                         'text-[8px] uppercase font-black',
@@ -273,7 +276,7 @@ export function OrderCard({
               <div className="mt-2 space-y-1 opacity-40">
                 {servedItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-[10px] px-1 line-through text-text-muted italic">
-                    <span>{item.quantity}x {item.menuItem?.name}</span>
+                    <span>{item.quantity}x {item.menuItem?.name || (item as any).menu_item?.name || (item as any).name || 'Ürün'}</span>
                     <span>{formatTime(item.created_at)}</span>
                   </div>
                 ))}

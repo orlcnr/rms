@@ -20,6 +20,7 @@ import { GetPaymentsDto } from './dto/get-payments.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import type { User } from '../users/entities/user.entity';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('Payments')
 @ApiBearerAuth()
@@ -35,12 +36,9 @@ export class PaymentsController {
     @Body() createPaymentDto: CreatePaymentDto,
     @Req() request: Request,
   ) {
-    return this.paymentsService.create(
-      createPaymentDto,
-      user.id,
-      user,
-      request,
-    );
+    return this.paymentsService
+      .create(createPaymentDto, user.id, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('split')
@@ -55,7 +53,9 @@ export class PaymentsController {
     @Body() dto: CreateSplitPaymentDto,
     @Req() request: Request,
   ) {
-    return this.paymentsService.createSplitPayment(dto, user.id, user, request);
+    return this.paymentsService
+      .createSplitPayment(dto, user.id, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('revert')
@@ -69,23 +69,32 @@ export class PaymentsController {
     @Body() dto: RevertPaymentDto,
     @Req() request: Request,
   ) {
-    return this.paymentsService.revertPayment(
-      dto.payment_id,
-      dto.reason,
-      user,
-      request,
-    );
+    return this.paymentsService
+      .revertPayment(
+        dto.payment_id,
+        dto.reason,
+        dto.refund_method,
+        user,
+        request,
+      )
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('orders/:orderId')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get payments for an order' })
-  findAllByOrder(@Param('orderId') orderId: string) {
-    return this.paymentsService.findAllByOrder(orderId);
+  findAllByOrder(@Param('orderId') orderId: string, @GetUser() user: User) {
+    return this.paymentsService
+      .findAllByOrder(orderId, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get all payments (History - Paginated)' })
-  findAll(@Query() queryDto: GetPaymentsDto) {
-    return this.paymentsService.findAll(queryDto);
+  findAll(@Query() queryDto: GetPaymentsDto, @GetUser() user: User) {
+    return this.paymentsService.findAll(queryDto, user.restaurant_id).then((data) =>
+      ApiResponseDto.ok(data),
+    );
   }
 }

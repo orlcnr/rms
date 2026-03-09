@@ -21,6 +21,39 @@ import {
   ReconciliationReport,
 } from './types'
 
+const DEFAULT_HISTORY_META = {
+  totalItems: 0,
+  itemCount: 0,
+  itemsPerPage: 10,
+  totalPages: 0,
+  currentPage: 1,
+}
+
+const parseSessionHistory = (
+  raw: Partial<PaginatedResponse<CashSession>> | null | undefined
+): PaginatedResponse<CashSession> => {
+  const items = Array.isArray(raw?.items) ? raw.items : []
+  const meta = raw?.meta
+
+  return {
+    items,
+    meta: {
+      totalItems: Number(meta?.totalItems ?? items.length),
+      itemCount: Number(meta?.itemCount ?? items.length),
+      itemsPerPage: Number(meta?.itemsPerPage ?? DEFAULT_HISTORY_META.itemsPerPage),
+      totalPages: Number(meta?.totalPages ?? 1),
+      currentPage: Number(meta?.currentPage ?? DEFAULT_HISTORY_META.currentPage),
+    },
+  }
+}
+
+const parseReconciliation = (
+  raw: ReconciliationReport
+): ReconciliationReport => ({
+  ...raw,
+  is_live: Boolean(raw?.is_live),
+})
+
 // ============================================
 // API FUNCTIONS
 // ============================================
@@ -125,16 +158,18 @@ export const getSessionSummary = async (sessionId: string): Promise<CashSummaryD
 export const getSessionHistory = async (
   filters?: CashSessionHistoryFilters
 ): Promise<PaginatedResponse<CashSession>> => {
-  return await http.get<PaginatedResponse<CashSession>>('/cash/sessions/history', {
+  const response = await http.get<PaginatedResponse<CashSession>>('/cash/sessions/history', {
     params: filters,
   })
+  return parseSessionHistory(response)
 }
 
 /**
  * Get full reconciliation report for a session
  */
 export const getReconciliationReport = async (sessionId: string): Promise<ReconciliationReport> => {
-  return await http.get<ReconciliationReport>(`/cash/sessions/${sessionId}/reconciliation`)
+  const response = await http.get<ReconciliationReport>(`/cash/sessions/${sessionId}/reconciliation`)
+  return parseReconciliation(response)
 }
 
 /**

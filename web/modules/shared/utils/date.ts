@@ -30,11 +30,31 @@ export function ensureISO(date: string | Date | undefined | null): string {
   if (!date) return '';
   if (date instanceof Date) return date.toISOString();
 
-  // If it's a string and doesn't contain 'Z' or '+', append 'Z'
-  if (typeof date === 'string' && !date.includes('Z') && !date.includes('+')) {
-    // Replace space with T for valid ISO if needed
-    const isoStr = date.replace(' ', 'T');
-    return isoStr.includes('T') ? `${isoStr}.000Z` : `${isoStr}T00:00:00.000Z`;
+  if (typeof date === 'string') {
+    const trimmed = date.trim();
+    if (!trimmed) return '';
+
+    // Replace first space with T for ISO-like strings.
+    const normalized = trimmed.includes(' ')
+      ? trimmed.replace(' ', 'T')
+      : trimmed;
+
+    // If timezone already exists, keep as-is.
+    if (/[zZ]$/.test(normalized) || /[+-]\d{2}:\d{2}$/.test(normalized)) {
+      return normalized;
+    }
+
+    // Date-only values are normalized to UTC midnight.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      return `${normalized}T00:00:00Z`;
+    }
+
+    // ISO datetime without timezone -> treat as UTC by appending Z.
+    if (normalized.includes('T')) {
+      return `${normalized}Z`;
+    }
+
+    return normalized;
   }
 
   return date;

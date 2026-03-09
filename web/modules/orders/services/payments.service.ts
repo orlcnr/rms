@@ -1,5 +1,12 @@
 import { http } from '@/modules/shared/api/http';
-import { PaymentMethod, DiscountType, Payment, SplitPaymentRequest, RevertPaymentRequest } from '../types';
+import {
+  PaymentMethod,
+  PaymentStatus,
+  DiscountType,
+  Payment,
+  SplitPaymentRequest,
+  RevertPaymentRequest,
+} from '../types';
 
 // Type for the response from split payment
 export interface SplitPaymentResponse {
@@ -59,7 +66,23 @@ export const paymentsApi = {
     page?: number;
     limit?: number;
     search?: string;
-  }): Promise<{ data: Payment[]; total: number; page: number; limit: number }> => {
+    method?: PaymentMethod;
+    status?: PaymentStatus;
+    startDate?: string;
+    endDate?: string;
+    orderId?: string;
+  }): Promise<{
+    items: Payment[];
+    meta: {
+      page: number;
+      limit: number;
+      itemCount: number;
+      totalItems: number;
+      totalPages: number;
+      hasPreviousPage: boolean;
+      hasNextPage: boolean;
+    };
+  }> => {
     return http.get('/payments', { params });
   },
 };

@@ -32,11 +32,6 @@ export class CreateOrderDto {
   @IsOptional()
   table_id?: string;
 
-  @ApiPropertyOptional({ example: 'uuid-of-restaurant' })
-  @IsUUID()
-  @IsOptional()
-  restaurant_id?: string;
-
   @ApiProperty({ type: [CreateOrderItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
@@ -80,7 +75,7 @@ export class CreateOrderDto {
 
   @ApiPropertyOptional({ example: { courier_id: '123' } })
   @IsOptional()
-  integration_metadata?: any;
+  integration_metadata?: Record<string, unknown>;
 
   @ApiPropertyOptional({ example: 'uuid-v4-transaction-id' })
   @IsString()

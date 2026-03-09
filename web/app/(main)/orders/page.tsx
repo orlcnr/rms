@@ -30,7 +30,6 @@ export default async function OrdersPage() {
 
   // Use ordersApi like other pages
   const todayOrdersResponse = await ordersApi.getOrders({
-    restaurantId,
     limit: 100,
     type: OrderType.DINE_IN,
     status: [
@@ -38,11 +37,10 @@ export default async function OrdersPage() {
       OrderStatus.PREPARING,
       OrderStatus.READY,
       OrderStatus.SERVED,
-    ].join(',') as any,
+    ],
   })
 
-  // Backend might return Order[] or { items: [] } - handle both
-  const allOrders = todayOrdersResponse?.items || todayOrdersResponse as any || []
+  const allOrders = todayOrdersResponse.items
   console.log('=== ACTIVE ORDERS:', allOrders.length)
   const ordersByStatus = groupOrdersByTableAndStatus(allOrders)
   let pendingGuestApprovalsCount = 0

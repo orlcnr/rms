@@ -22,6 +22,7 @@ import {
 import { GetCustomersDto } from './dto/get-customers.dto';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '../users/entities/user.entity';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -36,12 +37,9 @@ export class CustomersController {
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.customersService.create(
-      createCustomerDto,
-      user.restaurant_id,
-      user,
-      request,
-    );
+    return this.customersService
+      .create(createCustomerDto, user.restaurant_id, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Patch(':id')
@@ -52,19 +50,22 @@ export class CustomersController {
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.customersService.update(
-      id,
-      updateCustomerDto,
-      user.restaurant_id,
-      user,
-      request,
-    );
+    return this.customersService
+      .update(id, updateCustomerDto, user.restaurant_id, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all customers (Paginated)' })
   findAll(@Query() queryDto: GetCustomersDto, @GetUser() user: User) {
-    return this.customersService.findAll(queryDto, user.restaurant_id);
+    return this.customersService
+      .findAll(queryDto, user.restaurant_id)
+      .then((result) =>
+        ApiResponseDto.ok({
+          items: result.items,
+          meta: result.meta,
+        }),
+      );
   }
 
   @Get('search')
@@ -75,13 +76,17 @@ export class CustomersController {
     description: 'Search query (phone or name)',
   })
   search(@Query('q') query: string, @GetUser() user: User) {
-    return this.customersService.search(query, user.restaurant_id);
+    return this.customersService
+      .search(query, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get customer by ID' })
   findOne(@Param('id') id: string, @GetUser() user: User) {
-    return this.customersService.findOne(id, user.restaurant_id);
+    return this.customersService
+      .findOne(id, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Delete(':id')
@@ -91,12 +96,16 @@ export class CustomersController {
     @GetUser() user: User,
     @Req() request: Request,
   ) {
-    return this.customersService.remove(id, user.restaurant_id, user, request);
+    return this.customersService
+      .remove(id, user.restaurant_id, user, request)
+      .then(() => ApiResponseDto.empty('Müşteri silindi'));
   }
 
   @Get(':id/orders')
   @ApiOperation({ summary: 'Get orders by customer ID' })
   getOrders(@Param('id') id: string, @GetUser() user: User) {
-    return this.customersService.getCustomerOrders(id, user.restaurant_id);
+    return this.customersService
+      .getCustomerOrders(id, user.restaurant_id)
+      .then((data) => ApiResponseDto.ok(data));
   }
 }

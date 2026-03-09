@@ -69,8 +69,8 @@ export function CustomerSelector({
   const searchCustomers = useCallback(async (query: string) => {
     try {
       setIsLoading(true);
-      // Use centralized API with restaurantId for multi-tenant filtering
-      const customerList = await customersApi.search(query, restaurantId);
+      // Scope backend auth context'ten çözülür.
+      const customerList = await customersApi.search(query);
       setCustomers(customerList || []);
     } catch (error) {
       console.error('Customer search failed:', error);
@@ -252,11 +252,12 @@ export function CustomerSelector({
                         <div className={`text-sm font-bold ${getDebtColor(
                           parseNumericValue(customer.current_debt), 
                           parseNumericValue(customer.credit_limit), 
-                          customer.credit_limit_enabled
+                          Boolean(customer.credit_limit_enabled)
                         )}`}>
                           {formatCurrency(customer.current_debt)}
                         </div>
-                        {customer.credit_limit_enabled && parseNumericValue(customer.credit_limit) > 0 && (
+                        {Boolean(customer.credit_limit_enabled) &&
+                          parseNumericValue(customer.credit_limit) > 0 && (
                           <div className="text-xs text-text-muted">
                             / {formatCurrency(customer.credit_limit)}
                           </div>
@@ -320,12 +321,13 @@ export function CustomerSelector({
               <span className={`text-sm font-bold ${getDebtColor(
                 parseNumericValue(selectedCustomer.current_debt), 
                 parseNumericValue(selectedCustomer.credit_limit), 
-                selectedCustomer.credit_limit_enabled
+                Boolean(selectedCustomer.credit_limit_enabled)
               )}`}>
                 {formatCurrency(selectedCustomer.current_debt)}
               </span>
             </div>
-            {selectedCustomer.credit_limit_enabled && parseNumericValue(selectedCustomer.credit_limit) > 0 && (
+            {Boolean(selectedCustomer.credit_limit_enabled) &&
+              parseNumericValue(selectedCustomer.credit_limit) > 0 && (
               <div className="text-xs text-text-muted">
                 Kredi Limiti: {formatCurrency(selectedCustomer.credit_limit)}
               </div>
@@ -333,7 +335,7 @@ export function CustomerSelector({
           </div>
           
           {/* Limit aşım uyarısı */}
-          {selectedCustomer.credit_limit_enabled && 
+          {Boolean(selectedCustomer.credit_limit_enabled) &&
            parseNumericValue(selectedCustomer.credit_limit) > 0 && 
            parseNumericValue(selectedCustomer.current_debt) >= parseNumericValue(selectedCustomer.credit_limit) && (
             <div className="mt-2 flex items-center gap-2 text-danger-main text-xs">

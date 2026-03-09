@@ -11,6 +11,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { MoveOrderUseCase } from './use-cases/move-order.use-case';
 import { TransactionalHelper } from '../../common/databases/transactional.helper';
 import { MenusModule } from '../menus/menus.module';
+import { OrdersRepository } from './repositories/orders.repository';
+import { OrderItemRepository } from './repositories/order-item.repository';
+import { OrdersQueryService } from './services/orders-query.service';
+import { OrdersCommandService } from './services/orders-command.service';
+import { OrdersAuthorizationService } from './services/orders-authorization.service';
+import { OrderQueryFactory } from './query/factories/order-query.factory';
+import { UpdateOrderItemsUseCase } from './use-cases/update-order-items.use-case';
+import { BatchUpdateStatusUseCase } from './use-cases/batch-update-status.use-case';
 
 @Module({
   imports: [
@@ -20,7 +28,19 @@ import { MenusModule } from '../menus/menus.module';
     MenusModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, MoveOrderUseCase, TransactionalHelper],
+  providers: [
+    OrdersService,
+    OrdersQueryService,
+    OrdersCommandService,
+    OrdersAuthorizationService,
+    OrdersRepository,
+    OrderItemRepository,
+    OrderQueryFactory,
+    MoveOrderUseCase,
+    UpdateOrderItemsUseCase,
+    BatchUpdateStatusUseCase,
+    TransactionalHelper,
+  ],
   exports: [OrdersService],
 })
 export class OrdersModule {}

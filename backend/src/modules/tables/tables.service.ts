@@ -1,166 +1,145 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Table, TableStatus } from './entities/table.entity';
-import { Area } from './entities/area.entity';
-import { CreateTableDto } from './dto/create-table.dto';
+import type { User } from '../users/entities/user.entity';
 import { CreateAreaDto } from './dto/create-area.dto';
-import { ReservationStatus } from '../reservations/entities/reservation.entity';
-import { Order, OrderStatus } from '../orders/entities/order.entity';
+import { CreateTableDto } from './dto/create-table.dto';
+import { GetAreasDto } from './dto/get-areas.dto';
+import { GetTablesDto } from './dto/get-tables.dto';
+import { UpdateTableStatusDto } from './dto/update-table-status.dto';
+import { TablesAuthorizationService } from './services/tables-authorization.service';
+import { TablesCommandService } from './services/tables-command.service';
+import { TablesQueryService } from './services/tables-query.service';
+import { RotateTableQrUseCase } from './use-cases/rotate-table-qr.use-case';
+import { GenerateTableQrPdfUseCase } from './use-cases/generate-table-qr-pdf.use-case';
+import { GenerateRestaurantQrPdfUseCase } from './use-cases/generate-restaurant-qr-pdf.use-case';
 
 @Injectable()
 export class TablesService {
   constructor(
-    @InjectRepository(Table)
-    private readonly tableRepository: Repository<Table>,
-    @InjectRepository(Area)
-    private readonly areaRepository: Repository<Area>,
+    private readonly queryService: TablesQueryService,
+    private readonly commandService: TablesCommandService,
+    private readonly authorizationService: TablesAuthorizationService,
+    private readonly rotateTableQrUseCase: RotateTableQrUseCase,
+    private readonly generateTableQrPdfUseCase: GenerateTableQrPdfUseCase,
+    private readonly generateRestaurantQrPdfUseCase: GenerateRestaurantQrPdfUseCase,
   ) {}
 
-  // Area Methods
-  async createArea(createAreaDto: CreateAreaDto): Promise<Area> {
-    const area = this.areaRepository.create(createAreaDto);
-    return this.areaRepository.save(area);
+  getTables(user: User, filters: GetTablesDto) {
+    return this.queryService.getTables(
+      this.authorizationService.getRestaurantId(user),
+      filters,
+    );
   }
 
-  async findAllAreasByRestaurant(restaurantId: string): Promise<Area[]> {
-    return this.areaRepository.find({
-      where: { restaurant_id: restaurantId },
-      relations: ['tables'],
-    });
+  getTableById(user: User, tableId: string) {
+    return this.queryService.getTableById(
+      this.authorizationService.getRestaurantId(user),
+      tableId,
+    );
   }
 
-  async updateArea(
-    id: string,
-    updateAreaDto: Partial<CreateAreaDto>,
-  ): Promise<Area | null> {
-    await this.areaRepository.update(id, updateAreaDto);
-    return this.areaRepository.findOneBy({ id });
+  getAreas(user: User, filters: GetAreasDto) {
+    return this.queryService.getAreas(
+      this.authorizationService.getRestaurantId(user),
+      filters,
+    );
   }
 
-  async deleteArea(id: string): Promise<void> {
-    await this.areaRepository.delete(id);
+  createArea(user: User, dto: CreateAreaDto) {
+    return this.commandService.createArea(
+      this.authorizationService.getRestaurantId(user),
+      dto,
+    );
   }
 
-  // Table Methods
-  async createTable(createTableDto: CreateTableDto): Promise<Table> {
-    const table = this.tableRepository.create(createTableDto);
-    return this.tableRepository.save(table);
+  updateArea(user: User, id: string, dto: Partial<CreateAreaDto>) {
+    return this.commandService.updateArea(
+      this.authorizationService.getRestaurantId(user),
+      id,
+      dto,
+    );
   }
 
-  async findAllTablesByRestaurant(restaurantId: string): Promise<Table[]> {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+  deleteArea(user: User, id: string) {
+    return this.commandService.deleteArea(
+      this.authorizationService.getRestaurantId(user),
+      id,
+    );
+  }
 
-    const tables = await this.tableRepository
-      .createQueryBuilder('table')
-      .leftJoinAndSelect('table.area', 'area')
-      .leftJoinAndSelect(
-        'table.reservations',
-        'reservation',
-        'reservation.status IN (:...statuses) AND reservation.reservation_time >= :startOfToday',
-        {
-          statuses: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED],
-          startOfToday,
-        },
-      )
-      .leftJoinAndSelect('reservation.customer', 'customer')
-      .where('table.restaurant_id = :restaurantId', { restaurantId })
-      .orderBy('table.name', 'ASC')
-      .addOrderBy('reservation.reservation_time', 'ASC')
-      .getMany();
+  createTable(user: User, dto: CreateTableDto) {
+    return this.commandService.createTable(
+      this.authorizationService.getRestaurantId(user),
+      dto,
+    );
+  }
 
-    // Aktif siparişi olan masaların bilgilerini çek
-    const activeOrdersQuery = `
-      SELECT o.id as order_id, o.table_id, o.order_number, 
-             o.total_amount, o.created_at
-      FROM business.orders o
-      WHERE o.restaurant_id = $1 
-        AND o.status IN ('pending', 'preparing', 'ready', 'served')
-        AND o.table_id IS NOT NULL
-    `;
+  updateTable(user: User, id: string, dto: Partial<CreateTableDto>) {
+    return this.commandService.updateTable(
+      this.authorizationService.getRestaurantId(user),
+      id,
+      dto,
+    );
+  }
 
-    const activeOrders = await this.tableRepository.manager.query(
-      activeOrdersQuery,
-      [restaurantId],
+  updateTableStatus(user: User, id: string, dto: UpdateTableStatusDto) {
+    return this.commandService.updateStatus(
+      this.authorizationService.getRestaurantId(user),
+      id,
+      dto,
+    );
+  }
+
+  deleteTable(user: User, id: string) {
+    return this.commandService.deleteTable(
+      this.authorizationService.getRestaurantId(user),
+      id,
+    );
+  }
+
+  getTableQr(user: User, tableId: string, restaurantName?: string) {
+    return this.queryService.getTableQr(
+      tableId,
+      this.authorizationService.getRestaurantId(user),
+      restaurantName,
+    );
+  }
+
+  getAllTableQrs(user: User, restaurantName?: string) {
+    return this.queryService.getAllTableQrs(
+      this.authorizationService.getRestaurantId(user),
+      restaurantName,
+    );
+  }
+
+  getTableQrPdf(user: User, tableId: string, restaurantName?: string) {
+    return this.generateTableQrPdfUseCase.execute(
+      tableId,
+      this.authorizationService.getRestaurantId(user),
+      restaurantName,
+    );
+  }
+
+  getRestaurantQrPdf(user: User, restaurantName?: string) {
+    return this.generateRestaurantQrPdfUseCase.execute(
+      this.authorizationService.getRestaurantId(user),
+      restaurantName,
+    );
+  }
+
+  async rotateQrCode(user: User, tableId: string) {
+    const version = await this.rotateTableQrUseCase.execute(
+      tableId,
+      this.authorizationService.getRestaurantId(user),
     );
 
-    // Map orders by table_id for easy lookup
-    const ordersByTableId = new Map<string, any>();
-    activeOrders.forEach((o: any) => {
-      if (!ordersByTableId.has(o.table_id)) {
-        ordersByTableId.set(o.table_id, o);
-      }
-    });
-
-    return tables.map((table) => {
-      const activeOrder = ordersByTableId.get(table.id);
-
-      // Eğer masanın aktif bir siparişi VARSA ama durumu 'available' ise, onu 'occupied' göster.
-      if (activeOrder) {
-        table.status = TableStatus.OCCUPIED;
-        // active_order bilgisini ekle
-        (table as any).active_order = {
-          id: activeOrder.order_id,
-          order_number: activeOrder.order_number,
-          total_price: parseFloat(activeOrder.total_amount) || 0,
-          created_at: activeOrder.created_at,
-        };
-      }
-      // Eğer masanın aktif bir siparişi YOKSA ama durumu 'occupied' ise, onu 'available' göster.
-      else if (table.status === TableStatus.OCCUPIED) {
-        table.status = TableStatus.AVAILABLE;
-      }
-      return table;
-    });
+    return {
+      success: true,
+      message: 'QR code rotated successfully',
+      version,
+    };
   }
 
-  async findOne(id: string): Promise<Table | null> {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    return this.tableRepository
-      .createQueryBuilder('table')
-      .leftJoinAndSelect('table.area', 'area')
-      .leftJoinAndSelect(
-        'table.reservations',
-        'reservation',
-        'reservation.status IN (:...statuses) AND reservation.reservation_time >= :startOfToday',
-        {
-          statuses: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED],
-          startOfToday,
-        },
-      )
-      .leftJoinAndSelect('reservation.customer', 'customer')
-      .where('table.id = :id', { id })
-      .orderBy('reservation.reservation_time', 'ASC')
-      .getOne();
-  }
-
-  async updateTableStatus(id: string, status: TableStatus): Promise<Table> {
-    const table = await this.tableRepository.findOneBy({ id });
-    if (!table) throw new Error('Table not found');
-    table.status = status;
-    return this.tableRepository.save(table);
-  }
-
-  async updateTable(
-    id: string,
-    updateTableDto: Partial<CreateTableDto>,
-  ): Promise<Table | null> {
-    await this.tableRepository.update(id, updateTableDto);
-    return this.tableRepository.findOneBy({ id });
-  }
-
-  async deleteTable(id: string): Promise<void> {
-    await this.tableRepository.delete(id);
-  }
-
-  /**
-   * Checks if there are any open (occupied) tables in the restaurant.
-   */
-  async hasOpenTables(restaurantId: string): Promise<boolean> {
-    const occupiedTables = await this.findAllTablesByRestaurant(restaurantId);
-    return occupiedTables.some((t) => t.status === TableStatus.OCCUPIED);
+  hasOpenTables(restaurantId: string): Promise<boolean> {
+    return this.commandService.hasOpenTables(restaurantId);
   }
 }

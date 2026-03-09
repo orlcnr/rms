@@ -15,6 +15,7 @@ import { Button } from '@/modules/shared/components/Button'
 import { RmsSwitch } from '@/modules/shared/components/RmsSwitch'
 import { SubHeaderSection, BodySection } from '@/modules/shared/components/layout'
 import { TableBoardToolbar } from './TableBoardToolbar'
+import { ReservationArrivalModal } from './ReservationArrivalModal'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { getNow } from '@/modules/shared/utils/date'
@@ -22,12 +23,24 @@ import { toast } from 'sonner'
 import { cn } from '@/modules/shared/utils/cn'
 import { TableStatus } from '../types'
 import { useSocketStore } from '@/modules/shared/api/socket'
+import { reservationsApi } from '@/modules/reservations/services/reservations.service'
+import { ReservationStatus } from '@/modules/reservations/types'
 
 interface TablesClientProps {
     restaurantId: string
     initialAreas: Area[]
     initialTables: Table[]
 }
+
+type ReservationPreview = {
+    id: string
+    table_id: string
+    reservation_time: string
+    status: string
+}
+
+type ReservationModalMode = 'arrived-confirm' | 'warning-only'
+const ARRIVAL_WINDOW_MINUTES = 120
 
 export function TablesClient({ restaurantId, initialAreas, initialTables }: TablesClientProps) {
     const router = useRouter()
@@ -53,13 +66,20 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
     const [qrTable, setQrTable] = useState<Table | null>(null)
     const [qrData, setQrData] = useState<TableQrData | null>(null)
     const [isLoadingQr, setIsLoadingQr] = useState(false)
+    const [reservationModalOpen, setReservationModalOpen] = useState(false)
+    const [reservationModalMode, setReservationModalMode] = useState<ReservationModalMode>('arrived-confirm')
+    const [reservationModalTable, setReservationModalTable] = useState<Table | null>(null)
+    const [selectedReservation, setSelectedReservation] = useState<ReservationPreview | null>(null)
+    const [reservationModalWarning, setReservationModalWarning] = useState<string | null>(null)
+    const [reservationModalError, setReservationModalError] = useState<string | null>(null)
+    const [isReservationSubmitting, setIsReservationSubmitting] = useState(false)
 
     const refreshData = useCallback(async (withLoader = true) => {
         if (withLoader) setIsLoading(true)
         try {
             const [newAreas, newTables] = await Promise.all([
-                tablesApi.getAreas(restaurantId),
-                tablesApi.getTables(restaurantId)
+                tablesApi.getAreas(),
+                tablesApi.getTables()
             ])
             setAreas(newAreas)
             setTables(newTables)
@@ -77,8 +97,8 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
         const interval = setInterval(async () => {
             try {
                 const [newAreas, newTables] = await Promise.all([
-                    tablesApi.getAreas(restaurantId),
-                    tablesApi.getTables(restaurantId),
+                    tablesApi.getAreas(),
+                    tablesApi.getTables(),
                 ])
                 setAreas(newAreas)
                 setTables(newTables)
@@ -117,7 +137,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
             if (data.table_id) {
                 console.log('[TablesClient] Refreshing tables due to order update')
                 // Order update - refresh tables to get updated active_order
-                tablesApi.getTables(restaurantId).then(newTables => {
+                tablesApi.getTables().then(newTables => {
                     console.log('[TablesClient] Tables refreshed, table count:', newTables.length)
                     setTables(newTables)
                 }).catch(err => {
@@ -128,7 +148,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
             else if (data.id && data.status) {
                 console.log('[TablesClient] Table entity update received')
                 // It's a table update - refresh tables
-                tablesApi.getTables(restaurantId).then(newTables => {
+                tablesApi.getTables().then(newTables => {
                     setTables(newTables)
                 }).catch(console.error)
             }
@@ -227,7 +247,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                 setAreas(prev => prev.map(a => a.id === editingArea.id ? updated : a))
                 toast.success('Salon güncellendi')
             } else {
-                const created = await tablesApi.createArea({ ...data as CreateAreaInput, restaurant_id: restaurantId })
+                const created = await tablesApi.createArea(data as CreateAreaInput)
                 setAreas(prev => [...prev, created])
                 toast.success('Yeni salon eklendi')
             }
@@ -258,7 +278,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                 setTables(prev => prev.map(t => t.id === editingTable.id ? updated : t))
                 toast.success('Masa güncellendi')
             } else {
-                const created = await tablesApi.createTable({ ...data as CreateTableInput, restaurant_id: restaurantId })
+                const created = await tablesApi.createTable(data as CreateTableInput)
                 setTables(prev => [...prev, created])
                 toast.success('Yeni masa eklendi')
             }
@@ -285,7 +305,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
         setQrTable(table)
         setIsLoadingQr(true)
         try {
-            const data = await tablesApi.getTableQr(table.id, restaurantId)
+            const data = await tablesApi.getTableQr(table.id)
             setQrData(data)
         } catch (error) {
             toast.error('QR Kod yüklenemedi')
@@ -296,16 +316,118 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
 
     const handleDownloadQr = () => {
         if (!qrTable) return
-        tablesApi.downloadTableQrPdf(qrTable.id, restaurantId, 'Restoran')
+        tablesApi.downloadTableQrPdf(qrTable.id, 'Restoran')
     }
 
     // Operation Mode: Handle table click for POS routing
     const handleTableClick = (table: Table) => {
         // Only handle clicks in operation mode (not admin mode)
         if (isAdminMode) return
+        if (table.status === TableStatus.OCCUPIED) {
+            router.push(`/orders/pos/${table.id}`)
+            return
+        }
 
-        // Sadece tableId ile yönlendir - sipariş kontrolü POS sayfasında yapılacak
+        const now = getNow()
+        const todayKey = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Istanbul',
+        }).format(now)
+        const nowMs = now.getTime()
+
+        const candidates = (table.reservations || [])
+            .filter((reservation) => {
+                const reservationDay = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'Europe/Istanbul',
+                }).format(new Date(reservation.reservation_time))
+                const status = reservation.status?.toLowerCase()
+                return reservationDay === todayKey && (status === 'pending' || status === 'confirmed')
+            })
+            .map((reservation) => {
+                const deltaMinutes =
+                    (new Date(reservation.reservation_time).getTime() - nowMs) / 60000
+                return { reservation, deltaMinutes }
+            })
+
+        const inWindowFuture = candidates
+            .filter((item) => item.deltaMinutes >= 0 && item.deltaMinutes <= ARRIVAL_WINDOW_MINUTES)
+            .sort((a, b) => a.deltaMinutes - b.deltaMinutes)
+
+        const inWindowPast = candidates
+            .filter((item) => item.deltaMinutes >= -ARRIVAL_WINDOW_MINUTES && item.deltaMinutes < 0)
+            .sort((a, b) => Math.abs(a.deltaMinutes) - Math.abs(b.deltaMinutes))
+
+        const selected = inWindowFuture[0] || inWindowPast[0]
+
+        if (selected) {
+            setReservationModalMode('arrived-confirm')
+            setReservationModalTable(table)
+            setSelectedReservation(selected.reservation)
+            setReservationModalError(null)
+            setReservationModalWarning(
+                'Bu masa için ±2 saat pencere içinde rezervasyon bulundu. Müşteri geldiyse “Geldi” olarak onaylayın.',
+            )
+            setReservationModalOpen(true)
+            return
+        }
+
+        const closestFuture = candidates
+            .filter((item) => item.deltaMinutes > ARRIVAL_WINDOW_MINUTES)
+            .sort((a, b) => a.deltaMinutes - b.deltaMinutes)[0]
+
+        if (closestFuture) {
+            const reservationTime = new Intl.DateTimeFormat('tr-TR', {
+                timeZone: 'Europe/Istanbul',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(new Date(closestFuture.reservation.reservation_time))
+
+            setReservationModalMode('warning-only')
+            setReservationModalTable(table)
+            setSelectedReservation(closestFuture.reservation)
+            setReservationModalError(null)
+            setReservationModalWarning(
+                `Bu masa için ${reservationTime} saatinde rezervasyon var. Farklı müşteriyle devam edecekseniz POS'a geçebilirsiniz.`,
+            )
+            setReservationModalOpen(true)
+            return
+        }
+
+        // delta < -120dk rezervasyonlar ignore edilir; direkt POS'a devam edilir.
         router.push(`/orders/pos/${table.id}`)
+    }
+
+    const closeReservationModal = () => {
+        setReservationModalOpen(false)
+        setReservationModalTable(null)
+        setSelectedReservation(null)
+        setReservationModalWarning(null)
+        setReservationModalError(null)
+        setIsReservationSubmitting(false)
+    }
+
+    const handleContinueWithoutStatus = () => {
+        const tableId = reservationModalTable?.id
+        closeReservationModal()
+        if (!tableId) return
+        router.push(`/orders/pos/${tableId}`)
+    }
+
+    const handleConfirmArrived = async () => {
+        if (!selectedReservation || !reservationModalTable) return
+
+        setIsReservationSubmitting(true)
+        setReservationModalError(null)
+        try {
+            await reservationsApi.updateStatus(selectedReservation.id, ReservationStatus.ARRIVED)
+            toast.success('Rezervasyon müşterisi geldi olarak işaretlendi')
+            await refreshData(false)
+            closeReservationModal()
+            router.push(`/orders/pos/${reservationModalTable.id}`)
+        } catch {
+            setReservationModalError('Rezervasyon durumu değişmiş olabilir. Listeyi yenileyin.')
+        } finally {
+            setIsReservationSubmitting(false)
+        }
     }
 
     const handleRotateQr = async () => {
@@ -313,7 +435,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
         setIsLoadingQr(true)
         try {
             await tablesApi.rotateQrCode(qrTable.id)
-            const data = await tablesApi.getTableQr(qrTable.id, restaurantId)
+            const data = await tablesApi.getTableQr(qrTable.id)
             setQrData(data)
             toast.success('QR Kod yenilendi')
         } catch (error) {
@@ -325,7 +447,7 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
 
     const handleDownloadAllQrs = async () => {
         try {
-            toast.promise(tablesApi.downloadAllQrsPdf(restaurantId, 'Restoran'), {
+            toast.promise(tablesApi.downloadAllQrsPdf('Restoran'), {
                 loading: 'PDF hazırlanıyor...',
                 success: 'QR kodlar indirildi',
                 error: 'İndirme sırasında hata oluştu'
@@ -510,6 +632,20 @@ export function TablesClient({ restaurantId, initialAreas, initialTables }: Tabl
                     isLoading={isSubmitting}
                 />
             </Modal>
+
+            <ReservationArrivalModal
+                isOpen={reservationModalOpen}
+                onClose={closeReservationModal}
+                tableName={reservationModalTable?.name || '-'}
+                reservation={selectedReservation}
+                mode={reservationModalMode}
+                warningMessage={reservationModalWarning}
+                errorMessage={reservationModalError}
+                isSubmitting={isReservationSubmitting}
+                onConfirmArrived={handleConfirmArrived}
+                onContinueWithoutStatus={handleContinueWithoutStatus}
+                onRequestRefresh={refreshData}
+            />
         </div>
     )
 }

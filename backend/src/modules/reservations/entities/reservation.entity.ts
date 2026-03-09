@@ -6,6 +6,7 @@ import { Table } from '../../tables/entities/table.entity';
 export enum ReservationStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  ARRIVED = 'arrived',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   NO_SHOW = 'no_show',

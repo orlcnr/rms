@@ -18,6 +18,7 @@ import {
 import { Modal } from '@/modules/shared/components/Modal'
 import { OrderGroup, OrderStatus, ORDER_STATUS_LABELS } from '../types'
 import { cn } from '@/modules/shared/utils/cn'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 import { aggregateOrderItemsForDisplay } from '../utils/order-item-display'
 
 interface OrderZoomModalProps {
@@ -114,7 +115,7 @@ export function OrderZoomModal({
           <div className="p-4 bg-bg-app border border-border-light rounded-sm">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">MASA TOPLAMI</p>
             <p className="text-3xl font-black text-primary-main tracking-tighter tabular-nums">
-              {orderGroup.totalAmount.toFixed(2)} <span className="text-sm">TL</span>
+              {formatCurrency(Number(orderGroup.totalAmount || 0))}
             </p>
           </div>
           <div className="p-4 bg-bg-app border border-border-light rounded-sm">
@@ -185,7 +186,7 @@ export function OrderZoomModal({
                       {item.notes && <span className="text-xs text-warning-main font-bold mt-1 uppercase italic bg-warning-bg/30 px-2 py-0.5 rounded-sm">NOT: {item.notes}</span>}
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <span className="text-lg font-black text-text-primary tabular-nums">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
+                      <span className="text-lg font-black text-text-primary tabular-nums">{formatCurrency(Number(item.totalPrice || 0))}</span>
                       <span className="text-[10px] font-black text-primary-main uppercase bg-primary-subtle px-3 py-1 rounded-full">{ORDER_STATUS_LABELS[item.status]}</span>
                     </div>
                   </div>
@@ -219,7 +220,7 @@ export function OrderZoomModal({
                         <span className="text-[10px] text-text-muted mt-1 uppercase font-bold tracking-widest">{formatTime(item.created_at)}</span>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <span className="text-base font-bold text-text-primary tabular-nums">{Number(item.totalPrice || 0).toFixed(2)} TL</span>
+                        <span className="text-base font-bold text-text-primary tabular-nums">{formatCurrency(Number(item.totalPrice || 0))}</span>
                         <span
                           className={cn(
                             'text-[10px] font-black uppercase px-3 py-1 rounded-full border',

@@ -50,6 +50,9 @@ export class CashMovement extends BaseEntity {
   @Column({ name: 'order_id', type: 'uuid', nullable: true })
   orderId: string;
 
+  @Column({ name: 'reference_payment_id', type: 'uuid', nullable: true })
+  referencePaymentId: string | null;
+
   @Column({ name: 'is_void', default: false })
   isVoid: boolean;
 

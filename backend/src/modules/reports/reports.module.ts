@@ -13,6 +13,7 @@ import { StockMovement } from '../inventory/entities/stock-movement.entity';
 import { Ingredient } from '../inventory/entities/ingredient.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { AuditModule } from '../audit/audit.module';
+import { Restaurant } from '../restaurants/entities/restaurant.entity';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuditModule } from '../audit/audit.module';
       StockMovement,
       Ingredient,
       Payment,
+      Restaurant,
     ]),
   ],
   controllers: [ReportsController],

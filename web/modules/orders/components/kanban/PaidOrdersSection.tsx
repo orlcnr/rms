@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { OrderGroup } from '../../types'
 import { cn } from '@/modules/shared/utils/cn'
+import { formatCurrency } from '@/modules/shared/utils/numeric'
 
 interface PaidOrdersSectionProps {
   orders: OrderGroup[]
@@ -52,7 +53,7 @@ export function PaidOrdersSection({
               {totalOrders} sipariş
             </span>
             <span className="text-sm font-bold text-success-text">
-              {totalAmount.toFixed(2)} TL
+              {formatCurrency(totalAmount)}
             </span>
           </div>
         </div>
@@ -63,7 +64,7 @@ export function PaidOrdersSection({
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="p-4 bg-bg-app border border-border-light rounded-sm">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">TOPLAM TAHSİLAT</p>
-            <p className="text-2xl font-black text-success-main tabular-nums">{totalAmount.toFixed(2)} TL</p>
+            <p className="text-2xl font-black text-success-main tabular-nums">{formatCurrency(totalAmount)}</p>
           </div>
           <div className="p-4 bg-bg-app border border-border-light rounded-sm">
             <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">KAPANAN MASA</p>
@@ -136,7 +137,7 @@ export function PaidOrdersSection({
                   <span>{new Date(group.lastOrderTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <span className="text-base font-black text-success-main tabular-nums">
-                  {Number(group.totalAmount || 0).toFixed(2)} TL
+                  {formatCurrency(Number(group.totalAmount || 0))}
                 </span>
               </div>
 

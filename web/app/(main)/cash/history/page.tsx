@@ -13,7 +13,7 @@ export default async function CashHistoryPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
-  const { restaurantId } = await getRestaurantContext()
+  await getRestaurantContext()
   const params = await searchParams
   
   const page = Number(params.page) || 1

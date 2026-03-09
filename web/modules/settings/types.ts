@@ -1,14 +1,27 @@
 import { BaseEntity, PaginatedResponse } from '@/modules/shared/types'
 import { Restaurant, UpdateRestaurantInput } from '@/modules/restaurants/types'
+import {
+  PrinterProfilesSettingV1,
+  PrintFormat,
+  PrintPurpose,
+} from '@/modules/shared/printing/types'
+
+export type { PrinterProfilesSettingV1 } from '@/modules/shared/printing/types'
 
 export type SettingsTab = 'general' | 'users' | 'payment' | 'cash' | 'brand-branch' | 'audit'
 
 export type SettingType = 'number' | 'boolean' | 'string'
 export type SettingGroup = 'payment' | 'cash' | 'general'
-export type SettingValue = string | number | boolean | string[]
+export type SettingValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | PrinterProfilesSettingV1
 
 export enum SettingKey {
   ENABLED_PAYMENT_METHODS = 'enabled_payment_methods',
+  RESERVATION_SLOT_MINUTES = 'reservation_slot_minutes',
   TIP_COMMISSION_ENABLED = 'tip_commission_enabled',
   TIP_COMMISSION_RATE = 'tip_commission_rate',
   TIP_COMMISSION_EDITABLE = 'tip_commission_editable',
@@ -16,6 +29,7 @@ export enum SettingKey {
   SHIFT_DURATION_HOURS = 'shift_duration_hours',
   REQUIRE_CLOSING_COUNT = 'require_closing_count',
   FOOD_COST_ALERT_THRESHOLD_PERCENT = 'food_cost_alert_threshold_percent',
+  PRINTER_PROFILES = 'printer_profiles',
 }
 
 export enum UserRole {
@@ -50,6 +64,7 @@ export interface SettingMeta {
   value: SettingValue
   type: SettingType
   group: SettingGroup
+  updatedAt?: string
 }
 
 export type SettingsMetaMap = Partial<Record<SettingKey, SettingMeta>>
@@ -71,6 +86,15 @@ export const SETTING_DEFINITIONS: Record<SettingKey, SettingDefinition> = {
     description: 'POS ekranında görünecek ödeme yöntemleri.',
     type: 'string',
     group: 'payment',
+  },
+  [SettingKey.RESERVATION_SLOT_MINUTES]: {
+    key: SettingKey.RESERVATION_SLOT_MINUTES,
+    label: 'Rezervasyon Slot Süresi (Dakika)',
+    description: 'Rezervasyon çakışma kontrolünde kullanılacak varsayılan slot süresi.',
+    type: 'number',
+    group: 'general',
+    min: 15,
+    step: 15,
   },
   [SettingKey.TIP_COMMISSION_ENABLED]: {
     key: SettingKey.TIP_COMMISSION_ENABLED,
@@ -129,6 +153,13 @@ export const SETTING_DEFINITIONS: Record<SettingKey, SettingDefinition> = {
     min: 1,
     step: 0.1,
   },
+  [SettingKey.PRINTER_PROFILES]: {
+    key: SettingKey.PRINTER_PROFILES,
+    label: 'Yazıcı Profilleri',
+    description: 'Yazdırma profilleri ve varsayılan formatlar.',
+    type: 'string',
+    group: 'general',
+  },
 }
 
 export interface SettingsByGroupResponse {
@@ -140,7 +171,23 @@ export interface SettingsUpdatePayload {
   value: SettingValue
   type: SettingType
   group: SettingGroup
+  lastKnownUpdatedAt?: string
 }
+
+export interface PrinterProfileDraft {
+  id: string
+  name: string
+  format: PrintFormat
+  guidance?: string
+  isActive: boolean
+  updatedAt: string
+}
+
+export const PRINTER_PURPOSES: Array<{ value: PrintPurpose; label: string }> = [
+  { value: 'adisyon', label: 'Adisyon' },
+  { value: 'mutfak', label: 'Mutfak' },
+  { value: 'rapor', label: 'Rapor' },
+]
 
 export interface User extends BaseEntity {
   email: string

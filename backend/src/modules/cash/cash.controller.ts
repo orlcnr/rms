@@ -25,6 +25,7 @@ import {
 } from './dto/cash-ops.dto';
 import { GetSessionHistoryDto } from './dto/get-session-history.dto';
 import type { User } from '../users/entities/user.entity';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 type CashUser = User & { restaurantId?: string };
 
@@ -44,7 +45,9 @@ export class CashController {
     summary: 'Get all cash registers with their current session status',
   })
   getRegisters(@GetUser() user: CashUser) {
-    return this.cashService.getRegisters(this.getRestaurantId(user));
+    return this.cashService
+      .getRegisters(this.getRestaurantId(user))
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('registers')
@@ -54,12 +57,9 @@ export class CashController {
     @Body() dto: CreateCashRegisterDto,
     @Req() request: Request,
   ) {
-    return this.cashService.createRegister(
-      this.getRestaurantId(user),
-      dto,
-      user,
-      request,
-    );
+    return this.cashService
+      .createRegister(this.getRestaurantId(user), dto, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Delete('registers/:registerId')
@@ -69,29 +69,33 @@ export class CashController {
     @GetUser() user: CashUser,
     @Req() request: Request,
   ) {
-    return this.cashService.deleteRegister(registerId, user, request);
+    return this.cashService
+      .deleteRegister(registerId, user, request)
+      .then(() => ApiResponseDto.empty('Kasa silindi'));
   }
 
   @Get('registers/active-sessions')
   @ApiOperation({ summary: 'Tüm açık kasa oturumlarını getirir' })
   getAllActiveSessions(@GetUser() user: CashUser) {
-    return this.cashService.getAllActiveSessions(this.getRestaurantId(user));
+    return this.cashService
+      .getAllActiveSessions(this.getRestaurantId(user))
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('registers/ensure-default')
   @ApiOperation({ summary: 'Varsayılan kasayı hazırla' })
   ensureDefault(@GetUser() user: CashUser, @Req() request: Request) {
-    return this.cashService.ensureDefaultRegister(
-      this.getRestaurantId(user),
-      user,
-      request,
-    );
+    return this.cashService
+      .ensureDefaultRegister(this.getRestaurantId(user), user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('registers/:registerId/sessions')
   @ApiOperation({ summary: 'Kasa oturumlarını listeler' })
   getSessions(@Param() params: RegisterIdParamDto) {
-    return this.cashService.getSessions(params.registerId);
+    return this.cashService
+      .getSessions(params.registerId)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('sessions/open')
@@ -101,13 +105,9 @@ export class CashController {
     @Body() dto: OpenCashSessionDto,
     @Req() request: Request,
   ) {
-    return this.cashService.openSession(
-      this.getRestaurantId(user),
-      user.id,
-      dto,
-      user,
-      request,
-    );
+    return this.cashService
+      .openSession(this.getRestaurantId(user), user.id, dto, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('sessions/:sessionId/close')
@@ -118,26 +118,25 @@ export class CashController {
     @Body() dto: CloseCashSessionDto,
     @Req() request: Request,
   ) {
-    return this.cashService.closeSession(
-      user.id,
-      params.sessionId,
-      dto,
-      undefined,
-      user,
-      request,
-    );
+    return this.cashService
+      .closeSession(user.id, params.sessionId, dto, undefined, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('sessions/:sessionId/movements')
   @ApiOperation({ summary: 'Kasa hareketlerini listeler' })
   getMovements(@Param() params: SessionIdParamDto) {
-    return this.cashService.getMovements(params.sessionId);
+    return this.cashService
+      .getMovements(params.sessionId)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('sessions/:sessionId/summary')
   @ApiOperation({ summary: 'Kasa oturum özetini getirir' })
   getSessionSummary(@Param() params: SessionIdParamDto) {
-    return this.cashService.getSessionSummary(params.sessionId);
+    return this.cashService
+      .getSessionSummary(params.sessionId)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('sessions/:sessionId/reconciliation')
@@ -146,10 +145,9 @@ export class CashController {
     @GetUser() user: CashUser,
     @Param() params: SessionIdParamDto,
   ) {
-    return this.cashService.getReconciliationReport(
-      this.getRestaurantId(user),
-      params.sessionId,
-    );
+    return this.cashService
+      .getReconciliationReport(this.getRestaurantId(user), params.sessionId)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Post('sessions/:sessionId/movements')
@@ -160,14 +158,9 @@ export class CashController {
     @Body() dto: CreateCashMovementDto,
     @Req() request: Request,
   ) {
-    return this.cashService.addMovement(
-      user.id,
-      params.sessionId,
-      dto,
-      undefined,
-      user,
-      request,
-    );
+    return this.cashService
+      .addMovement(user.id, params.sessionId, dto, undefined, user, request)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('sessions/history')
@@ -178,15 +171,16 @@ export class CashController {
     @GetUser() user: CashUser,
     @Query() filters: GetSessionHistoryDto,
   ) {
-    return this.cashService.getSessionHistory(
-      this.getRestaurantId(user),
-      filters,
-    );
+    return this.cashService
+      .getSessionHistory(this.getRestaurantId(user), filters)
+      .then((data) => ApiResponseDto.ok(data));
   }
 
   @Get('sessions/:sessionId')
   @ApiOperation({ summary: 'Belirli bir kasa oturumunu ID ile getirir' })
   getSessionById(@Param() params: SessionIdParamDto) {
-    return this.cashService.getSessionById(params.sessionId);
+    return this.cashService
+      .getSessionById(params.sessionId)
+      .then((data) => ApiResponseDto.ok(data));
   }
 }

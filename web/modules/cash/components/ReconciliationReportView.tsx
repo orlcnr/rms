@@ -214,6 +214,53 @@ export function ReconciliationReportView({
     })
   }
 
+  const refundSummary = report.refundSummary
+  const refundRows: ReportRow[] = [
+    {
+      label: 'Toplam İade',
+      value: -(refundSummary?.totalRefunded || 0),
+      description: `${refundSummary?.refundCount || 0} işlem`,
+      icon: <MinusCircle size={14} />,
+      isBold: true,
+      color: 'text-danger-main',
+    },
+    {
+      label: 'Nakit İade',
+      value: -(refundSummary?.byMethod?.cash || 0),
+      description: 'Kasadan çıkan iade tutarı',
+      icon: <Banknote size={14} />,
+      color: 'text-danger-main',
+    },
+    {
+      label: 'Kart İade',
+      value: -(refundSummary?.byMethod?.card || 0),
+      description: 'Kart işlem iadesi',
+      icon: <Scale size={14} />,
+      color: 'text-warning-main',
+    },
+    {
+      label: 'Açık Hesap İade',
+      value: -(refundSummary?.byMethod?.openAccount || 0),
+      description: 'Cari hesaba geri yazılan iade',
+      icon: <ArrowUpRight size={14} />,
+      color: 'text-info-main',
+    },
+    {
+      label: 'Yemek Çeki İade',
+      value: -(refundSummary?.byMethod?.mealVoucher || 0),
+      description: 'Yemek çeki/kurum iadesi',
+      icon: <Scale size={14} />,
+    },
+    {
+      label: 'Net Nakit Akışı',
+      value: refundSummary?.netCash || 0,
+      description: 'Toplam nakit giriş - çıkış',
+      icon: <TrendingUp size={14} />,
+      isBold: true,
+      color: 'text-primary-main',
+    },
+  ]
+
   const RenderTable = ({
     title,
     rows,
@@ -303,6 +350,11 @@ export function ReconciliationReportView({
           />
         </div>
         <RenderTable
+          title="İADE ÖZETİ"
+          rows={refundRows}
+          colorClass="text-danger-main bg-danger-main/5"
+        />
+        <RenderTable
           title="KASA MUTABAKATI (RECONCILIATION)"
           rows={reconciliationRows}
           colorClass="text-warning-main bg-warning-main/5"
@@ -346,6 +398,7 @@ export function ReconciliationReportView({
           <div className="mt-4 space-y-4">
             {renderPrintTable('Satış ve Ciro Analizi', [...salesRows, ...methodRows])}
             {renderPrintTable('Bahşiş Analizi', tipRows)}
+            {renderPrintTable('İade Özeti', refundRows)}
             {renderPrintTable('Kasa Mutabakatı', reconciliationRows)}
           </div>
 

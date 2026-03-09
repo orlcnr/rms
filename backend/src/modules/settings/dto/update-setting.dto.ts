@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsOptional,
   IsIn,
+  IsISO8601,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SettingType } from '../entities/restaurant-setting.entity';
@@ -31,4 +32,12 @@ export class UpdateSettingDto {
   @IsOptional()
   @IsIn(SETTING_GROUPS)
   group?: (typeof SETTING_GROUPS)[number];
+
+  @ApiPropertyOptional({
+    example: '2026-03-09T10:15:30.000Z',
+    description: 'Optimistic lock token for key-scoped updates',
+  })
+  @IsOptional()
+  @IsISO8601()
+  lastKnownUpdatedAt?: string;
 }

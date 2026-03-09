@@ -1,49 +1,53 @@
-import { http } from '@/modules/shared/api/http';
-
-export interface Customer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email?: string;
-  total_debt: number;
-  current_debt: number;
-  credit_limit: number;
-  credit_limit_enabled: boolean;
-}
-
-export interface CreateCustomerDto {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email?: string;
-  notes?: string;
-  restaurant_id?: string; // Optional - backend gets from authenticated user
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+import { http } from '@/modules/shared/api/http'
+import { PaginatedResponse } from '@/modules/shared/types'
+import {
+  CreateCustomerDto,
+  Customer,
+  GetCustomersParams,
+  UpdateCustomerDto,
+} from '../types'
+import { Order } from '@/modules/orders/types'
 
 export const customersApi = {
-  getAll: async (params?: { search?: string; limit?: number; page?: number }): Promise<PaginatedResponse<Customer>> => {
-    return http.get<PaginatedResponse<Customer>>('/customers', { params });
+  getAll: async (params?: GetCustomersParams): Promise<PaginatedResponse<Customer>> => {
+    return http.get<PaginatedResponse<Customer>>('/customers', { params })
   },
 
-  getById: async (id: string) => {
-    return http.get<Customer>(`/customers/${id}`);
+  getById: async (id: string): Promise<Customer> => {
+    return http.get<Customer>(`/customers/${id}`)
   },
 
-  create: async (data: CreateCustomerDto) => {
-    return http.post<Customer>('/customers', data);
+  create: async (data: CreateCustomerDto): Promise<Customer> => {
+    return http.post<Customer>('/customers', data)
   },
 
-  search: async (query: string, restaurantId?: string) => {
-    return http.get<Customer[]>('/customers/search', { 
-      params: { q: query, ...(restaurantId && { restaurantId }) } 
-    });
+  update: async (id: string, data: UpdateCustomerDto): Promise<Customer> => {
+    return http.patch<Customer>(`/customers/${id}`, data)
   },
-};
+
+  remove: async (id: string): Promise<void> => {
+    return http.delete<void>(`/customers/${id}`)
+  },
+
+  search: async (query: string): Promise<Customer[]> => {
+    return http.get<Customer[]>('/customers/search', {
+      params: { q: query },
+    })
+  },
+
+  getOrders: async (id: string): Promise<Order[]> => {
+    return http.get<Order[]>(`/customers/${id}/orders`)
+  },
+}
+
+export const customerService = {
+  getCustomers: customersApi.getAll,
+  getCustomer: customersApi.getById,
+  createCustomer: customersApi.create,
+  updateCustomer: customersApi.update,
+  deleteCustomer: customersApi.remove,
+  searchCustomers: customersApi.search,
+  getCustomerOrders: customersApi.getOrders,
+}
+
+export type { Customer }

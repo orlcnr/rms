@@ -68,19 +68,19 @@ export function CustomerTable({ customers, onEdit, onDelete, onView, isLoading }
                                 <PhoneDisplay phone={customer.phone} />
                             </td>
                             <td className="px-4 py-3 text-xs text-center font-bold text-text-primary tabular-nums">
-                                {customer.visit_count}
+                                {customer.visit_count ?? 0}
                             </td>
                             <td className="px-4 py-3 text-xs text-center font-medium text-text-secondary tabular-nums">
                                 {customer.last_visit ? format(new Date(customer.last_visit), 'dd MMM yyyy', { locale: tr }) : '-'}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-black text-success-main tabular-nums">
-                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.total_spent)}
+                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.total_spent ?? 0)}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-bold text-text-secondary tabular-nums">
-                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.credit_limit)}
+                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.credit_limit ?? 0)}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-black text-danger-main tabular-nums">
-                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.current_debt)}
+                                {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(customer.current_debt ?? 0)}
                             </td>
                             <td className="px-4 py-3 text-right">
                                 <div className="flex items-center justify-end gap-1.5 ">

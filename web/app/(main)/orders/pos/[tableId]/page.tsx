@@ -57,22 +57,22 @@ export default async function PosPage({ params, searchParams }: PageProps) {
   if (!table) notFound()
 
   let existingOrder = null
-  const activeStatusQuery = `${OrderStatus.PENDING},${OrderStatus.PREPARING},${OrderStatus.READY},${OrderStatus.SERVED}`
+  const activeStatuses = [
+    OrderStatus.PENDING,
+    OrderStatus.PREPARING,
+    OrderStatus.READY,
+    OrderStatus.SERVED,
+  ]
 
   if (orderIdFromQuery) {
     existingOrder = await ordersApi.getOrderById(orderIdFromQuery).catch(() => null)
   } else {
     const activeOrdersResponse = await ordersApi.getOrders({
-      restaurantId,
       tableId,
-      status: activeStatusQuery as any,
-    }).catch(() => ({ items: [], total: 0 }))
+      status: activeStatuses,
+    }).catch(() => ({ items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: 20, totalPages: 0, currentPage: 1 } }))
 
-    const activeOrders = 'items' in activeOrdersResponse
-      ? activeOrdersResponse.items
-      : activeOrdersResponse
-
-    existingOrder = activeOrders?.[0] || null
+    existingOrder = activeOrdersResponse.items[0] || null
   }
 
   const [menuItemsResponse, categories] = await Promise.all([

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '../../audit/enums/audit-action.enum';
@@ -25,6 +25,7 @@ export class SettingsCommandService {
     value: unknown,
     type: SettingType = SettingType.STRING,
     group = 'general',
+    lastKnownUpdatedAt?: string,
     actor?: User,
     request?: Request,
   ): Promise<RestaurantSetting> {
@@ -32,6 +33,15 @@ export class SettingsCommandService {
       restaurantId,
       key,
     );
+
+    if (before && lastKnownUpdatedAt) {
+      const known = new Date(lastKnownUpdatedAt).toISOString();
+      const current = before.updated_at.toISOString();
+      if (known !== current) {
+        throw new ConflictException('SETTINGS_CONFLICT');
+      }
+    }
+
     let setting = before;
 
     const normalizedValue = this.valueNormalizer.normalizeForWrite(key, value);
@@ -44,6 +54,12 @@ export class SettingsCommandService {
       stringValue = JSON.stringify(normalizedValue);
       resolvedType = SettingType.STRING;
       resolvedGroup = 'payment';
+    }
+
+    if (key === this.valueNormalizer.getPrinterProfilesKey()) {
+      stringValue = JSON.stringify(normalizedValue);
+      resolvedType = SettingType.STRING;
+      resolvedGroup = 'general';
     }
 
     if (setting) {
@@ -75,6 +91,7 @@ export class SettingsCommandService {
           key,
           type: saved.type,
           group: saved.group,
+          lastKnownUpdatedAt,
         },
         changes: sanitizeAuditChanges({
           before: before

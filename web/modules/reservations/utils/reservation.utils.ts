@@ -199,15 +199,21 @@ export function canChangeStatus(
       ReservationStatus.CONFIRMED,
       ReservationStatus.CANCELLED,
       ReservationStatus.NO_SHOW,
+      ReservationStatus.ARRIVED,
     ],
     [ReservationStatus.CONFIRMED]: [
       ReservationStatus.COMPLETED,
       ReservationStatus.CANCELLED,
       ReservationStatus.NO_SHOW,
+      ReservationStatus.ARRIVED,
+    ],
+    [ReservationStatus.ARRIVED]: [
+      ReservationStatus.COMPLETED,
+      ReservationStatus.CANCELLED,
     ],
     [ReservationStatus.COMPLETED]: [],
-    [ReservationStatus.CANCELLED]: [ReservationStatus.PENDING],
-    [ReservationStatus.NO_SHOW]: [ReservationStatus.PENDING],
+    [ReservationStatus.CANCELLED]: [],
+    [ReservationStatus.NO_SHOW]: [],
   }
 
   return validTransitions[currentStatus]?.includes(newStatus) ?? false
@@ -222,15 +228,21 @@ export function getAvailableStatusOptions(currentStatus: ReservationStatus): Res
       ReservationStatus.CONFIRMED,
       ReservationStatus.CANCELLED,
       ReservationStatus.NO_SHOW,
+      ReservationStatus.ARRIVED,
     ],
     [ReservationStatus.CONFIRMED]: [
       ReservationStatus.COMPLETED,
       ReservationStatus.CANCELLED,
       ReservationStatus.NO_SHOW,
+      ReservationStatus.ARRIVED,
+    ],
+    [ReservationStatus.ARRIVED]: [
+      ReservationStatus.COMPLETED,
+      ReservationStatus.CANCELLED,
     ],
     [ReservationStatus.COMPLETED]: [],
-    [ReservationStatus.CANCELLED]: [ReservationStatus.PENDING],
-    [ReservationStatus.NO_SHOW]: [ReservationStatus.PENDING],
+    [ReservationStatus.CANCELLED]: [],
+    [ReservationStatus.NO_SHOW]: [],
   }
 
   return validTransitions[currentStatus] ?? []

@@ -7,12 +7,23 @@ import {
   SettingsUpdatePayload,
 } from '../types'
 
+interface UpdateSettingResponse {
+  updated_at?: string
+}
+
 function normalizeSettingResponse(
   payload: SettingsByGroupResponse,
 ): Record<string, SettingMeta> {
   return Object.entries(payload).reduce<Record<string, SettingMeta>>((acc, [key, raw]) => {
     if (raw && typeof raw === 'object' && 'type' in raw && 'value' in raw && 'group' in raw) {
-      acc[key] = raw as SettingMeta
+      const typedRaw = raw as SettingMeta & { updatedAt?: string }
+      acc[key] = {
+        value: typedRaw.value,
+        type: typedRaw.type,
+        group: typedRaw.group,
+        updatedAt:
+          typeof typedRaw.updatedAt === 'string' ? typedRaw.updatedAt : undefined,
+      }
       return acc
     }
 
@@ -43,7 +54,10 @@ export const settingsService = {
     return normalizeSettingResponse(response)
   },
 
-  async updateSetting(restaurantId: string, payload: SettingsUpdatePayload) {
-    return http.post(`/settings/${restaurantId}`, payload)
+  async updateSetting(
+    restaurantId: string,
+    payload: SettingsUpdatePayload,
+  ): Promise<UpdateSettingResponse> {
+    return http.post<UpdateSettingResponse>(`/settings/${restaurantId}`, payload)
   },
 }

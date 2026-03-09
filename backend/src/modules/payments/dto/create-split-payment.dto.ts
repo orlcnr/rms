@@ -124,6 +124,11 @@ export class RevertPaymentDto {
   @IsNotEmpty()
   reason: string;
 
+  @ApiPropertyOptional({ enum: PaymentMethod })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  refund_method?: PaymentMethod;
+
   @ApiPropertyOptional({ example: 'uuid-of-admin' })
   @IsUUID()
   @IsOptional()

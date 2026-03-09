@@ -3,6 +3,7 @@
 import React, { useState, useCallback, memo, useEffect, useMemo } from 'react'
 import { Calendar, Loader2, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import Link from 'next/link'
 
 import { Button } from '@/modules/shared/components/Button'
 import { SubHeaderSection, FilterSection, BodySection } from '@/modules/shared/components/layout'
@@ -26,6 +27,8 @@ interface ReservationClientProps {
   restaurantId: string
   userId?: string
   initialReservations?: Reservation[]
+  initialDate?: string
+  focusTableId?: string
 }
 
 // ============================================
@@ -42,6 +45,8 @@ function ReservationClientComponent({
   restaurantId,
   userId,
   initialReservations = [],
+  initialDate,
+  focusTableId,
 }: ReservationClientProps) {
   const [mounted, setMounted] = React.useState(false)
 
@@ -68,14 +73,25 @@ function ReservationClientComponent({
     isSyncing,
   } = useReservations(restaurantId, {}, initialReservations, view)
 
+  useEffect(() => {
+    if (!initialDate) return
+    if (selectedDate === initialDate) return
+    selectDate(initialDate)
+  }, [initialDate, selectDate, selectedDate])
+
+  const scopedReservations = useMemo(() => {
+    if (!focusTableId) return reservations
+    return reservations.filter((res) => res.table_id === focusTableId)
+  }, [reservations, focusTableId])
+
   // Selected date reservations - use memo directly from reservations
   const selectedDateReservations = React.useMemo(() => {
-    return reservations.filter((res) => {
+    return scopedReservations.filter((res) => {
       // Use local date string comparison to ensure consistency with selectedDate and backend
       const resLocalDate = new Date(res.reservation_time).toLocaleDateString('sv-SE');
       return resLocalDate === selectedDate;
     })
-  }, [reservations, selectedDate])
+  }, [scopedReservations, selectedDate])
 
   // Stats - calculate based on the selected date
   const stats = React.useMemo(() => {
@@ -300,7 +316,7 @@ function ReservationClientComponent({
 
               {view === 'weekly' && (
                 <ReservationWeeklyView
-                  reservations={reservations}
+                  reservations={scopedReservations}
                   selectedDate={selectedDate}
                   onReservationClick={handleOpenModal}
                 />
@@ -308,7 +324,7 @@ function ReservationClientComponent({
 
               {view === 'monthly' && (
                 <ReservationMonthlyView
-                  reservations={reservations}
+                  reservations={scopedReservations}
                   selectedDate={selectedDate}
                   onDateSelect={(date) => {
                     selectDate(date)
@@ -319,6 +335,19 @@ function ReservationClientComponent({
             </div>
           )}
         </BodySection>
+        {focusTableId && (
+          <div className="px-6 py-3 border-t border-border-light bg-bg-surface">
+            <p className="text-[11px] font-bold text-warning-main uppercase tracking-wider">
+              Masa odaklı görünüm aktif
+            </p>
+            <Link
+              href="/reservations"
+              className="mt-1 inline-flex text-[11px] font-bold text-text-muted hover:text-text-primary transition-colors"
+            >
+              Filtreyi kaldır
+            </Link>
+          </div>
+        )}
       </main>
 
       {/* Modal - Conditionally rendered to prevent stale form/customer state */}

@@ -8,15 +8,34 @@ import {
   isNotificationSoundEnabled,
   setNotificationSoundEnabled,
 } from '@/modules/shared/utils/notification-sound'
-import { RestaurantDetails, RestaurantFormInput } from '../../types'
+import {
+  PrinterProfilesSettingV1,
+  RestaurantDetails,
+  RestaurantFormInput,
+} from '../../types'
+import { PrinterProfilesSection } from './PrinterProfilesSection'
 
 interface GeneralTabProps {
+  restaurantId: string
   restaurant: RestaurantDetails | null
   isLoading: boolean
+  reservationSlotMinutes: number
+  printerProfiles: PrinterProfilesSettingV1
+  onReservationSlotMinutesChange: (value: number) => void
+  onPrinterProfilesChange: (value: PrinterProfilesSettingV1) => void
   onSave: (payload: RestaurantFormInput) => Promise<void>
 }
 
-export function GeneralTab({ restaurant, isLoading, onSave }: GeneralTabProps) {
+export function GeneralTab({
+  restaurantId,
+  restaurant,
+  isLoading,
+  reservationSlotMinutes,
+  printerProfiles,
+  onReservationSlotMinutesChange,
+  onPrinterProfilesChange,
+  onSave,
+}: GeneralTabProps) {
   const [form, setForm] = useState<RestaurantFormInput>({
     name: '',
     slug: '',
@@ -109,6 +128,19 @@ export function GeneralTab({ restaurant, isLoading, onSave }: GeneralTabProps) {
       />
 
       <div className="md:col-span-2 rounded-sm border border-border-light bg-bg-surface p-4">
+        <div className="mb-4">
+          <FormInput
+            id="reservation_slot_minutes"
+            name="reservation_slot_minutes"
+            label="Rezervasyon Slot Süresi (Dakika)"
+            type="number"
+            value={String(reservationSlotMinutes)}
+            onChange={(value) =>
+              onReservationSlotMinutesChange(Number(value) || 120)
+            }
+          />
+        </div>
+
         <div className="flex flex-col gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-text-primary">
@@ -133,6 +165,14 @@ export function GeneralTab({ restaurant, isLoading, onSave }: GeneralTabProps) {
             containerClassName="bg-bg-app"
           />
         </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <PrinterProfilesSection
+          restaurantId={restaurantId}
+          value={printerProfiles}
+          onChange={onPrinterProfilesChange}
+        />
       </div>
 
       <div className="md:col-span-2 border-t border-border-light pt-4 flex justify-end">

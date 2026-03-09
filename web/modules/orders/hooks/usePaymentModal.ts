@@ -1,24 +1,27 @@
-import { useState } from 'react';
-import { customersApi, Customer } from '@/modules/customers/services/customers.service';
-import { toast } from 'sonner';
+import { useState } from 'react'
+import { customersApi, Customer } from '@/modules/customers/services/customers.service'
+import { toast } from 'sonner'
 
 interface UsePaymentModalOptions {
-  restaurantId: string;
-  onSuccess?: () => void;
+  restaurantId: string
+  onSuccess?: () => void
 }
 
 interface UsePaymentModalReturn {
-  isCreatingCustomer: boolean;
-  handleAddNewCustomer: (name: string) => Promise<Customer | null>;
+  isCreatingCustomer: boolean
+  handleAddNewCustomer: (name: string) => Promise<Customer | null>
 }
 
 export function usePaymentModal({
   restaurantId,
   onSuccess,
 }: UsePaymentModalOptions): UsePaymentModalReturn {
-  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  void restaurantId
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
 
-  const handleAddNewCustomer = async (name: string): Promise<Customer | null> => {
+  const handleAddNewCustomer = async (
+    name: string,
+  ): Promise<Customer | null> => {
     try {
       setIsCreatingCustomer(true);
 
@@ -38,23 +41,22 @@ export function usePaymentModal({
         first_name: firstName,
         last_name: lastName,
         phone: tempPhone,
-        restaurant_id: restaurantId,
-      });
+      })
 
-      toast.success('Müşteri başarıyla oluşturuldu');
-      onSuccess?.();
-      return newCustomer;
+      toast.success('Müşteri başarıyla oluşturuldu')
+      onSuccess?.()
+      return newCustomer
     } catch (error: any) {
-      console.error('Failed to create customer:', error);
-      toast.error(error?.message || 'Müşteri oluşturulamadı');
-      return null;
+      console.error('Failed to create customer:', error)
+      toast.error(error?.message || 'Müşteri oluşturulamadı')
+      return null
     } finally {
-      setIsCreatingCustomer(false);
+      setIsCreatingCustomer(false)
     }
-  };
+  }
 
   return {
     isCreatingCustomer,
     handleAddNewCustomer,
-  };
+  }
 }

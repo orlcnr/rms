@@ -96,7 +96,7 @@ export function useReservations(
         });
       }
 
-      setReservations(data)
+      setReservations(data.items)
       setError(null)
     } catch (err) {
       console.error('Failed to fetch reservations:', err)

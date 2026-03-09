@@ -9,6 +9,7 @@ import {
   CreateReservationDto,
   UpdateReservationDto,
   GetReservationsQueryParams,
+  ReservationListData,
 } from '../types'
 
 export const reservationsApi = {
@@ -28,7 +29,7 @@ export const reservationsApi = {
     const url = `/reservations${queryString ? `?${queryString}` : ''}`
 
     // JWT token backend'de restaurantId'yi alıyor - query param gerekmiyor
-    return http.get<Reservation[]>(url)
+    return http.get<ReservationListData>(url)
   },
 
   /**
@@ -86,15 +87,21 @@ export const STATUS_TRANSITIONS: Record<ReservationStatus, ReservationStatus[]> 
     ReservationStatus.CONFIRMED,
     ReservationStatus.CANCELLED,
     ReservationStatus.NO_SHOW,
+    ReservationStatus.ARRIVED,
   ],
   [ReservationStatus.CONFIRMED]: [
+    ReservationStatus.ARRIVED,
     ReservationStatus.COMPLETED,
     ReservationStatus.CANCELLED,
     ReservationStatus.NO_SHOW,
   ],
+  [ReservationStatus.ARRIVED]: [
+    ReservationStatus.COMPLETED,
+    ReservationStatus.CANCELLED,
+  ],
   [ReservationStatus.COMPLETED]: [],
-  [ReservationStatus.CANCELLED]: [ReservationStatus.PENDING],
-  [ReservationStatus.NO_SHOW]: [ReservationStatus.PENDING],
+  [ReservationStatus.CANCELLED]: [],
+  [ReservationStatus.NO_SHOW]: [],
 }
 
 /**
