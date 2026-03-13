@@ -19,11 +19,11 @@ export default function MainLayout({
                 <MainHeader />
 
                 {/* Main Content Area */}
-                <div className="flex flex-1 pt-16 overflow-hidden">
+                <div className="flex flex-1 min-h-0 pt-16 overflow-hidden">
                     {/* Spacer for Sidebar on Desktop (Matches Header Hamburger Area) */}
                     <div className="hidden md:block w-20 shrink-0 border-r border-border-light/50 bg-bg-surface/50 h-full" />
                     
-                    <main className="flex-1 min-w-0 px-4 md:px-8 w-full flex flex-col overflow-hidden">
+                    <main className="flex flex-1 min-h-0 min-w-0 w-full flex-col overflow-hidden px-4 md:px-8">
                         {children}
                     </main>
                 </div>

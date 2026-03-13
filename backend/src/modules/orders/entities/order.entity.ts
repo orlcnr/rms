@@ -9,6 +9,8 @@ import { OrderItem } from './order-item.entity';
 import { OrderStatus } from '../enums/order-status.enum';
 import { OrderType } from '../enums/order-type.enum';
 import { OrderSource } from '../enums/order-source.enum';
+import { PickupType } from '../enums/pickup-type.enum';
+import { DeliveryStatus } from '../enums/delivery-status.enum';
 export { OrderStatus, OrderType, OrderSource };
 
 @Entity('orders', { schema: 'business' })
@@ -47,6 +49,34 @@ export class Order extends BaseEntity {
     default: OrderType.DINE_IN,
   })
   type: OrderType;
+
+  @Column({
+    name: 'pickup_type',
+    type: 'enum',
+    enum: PickupType,
+    nullable: true,
+  })
+  pickupType: PickupType | null;
+
+  @Column({ name: 'pickup_time', type: 'timestamp', nullable: true })
+  pickupTime: Date | null;
+
+  @Column({
+    name: 'delivery_status',
+    type: 'enum',
+    enum: DeliveryStatus,
+    nullable: true,
+  })
+  deliveryStatus: DeliveryStatus | null;
+
+  @Column({ name: 'delivery_address', type: 'text', nullable: true })
+  deliveryAddress: string | null;
+
+  @Column({ name: 'delivery_phone', type: 'text', nullable: true })
+  deliveryPhone: string | null;
+
+  @Column({ name: 'customer_name', type: 'text', nullable: true })
+  customerName: string | null;
 
   @Column({
     type: 'enum',

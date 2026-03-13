@@ -3,7 +3,6 @@
 import { 
   Calculator, 
   ArrowDown, 
-  ArrowUp, 
   Minus,
   CheckCircle2,
   AlertCircle 
@@ -30,8 +29,6 @@ interface PaymentSummaryCardProps {
   isComplete: boolean;
   isProcessing?: boolean;
   
-  // Callback
-  onApplyDiscount?: () => void;
 }
 
 export function PaymentSummaryCard({
@@ -45,7 +42,6 @@ export function PaymentSummaryCard({
   totalChange = 0,
   isComplete,
   isProcessing = false,
-  onApplyDiscount,
 }: PaymentSummaryCardProps) {
   
   // Renk sınıfları (DESIGN_TOKENS)
@@ -166,29 +162,6 @@ export function PaymentSummaryCard({
         )}
       </div>
 
-      {/* İndirim Uygula Butonu */}
-      {!discount && onApplyDiscount && (
-        <button
-          onClick={onApplyDiscount}
-          className="w-full mt-2 py-2 text-xs font-semibold text-text-muted hover:text-primary-main 
-            border border-dashed border-border-medium hover:border-primary-main rounded-sm
-            transition-colors flex items-center justify-center gap-1"
-        >
-          <Minus className="h-3 w-3" />
-          İndirim Uygula
-        </button>
-      )}
-
-      {/* İndirim Kaldır (varsa) */}
-      {discount > 0 && onApplyDiscount && (
-        <button
-          onClick={onApplyDiscount}
-          className="w-full mt-2 py-2 text-xs font-semibold text-danger-main hover:text-danger-hover
-            transition-colors"
-        >
-          İndirimi Kaldır
-        </button>
-      )}
     </div>
   );
 }

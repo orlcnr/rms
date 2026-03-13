@@ -51,6 +51,13 @@ export class OrderItemResponseDto {
   status: OrderStatus;
 
   /**
+   * @source business.order_items.send_to_kitchen
+   * @context kitchen-routing
+   * @nullable Hayır
+   */
+  send_to_kitchen: boolean;
+
+  /**
    * @source business.menu_items (items.menuItem relation)
    * @context sales|kitchen
    * @nullable Evet — legacy satırlarda menü kaydı bulunmayabilir

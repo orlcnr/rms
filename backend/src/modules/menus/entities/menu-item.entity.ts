@@ -25,6 +25,9 @@ export class MenuItem extends BaseEntity {
   @Column({ default: false })
   track_inventory: boolean;
 
+  @Column({ default: true })
+  requires_kitchen: boolean;
+
   @Column({ default: 0 })
   popularity: number;
 

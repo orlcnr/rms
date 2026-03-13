@@ -41,6 +41,8 @@ import {
   Reservation,
   ReservationStatus,
 } from '../../reservations/entities/reservation.entity';
+import { PickupType } from '../enums/pickup-type.enum';
+import { DeliveryStatus } from '../enums/delivery-status.enum';
 
 @Injectable()
 export class OrdersCommandService {
@@ -161,6 +163,12 @@ export class OrdersCommandService {
       customer_id,
       address,
       delivery_fee,
+      pickup_type,
+      pickup_time,
+      delivery_status,
+      delivery_address,
+      delivery_phone,
+      customer_name,
       integration_metadata,
       transaction_id,
     } = createOrderDto;
@@ -170,6 +178,16 @@ export class OrdersCommandService {
     await queryRunner.startTransaction();
 
     try {
+      if (type === OrderType.TAKEAWAY) {
+        this.logger.warn(
+          JSON.stringify({
+            event: 'orders.type_alias.takeaway_to_counter',
+            restaurantId: user.restaurant_id,
+            transactionId: transaction_id,
+          }),
+        );
+      }
+
       let resolvedCustomerId = customer_id || null;
 
       // Reservation arrival flow:
@@ -205,14 +223,49 @@ export class OrdersCommandService {
         status: OrderStatus.PENDING,
         totalAmount: 0,
         orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-        type: type || OrderType.DINE_IN,
+        type: (type === OrderType.TAKEAWAY ? OrderType.COUNTER : type) || OrderType.DINE_IN,
         source: source || OrderSource.INTERNAL,
         externalId: external_id || null,
         customerId: resolvedCustomerId,
         address: address || null,
         deliveryFee: delivery_fee || 0,
+        pickupType: pickup_type || null,
+        pickupTime: pickup_time ? new Date(pickup_time) : null,
+        deliveryStatus: delivery_status || null,
+        deliveryAddress: delivery_address || null,
+        deliveryPhone: delivery_phone || null,
+        customerName: customer_name || null,
         integrationMetadata: integration_metadata || null,
       });
+
+      if (order.type === OrderType.DELIVERY) {
+        if (!delivery_address?.trim() || !delivery_phone?.trim()) {
+          throw new BadRequestException(
+            'Delivery siparişi için delivery_address ve delivery_phone zorunludur.',
+          );
+        }
+        if (!order.deliveryStatus) {
+          order.deliveryStatus = DeliveryStatus.PENDING;
+        }
+      } else {
+        order.deliveryStatus = null;
+        order.deliveryAddress = null;
+        order.deliveryPhone = null;
+      }
+
+      if (order.type === OrderType.COUNTER) {
+        if (
+          order.pickupType === PickupType.SCHEDULED &&
+          !order.pickupTime
+        ) {
+          throw new BadRequestException(
+            'Counter scheduled siparişlerde pickup_time zorunludur.',
+          );
+        }
+      } else {
+        order.pickupType = null;
+        order.pickupTime = null;
+      }
 
       if (order.type === OrderType.DINE_IN) {
         await this.rulesService.checkRule(
@@ -288,6 +341,11 @@ export class OrdersCommandService {
 
         const subtotal = resolved.effectivePrice * itemDto.quantity;
 
+        const shouldSendToKitchen =
+          order.type === OrderType.DINE_IN
+            ? true
+            : itemDto.send_to_kitchen ?? resolved.requiresKitchen ?? true;
+
         const orderItem = queryRunner.manager.create(OrderItem, {
           orderId: savedOrder.id,
           menuItemId: itemDto.menu_item_id,
@@ -297,6 +355,7 @@ export class OrdersCommandService {
           overridePrice: resolved.customPrice,
           unitPriceLocked: resolved.effectivePrice,
           totalPrice: subtotal,
+          sendToKitchen: shouldSendToKitchen,
         });
         orderItemsToSave.push(orderItem);
       }
@@ -363,6 +422,61 @@ export class OrdersCommandService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async updateDeliveryStatus(
+    id: string,
+    deliveryStatus: DeliveryStatus,
+    actor?: User,
+    request?: Request,
+  ): Promise<OrderResponseDto> {
+    const order = await this.ordersRepository.findOneWithRelations(id);
+    if (!order) {
+      throw new NotFoundException(OrderErrorCodes.ORDER_NOT_FOUND);
+    }
+
+    if (actor?.restaurant_id) {
+      this.ordersAuthorizationService.assertOrderRestaurantScope(
+        order,
+        actor.restaurant_id,
+      );
+    }
+
+    if (order.type !== OrderType.DELIVERY) {
+      throw new BadRequestException(
+        'Delivery status yalnız delivery tipindeki siparişlerde güncellenebilir.',
+      );
+    }
+
+    const transitions: Record<DeliveryStatus, DeliveryStatus[]> = {
+      [DeliveryStatus.PENDING]: [
+        DeliveryStatus.CONFIRMED,
+        DeliveryStatus.CANCELLED,
+      ],
+      [DeliveryStatus.CONFIRMED]: [
+        DeliveryStatus.PREPARING,
+        DeliveryStatus.CANCELLED,
+      ],
+      [DeliveryStatus.PREPARING]: [DeliveryStatus.READY],
+      [DeliveryStatus.READY]: [DeliveryStatus.ON_THE_WAY],
+      [DeliveryStatus.ON_THE_WAY]: [DeliveryStatus.DELIVERED],
+      [DeliveryStatus.DELIVERED]: [],
+      [DeliveryStatus.CANCELLED]: [],
+    };
+
+    const currentStatus = order.deliveryStatus || DeliveryStatus.PENDING;
+    if (currentStatus !== deliveryStatus) {
+      const allowed = transitions[currentStatus] || [];
+      if (!allowed.includes(deliveryStatus)) {
+        throw new BadRequestException(
+          `Invalid delivery status transition: ${currentStatus} -> ${deliveryStatus}`,
+        );
+      }
+      order.deliveryStatus = deliveryStatus;
+      await this.ordersRepository.raw.save(order);
+    }
+
+    return OrderMapper.toDto(order);
   }
 
   async updateStatus(

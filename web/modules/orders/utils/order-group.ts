@@ -296,7 +296,11 @@ export function getTodayOrders(orders: Order[]): Order[] {
  * Varsayılan masa adı oluştur
  */
 function getDefaultTableName(order: Order): string {
-  if (order.type === OrderType.TAKEAWAY || order.type === OrderType.DELIVERY) {
+  if (
+    order.type === OrderType.COUNTER ||
+    order.type === OrderType.TAKEAWAY ||
+    order.type === OrderType.DELIVERY
+  ) {
     return order.customer?.name ||
       `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim() ||
       'Paket Servis'

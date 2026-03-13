@@ -30,8 +30,25 @@ export enum OrderStatus {
  */
 export enum OrderType {
   DINE_IN = 'dine_in',
+  COUNTER = 'counter',
+  /** @deprecated legacy alias */
   TAKEAWAY = 'takeaway',
   DELIVERY = 'delivery',
+}
+
+export enum PickupType {
+  IMMEDIATE = 'immediate',
+  SCHEDULED = 'scheduled',
+}
+
+export enum DeliveryStatus {
+  PENDING = 'pending',
+  CONFIRMED = 'confirmed',
+  PREPARING = 'preparing',
+  READY = 'ready',
+  ON_THE_WAY = 'on_the_way',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
 }
 
 /**
@@ -106,6 +123,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 
 export const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   [OrderType.DINE_IN]: 'Yemek İçi',
+  [OrderType.COUNTER]: 'Tezgah',
   [OrderType.TAKEAWAY]: 'Paket Servis',
   [OrderType.DELIVERY]: 'Teslimat',
 }
@@ -177,6 +195,12 @@ export interface Order extends BaseEntity {
     credit_limit_enabled?: boolean // Limit kontrolü aktif mi
   }
   type: OrderType
+  pickup_type?: PickupType | null
+  pickup_time?: string | null
+  delivery_status?: DeliveryStatus | null
+  delivery_address?: string | null
+  delivery_phone?: string | null
+  customer_name?: string | null
   source: OrderSource
   status: OrderStatus
   totalAmount: number
@@ -204,6 +228,7 @@ export interface OrderItem extends BaseEntity {
   unitPrice: number
   totalPrice: number
   status: OrderStatus
+  send_to_kitchen?: boolean
   notes?: string
 }
 
@@ -253,10 +278,17 @@ export interface CreateOrderInput {
   table_id?: string
   customer_id?: string
   type: OrderType
+  pickup_type?: PickupType
+  pickup_time?: string
+  delivery_status?: DeliveryStatus
+  delivery_address?: string
+  delivery_phone?: string
+  customer_name?: string
   notes?: string
   items: Array<{
     menu_item_id: string
     quantity: number
+    send_to_kitchen?: boolean
     notes?: string
   }>
 }
@@ -264,6 +296,10 @@ export interface CreateOrderInput {
 export interface UpdateOrderStatusInput {
   status: OrderStatus
   transaction_id?: string
+}
+
+export interface UpdateDeliveryStatusInput {
+  delivery_status: DeliveryStatus
 }
 
 export interface UpdateOrderItemsInput {
@@ -330,7 +366,7 @@ export const ORDER_STATUS_OPTIONS = [
 
 export const ORDER_TYPE_OPTIONS = [
   { value: OrderType.DINE_IN, label: ORDER_TYPE_LABELS[OrderType.DINE_IN] },
-  { value: OrderType.TAKEAWAY, label: ORDER_TYPE_LABELS[OrderType.TAKEAWAY] },
+  { value: OrderType.COUNTER, label: ORDER_TYPE_LABELS[OrderType.COUNTER] },
   { value: OrderType.DELIVERY, label: ORDER_TYPE_LABELS[OrderType.DELIVERY] },
 ] as const
 

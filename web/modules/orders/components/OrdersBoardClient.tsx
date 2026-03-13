@@ -19,6 +19,7 @@ import { Archive, Printer } from 'lucide-react'
 import { Modal } from '@/modules/shared/components/Modal'
 import { SubHeaderSection, BodySection } from '@/modules/shared/components/layout'
 import { OrderBoardToolbar } from './OrderBoardToolbar'
+import { OrderModeSwitcher } from './OrderModeSwitcher'
 import { OrderDetailDrawer } from './OrderDetailDrawer'
 import { OrdersByStatus, OrderType, OrderStatus, OrderGroup } from '../types'
 import { PrintFormatModal } from '@/modules/shared/printing/PrintFormatModal'
@@ -421,6 +422,7 @@ export function OrdersBoardClient({
         moduleColor="bg-success-main"
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            <OrderModeSwitcher />
             <button
               type="button"
               onClick={() => {

@@ -16,6 +16,7 @@ export class OrderMapper {
           : null,
       subtotal: Number(item.totalPrice || 0),
       status: item.status,
+      send_to_kitchen: Boolean(item.sendToKitchen),
       menu_item: item.menuItem
         ? {
             id: item.menuItem.id,
@@ -36,6 +37,12 @@ export class OrderMapper {
       status: order.status,
       type: order.type,
       source: order.source,
+      pickup_type: order.pickupType,
+      pickup_time: order.pickupTime,
+      delivery_status: order.deliveryStatus,
+      delivery_address: order.deliveryAddress,
+      delivery_phone: order.deliveryPhone,
+      customer_name: order.customerName,
       total_amount: Number(order.totalAmount || 0),
       order_number: order.orderNumber,
       merged_into: order.mergedInto,

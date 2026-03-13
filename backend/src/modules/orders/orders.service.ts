@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { User } from '../users/entities/user.entity';
 import { OrderStatus } from './enums/order-status.enum';
+import { DeliveryStatus } from './enums/delivery-status.enum';
 import { MoveOrderDto } from './dto/move-order.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
@@ -71,6 +72,20 @@ export class OrdersService implements OnModuleInit {
       id,
       status,
       transactionId,
+      actor,
+      request,
+    );
+  }
+
+  async updateDeliveryStatus(
+    id: string,
+    deliveryStatus: DeliveryStatus,
+    actor?: User,
+    request?: Request,
+  ) {
+    return this.ordersCommandService.updateDeliveryStatus(
+      id,
+      deliveryStatus,
       actor,
       request,
     );

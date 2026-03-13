@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { usePayment } from '../hooks/usePayment';
 import {
@@ -39,8 +38,6 @@ export function MobilePaymentSheet({
   onAddNewCustomer,
   isCreatingCustomer,
 }: MobilePaymentSheetProps) {
-  const [, setShowNumpad] = useState(false);
-
   return (
     <div className="fixed inset-0 z-50 bg-bg-app flex flex-col">
       {/* Header */}
@@ -76,7 +73,6 @@ export function MobilePaymentSheet({
                 key={method}
                 onClick={() => {
                   hook.addPaymentLine(method);
-                  setShowNumpad(true);
                 }}
                 disabled={hook.isProcessing}
                 className="flex flex-col items-center gap-1 p-3 bg-bg-surface border border-border-light rounded-sm"
@@ -94,7 +90,6 @@ export function MobilePaymentSheet({
             key={payment.id}
             onClick={() => {
               hook.setActivePaymentIndex(index);
-              setShowNumpad(true);
             }}
             className="flex items-center justify-between p-3 bg-bg-surface border border-border-light rounded-sm"
           >
@@ -138,11 +133,8 @@ export function MobilePaymentSheet({
               value={hook.numericPadValue.display}
               onDigit={(d) => hook.appendDigit(d)}
               onDelete={hook.deleteLastDigit}
-              onClear={hook.clearNumericPad}
-              onConfirm={() => {
-                hook.applyNumericPadToActivePayment();
-                setShowNumpad(false);
-              }}
+              onFillFullAmount={hook.fillActivePaymentWithRemaining}
+              canFillFullAmount={hook.remainingBalance > 0}
             />
 
             {/* Customer Selector for Open Account */}

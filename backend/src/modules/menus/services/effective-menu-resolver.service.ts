@@ -15,6 +15,7 @@ export interface EffectiveBranchMenuItem {
   isHiddenByItem: boolean;
   isHiddenByCategory: boolean;
   isAvailable: boolean;
+  requiresKitchen: boolean;
 }
 
 @Injectable()
@@ -58,6 +59,7 @@ export class EffectiveMenuResolverService {
         'brand_id',
         'branch_id',
         'restaurant_id',
+        'requires_kitchen',
       ],
     });
 
@@ -129,6 +131,7 @@ export class EffectiveMenuResolverService {
         isHiddenByItem,
         isHiddenByCategory,
         isAvailable: Boolean(item.is_available),
+        requiresKitchen: Boolean(item.requires_kitchen ?? true),
       });
     }
 

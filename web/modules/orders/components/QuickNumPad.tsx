@@ -1,23 +1,23 @@
 'use client';
 
-import { Check } from 'lucide-react';
-
 interface QuickNumPadProps {
   value: string;
   onDigit: (digit: string) => void;
   onDelete: () => void;
-  onClear: () => void;
-  onConfirm: () => void;
+  onFillFullAmount: () => void;
+  canFillFullAmount?: boolean;
+  fillButtonTitle?: string;
 }
 
 export function QuickNumPad({
   value,
   onDigit,
   onDelete,
-  onClear,
-  onConfirm,
+  onFillFullAmount,
+  canFillFullAmount = true,
+  fillButtonTitle,
 }: QuickNumPadProps) {
-  const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ','];
+  const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
   return (
     <div className="space-y-2">
@@ -49,22 +49,15 @@ export function QuickNumPad({
           <span className="text-lg font-bold text-text-secondary">⌫</span>
         </button>
 
-        {/* Clear */}
+        {/* Fill remaining */}
         <button
-          onClick={onClear}
-          className="h-14 flex items-center justify-center bg-bg-muted border border-border-light 
-            hover:bg-warning-main/10 rounded-sm transition-colors"
+          onClick={onFillFullAmount}
+          disabled={!canFillFullAmount}
+          title={fillButtonTitle}
+          className="col-span-2 h-14 flex items-center justify-center bg-success-main text-white 
+            hover:bg-success-hover rounded-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <span className="text-xs font-bold text-text-secondary">TEMİZLE</span>
-        </button>
-
-        {/* Confirm */}
-        <button
-          onClick={onConfirm}
-          className="h-14 flex items-center justify-center bg-success-main text-white 
-            hover:bg-success-hover rounded-sm transition-colors"
-        >
-          <Check className="h-6 w-6" />
+          <span className="text-sm font-black tracking-wider">TAM</span>
         </button>
       </div>
     </div>

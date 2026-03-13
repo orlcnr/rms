@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 
 export class GetOrdersDto {
   @ApiPropertyOptional({
@@ -18,7 +25,7 @@ export class GetOrdersDto {
 
   @ApiPropertyOptional({
     description: 'Sipariş tipleri (csv)',
-    example: 'dine_in,takeaway',
+    example: 'dine_in,counter',
   })
   @IsOptional()
   @IsString()
@@ -28,6 +35,22 @@ export class GetOrdersDto {
   @IsOptional()
   @IsUUID()
   tableId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Başlangıç tarihi (YYYY-MM-DD)',
+    example: '2026-03-09',
+  })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Bitiş tarihi (YYYY-MM-DD)',
+    example: '2026-03-09',
+  })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
   @ApiPropertyOptional({ description: 'Sayfa', default: 1 })
   @IsOptional()

@@ -26,6 +26,8 @@ import { MoveOrderDto } from './dto/move-order.dto';
 import { BatchUpdateStatusDto } from './dto/batch-update-status.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
+import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+import { DeliveryStatus } from './enums/delivery-status.enum';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -136,6 +138,37 @@ export class OrdersController {
   ) {
     return this.ordersService
       .updateStatus(id, status, transactionId, user, request)
+      .then((data) => ApiResponseDto.ok(data));
+  }
+
+  @Roles(
+    Role.WAITER,
+    Role.MANAGER,
+    Role.RESTAURANT_OWNER,
+    Role.SUPER_ADMIN,
+    Role.CHEF,
+    Role.BRANCH_WAITER,
+    Role.BRANCH_MANAGER,
+    Role.BRANCH_CHEF,
+  )
+  @Patch(':id/delivery-status')
+  @ApiOperation({ summary: 'Update delivery status (delivery orders only)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        delivery_status: { type: 'string', enum: Object.values(DeliveryStatus) },
+      },
+    },
+  })
+  updateDeliveryStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateDeliveryStatusDto,
+    @GetUser() user: User,
+    @Req() request: ExpressRequest,
+  ) {
+    return this.ordersService
+      .updateDeliveryStatus(id, dto.delivery_status, user, request)
       .then((data) => ApiResponseDto.ok(data));
   }
 

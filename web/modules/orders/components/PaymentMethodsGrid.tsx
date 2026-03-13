@@ -90,7 +90,7 @@ export function PaymentMethodsGrid({
               onClick={() => onSelectMethod(method)}
               disabled={disabled}
               className={`
-                flex items-center gap-2 px-3 py-2.5 rounded-sm transition-all duration-200
+                min-h-12 flex items-center gap-2 px-3 py-2.5 rounded-sm transition-all duration-200 active:scale-[0.98]
                 ${
                   isSelected
                     ? 'bg-primary-main/10 border border-primary-main/30 border-l-4 border-l-primary-main text-primary-main'

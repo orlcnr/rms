@@ -5,6 +5,7 @@ import type { Cache } from 'cache-manager';
 import { In, Repository } from 'typeorm';
 import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../orders/enums/order-status.enum';
+import { OrderType } from '../orders/enums/order-type.enum';
 import { Table } from '../tables/entities/table.entity';
 import { Ingredient } from '../inventory/entities/ingredient.entity';
 import { Payment } from '../payments/entities/payment.entity';
@@ -45,7 +46,6 @@ export class DashboardService {
             OrderStatus.READY,
             OrderStatus.SERVED,
             OrderStatus.ON_WAY,
-            OrderStatus.DELIVERED,
           ]),
         },
       }),
@@ -192,13 +192,34 @@ export class DashboardService {
   ): Promise<{ total: number; occupied: number; rate: number }> {
     const rows = await this.tableRepository.manager.query(
       `
+      WITH serviceable_tables AS (
+        SELECT t.id
+        FROM business.tables t
+        WHERE t.restaurant_id = $1
+          AND t.status::text <> 'out_of_service'
+      ),
+      occupied_tables AS (
+        SELECT DISTINCT o.table_id
+        FROM business.orders o
+        INNER JOIN serviceable_tables st ON st.id = o.table_id
+        WHERE o.restaurant_id = $1
+          AND o.type::text = $2
+          AND o.status::text = ANY($3::text[])
+      )
       SELECT
-        COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE status::text = 'occupied')::int AS occupied
-      FROM business.tables
-      WHERE restaurant_id = $1
+        (SELECT COUNT(*)::int FROM serviceable_tables) AS total,
+        (SELECT COUNT(*)::int FROM occupied_tables) AS occupied
       `,
-      [restaurantId],
+      [
+        restaurantId,
+        OrderType.DINE_IN,
+        [
+          OrderStatus.PENDING,
+          OrderStatus.PREPARING,
+          OrderStatus.READY,
+          OrderStatus.SERVED,
+        ],
+      ],
     );
 
     const total = Number(rows[0]?.total || 0);
@@ -274,10 +295,14 @@ export class DashboardService {
         FROM payments_daily
       ),
       tables_open_now AS (
-        SELECT COUNT(*)::int AS current_open_tables
-        FROM business.tables t
-        WHERE t.restaurant_id = $1
-          AND t.status::text = 'occupied'
+        SELECT COUNT(DISTINCT o.table_id)::int AS current_open_tables
+        FROM business.orders o
+        WHERE o.restaurant_id = $1
+          AND o.type::text = 'dine_in'
+          AND o.table_id IS NOT NULL
+          AND o.status::text = ANY(
+            ARRAY['pending', 'preparing', 'ready', 'served']::text[]
+          )
       ),
       orders_open_now AS (
         SELECT COALESCE(SUM(o.total_amount), 0)::float AS open_orders_amount

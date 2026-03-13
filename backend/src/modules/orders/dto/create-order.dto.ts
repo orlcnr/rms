@@ -1,18 +1,22 @@
 import {
   IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Min,
-  IsEnum,
   ValidateNested,
 } from 'class-validator';
 import { OrderType } from '../enums/order-type.enum';
 import { OrderSource } from '../enums/order-source.enum';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PickupType } from '../enums/pickup-type.enum';
+import { DeliveryStatus } from '../enums/delivery-status.enum';
 
 class CreateOrderItemDto {
   @ApiProperty({ example: 'uuid-of-menu-item' })
@@ -24,6 +28,15 @@ class CreateOrderItemDto {
   @IsNumber()
   @Min(1)
   quantity: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'If omitted, backend defaults from menu_item.requires_kitchen. Dine-in always true in v2.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  send_to_kitchen?: boolean;
 }
 
 export class CreateOrderDto {
@@ -44,6 +57,9 @@ export class CreateOrderDto {
   notes?: string;
 
   @ApiPropertyOptional({ enum: OrderType, default: OrderType.DINE_IN })
+  @Transform(({ value }) =>
+    value === OrderType.TAKEAWAY ? OrderType.COUNTER : value,
+  )
   @IsEnum(OrderType)
   @IsOptional()
   type?: OrderType;
@@ -81,4 +97,54 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   transaction_id?: string;
+
+  @ApiPropertyOptional({
+    enum: PickupType,
+    example: PickupType.IMMEDIATE,
+    description: 'Only for counter orders',
+  })
+  @IsEnum(PickupType)
+  @IsOptional()
+  pickup_type?: PickupType;
+
+  @ApiPropertyOptional({
+    example: '2026-03-09T14:30:00.000Z',
+    description: 'Required when type=counter and pickup_type=scheduled',
+  })
+  @IsDateString()
+  @IsOptional()
+  pickup_time?: string;
+
+  @ApiPropertyOptional({
+    enum: DeliveryStatus,
+    example: DeliveryStatus.PENDING,
+    description: 'Optional bootstrap value for delivery orders',
+  })
+  @IsEnum(DeliveryStatus)
+  @IsOptional()
+  delivery_status?: DeliveryStatus;
+
+  @ApiPropertyOptional({
+    example: 'Ataturk Cd. No:12 Kat:2 D:5',
+    description: 'Required when type=delivery',
+  })
+  @IsString()
+  @IsOptional()
+  delivery_address?: string;
+
+  @ApiPropertyOptional({
+    example: '05321234567',
+    description: 'Required when type=delivery',
+  })
+  @IsString()
+  @IsOptional()
+  delivery_phone?: string;
+
+  @ApiPropertyOptional({
+    example: 'Ahmet Kaya',
+    description: 'Optional customer display name for counter/delivery',
+  })
+  @IsString()
+  @IsOptional()
+  customer_name?: string;
 }

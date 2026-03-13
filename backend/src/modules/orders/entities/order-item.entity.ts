@@ -56,6 +56,9 @@ export class OrderItem extends BaseEntity {
   @Column({ name: 'subtotal', type: 'decimal', precision: 10, scale: 2 })
   totalPrice: number; // Mapping frontend totalPrice to backend subtotal
 
+  @Column({ name: 'send_to_kitchen', type: 'boolean', default: true })
+  sendToKitchen: boolean;
+
   @Column({
     type: 'enum',
     enum: OrderStatus,

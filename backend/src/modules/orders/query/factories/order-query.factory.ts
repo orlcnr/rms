@@ -6,6 +6,7 @@ import { OrderStatusSpec } from '../specs/order-status.spec';
 import { OrderWaiterSpec } from '../specs/order-waiter.spec';
 import { OrderTypeSpec } from '../specs/order-type.spec';
 import { OrderTableSpec } from '../specs/order-table.spec';
+import { OrderDateRangeSpec } from '../specs/order-date-range.spec';
 
 @Injectable()
 export class OrderQueryFactory {
@@ -26,6 +27,10 @@ export class OrderQueryFactory {
 
     if (filters.tableId) {
       specs.push(new OrderTableSpec(filters.tableId));
+    }
+
+    if (filters.startDate || filters.endDate) {
+      specs.push(new OrderDateRangeSpec(filters.startDate, filters.endDate));
     }
 
     return specs;

@@ -32,7 +32,7 @@ interface UsePaymentProps {
 
 export interface NumericPadValue {
   value: string;      // Raw input value
-  display: string;     // Formatted for display (e.g., "1.234,56")
+  display: string;     // Formatted for display (e.g., "1.234")
   cents: number;       // Value in cents for precision
 }
 
@@ -94,6 +94,21 @@ export function usePayment({
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (activePaymentIndex === null || activePaymentIndex >= payments.length) {
+      setNumericPadValue({ value: '', display: '0', cents: 0 });
+      return;
+    }
+    const activePayment = payments[activePaymentIndex];
+    if (!activePayment) return;
+    const amount = Math.max(0, Math.round(activePayment.amount || 0));
+    setNumericPadValue({
+      value: String(amount),
+      display: formatNumericDisplay(String(amount)),
+      cents: amount * 100,
+    });
+  }, [activePaymentIndex, payments]);
 
   // ============ SİPARİŞ VERİLERİNİ SOCKET ÜZERİNDEN GÜNCELLE ============
 
@@ -321,31 +336,34 @@ export function usePayment({
   /**
    * Numeric pad'e rakam ekle
    */
+  const updateActiveAmountFromValue = useCallback(
+    (value: string) => {
+      if (activePaymentIndex === null || activePaymentIndex >= payments.length) return;
+      const activePayment = payments[activePaymentIndex];
+      if (!activePayment) return;
+      const parsed = Number.parseInt(value || '0', 10);
+      const amount = Number.isFinite(parsed) ? parsed : 0;
+      updatePaymentLine(activePayment.id, { amount });
+    },
+    [activePaymentIndex, payments, updatePaymentLine],
+  );
+
   const appendDigit = useCallback((digit: string) => {
     setNumericPadValue(prev => {
-      // Sadece rakam ve virgül/nokta kabul et
-      if (!/[\d,]/.test(digit)) return prev;
+      if (!/\d/.test(digit)) return prev;
 
       let newValue = prev.value;
 
-      // Virgül geldiyse ondalık separator olarak işle
-      if (digit === ',' || digit === '.') {
-        if (prev.value.includes(',') || prev.value.includes('.')) {
-          return prev; // Zaten ondalık var
-        }
-        newValue = prev.value + ',';
+      if (prev.value === '0') {
+        newValue = digit;
       } else {
-        // Sıfırları önle
-        if (prev.value === '0' && digit !== ',') {
-          newValue = digit;
-        } else {
-          newValue = prev.value + digit;
-        }
+        newValue = prev.value + digit;
       }
 
-      // Türk formatı: 1.234,56
-      const numericPart = newValue.replace(',', '.');
-      const cents = Math.round(parseFloat(numericPart || '0') * 100);
+      const parsed = Number.parseInt(newValue || '0', 10);
+      const amount = Number.isFinite(parsed) ? parsed : 0;
+      const cents = amount * 100;
+      updateActiveAmountFromValue(newValue);
 
       return {
         value: newValue,
@@ -353,7 +371,7 @@ export function usePayment({
         cents,
       };
     });
-  }, []);
+  }, [updateActiveAmountFromValue]);
 
   /**
    * Numeric pad'den son karakteri sil
@@ -361,23 +379,28 @@ export function usePayment({
   const deleteLastDigit = useCallback(() => {
     setNumericPadValue(prev => {
       if (prev.value.length <= 1) {
+        updateActiveAmountFromValue('0');
         return { value: '', display: '0', cents: 0 };
       }
       const newValue = prev.value.slice(0, -1);
+      const parsed = Number.parseInt(newValue || '0', 10);
+      const amount = Number.isFinite(parsed) ? parsed : 0;
+      updateActiveAmountFromValue(newValue);
       return {
         value: newValue,
         display: formatNumericDisplay(newValue),
-        cents: Math.round(parseFloat(newValue.replace(',', '.')) * 100) || 0,
+        cents: amount * 100,
       };
     });
-  }, []);
+  }, [updateActiveAmountFromValue]);
 
   /**
    * Numeric pad'i temizle
    */
   const clearNumericPad = useCallback(() => {
+    updateActiveAmountFromValue('0');
     setNumericPadValue({ value: '', display: '0', cents: 0 });
-  }, []);
+  }, [updateActiveAmountFromValue]);
 
   /**
    * Numeric pad değerini aktif ödemeye uygula
@@ -388,12 +411,23 @@ export function usePayment({
     const activePayment = payments[activePaymentIndex];
     if (!activePayment) return;
 
-    const amount = numericPadValue.cents / 100;
+    const amount = Math.floor(numericPadValue.cents / 100);
 
     updatePaymentLine(activePayment.id, { amount });
+  }, [activePaymentIndex, payments, numericPadValue, updatePaymentLine]);
 
-    clearNumericPad();
-  }, [activePaymentIndex, payments, numericPadValue, updatePaymentLine, clearNumericPad]);
+  const fillActivePaymentWithRemaining = useCallback(() => {
+    if (activePaymentIndex === null || activePaymentIndex >= payments.length) return;
+    const activePayment = payments[activePaymentIndex];
+    if (!activePayment) return;
+    const remaining = Math.max(0, Math.round(remainingBalance));
+    updatePaymentLine(activePayment.id, { amount: remaining });
+    setNumericPadValue({
+      value: String(remaining),
+      display: formatNumericDisplay(String(remaining)),
+      cents: remaining * 100,
+    });
+  }, [activePaymentIndex, payments, remainingBalance, updatePaymentLine]);
 
   // ============ API ACTIONS ============
 
@@ -623,6 +657,7 @@ export function usePayment({
     deleteLastDigit,
     clearNumericPad,
     applyNumericPadToActivePayment,
+    fillActivePaymentWithRemaining,
   };
 }
 
@@ -633,17 +668,9 @@ export function usePayment({
 function formatNumericDisplay(value: string): string {
   if (!value) return '0';
 
-  // Türk formatı: 1.234,56
-  const parts = value.split(',');
-  let integerPart = parts[0];
-  const decimalPart = parts[1];
-
-  // Binlik ayracı ekle
+  let integerPart = value;
   integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
-  return decimalPart !== undefined
-    ? `${integerPart},${decimalPart}`
-    : integerPart;
+  return integerPart;
 }
 
 // ============================================

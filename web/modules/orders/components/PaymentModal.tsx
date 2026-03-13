@@ -16,7 +16,7 @@ import {
 import { usePayment } from '../hooks/usePayment';
 import { usePaymentModal } from '../hooks/usePaymentModal';
 import { PaymentMethod, DiscountType } from '../types';
-import { PaymentSummaryCard } from './PaymentSummaryCard';
+import { PaymentSummaryCard, PaymentSummaryCompact } from './PaymentSummaryCard';
 import { PaymentStatusBar } from './PaymentStatusBar';
 import { PaymentMethodsGrid } from './PaymentMethodsGrid';
 import { PaymentMethodDetails } from './PaymentMethodDetails';
@@ -25,7 +25,9 @@ import { PaymentLineItem } from './PaymentLineItem';
 import { MobilePaymentSheet } from './MobilePaymentSheet';
 import { DiscountDialog } from './DiscountDialog';
 import { ChangeConfirmationDialog } from './ChangeConfirmationDialog';
+import { QuickNumPad } from './QuickNumPad';
 import { Customer } from '@/modules/customers/services/customers.service';
+import { Button } from '@/modules/shared/components/Button';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -34,6 +36,7 @@ interface PaymentModalProps {
   orderTotal: number;
   restaurantId: string;
   onSuccess?: () => void;
+  successRedirectPath?: string;
 }
 
 function PaymentModalFooter({
@@ -87,13 +90,14 @@ export function PaymentModal({
   orderTotal,
   restaurantId,
   onSuccess,
+  successRedirectPath = '/tables',
 }: PaymentModalProps) {
   const router = useRouter();
 
   const handlePaymentSuccess = () => {
     onSuccess?.();
     onClose();
-    router.push('/tables');
+    router.push(successRedirectPath);
   };
 
   const hook = usePayment({
@@ -176,9 +180,13 @@ export function PaymentModal({
   }, [isOpen, restaurantId]);
 
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [tabletSummaryExpanded, setTabletSummaryExpanded] = useState(false);
   useEffect(() => {
     const check = () => {
-      setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768);
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1280);
     };
     check();
     window.addEventListener('resize', check);
@@ -247,10 +255,18 @@ export function PaymentModal({
   return (
     <>
       {!isMobile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className={`fixed inset-0 z-50 flex ${
+            isTablet ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'
+          }`}
+        >
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-          <div className="relative bg-bg-surface w-full max-w-5xl h-[650px] flex flex-col overflow-hidden rounded-sm shadow-xl">
-            <div className="flex items-center justify-between px-6 py-3 border-b border-border-light bg-bg-surface flex-shrink-0">
+          <div
+            className={`relative bg-bg-surface flex flex-col overflow-hidden shadow-xl ${
+              isTablet ? 'h-full w-full rounded-none' : 'h-[86vh] w-full max-w-[1400px] rounded-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-border-light bg-bg-surface px-6 py-3 flex-shrink-0">
               <h2 className="text-lg font-black text-text-primary uppercase tracking-wider">
                 Ödeme Al
               </h2>
@@ -263,17 +279,34 @@ export function PaymentModal({
               </button>
             </div>
 
-            <div className="flex-shrink-0">
-              <PaymentStatusBar
-                finalTotal={hook.finalTotal}
-                remainingBalance={hook.remainingBalance}
-                discount={hook.discount?.amount}
-                isComplete={hook.canCompletePayment}
-                collectedWithTips={netCollectedAmount}
-              />
-            </div>
+            {!isTablet ? (
+              <div className="flex-shrink-0">
+                <PaymentStatusBar
+                  finalTotal={hook.finalTotal}
+                  remainingBalance={hook.remainingBalance}
+                  discount={hook.discount?.amount}
+                  isComplete={hook.canCompletePayment}
+                  collectedWithTips={netCollectedAmount}
+                />
+              </div>
+            ) : (
+              <div className="flex-shrink-0 border-b border-border-light bg-bg-muted/40 px-4 py-2">
+                <button
+                  type="button"
+                  onClick={() => setTabletSummaryExpanded((prev) => !prev)}
+                  className="w-full rounded-sm border border-border-light bg-bg-surface p-2 text-left"
+                >
+                  <PaymentSummaryCompact
+                    finalTotal={hook.finalTotal}
+                    totalPaid={hook.totalPaid}
+                    remainingBalance={hook.remainingBalance}
+                    isComplete={hook.canCompletePayment}
+                  />
+                </button>
+              </div>
+            )}
 
-            <div className="flex flex-1 min-h-0 overflow-hidden relative">
+            <div className="relative flex flex-1 min-h-0 overflow-hidden">
               {/* Syncing Overlay */}
               {hook.isSyncing && (
                 <div className="absolute inset-0 z-50 bg-white/20 backdrop-blur-[1px] flex items-center justify-center cursor-wait">
@@ -284,8 +317,8 @@ export function PaymentModal({
                 </div>
               )}
 
-              <div className="w-[40%] bg-slate-50 border-r border-border-light overflow-hidden flex flex-col">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {!isTablet ? (
+                <section className="w-[25%] border-r border-border-light bg-slate-50 p-4">
                   <PaymentSummaryCard
                     subtotal={hook.serverOrderTotal || orderTotal}
                     discount={hook.discount?.amount}
@@ -297,40 +330,30 @@ export function PaymentModal({
                     totalChange={hook.totalChange}
                     isComplete={hook.canCompletePayment}
                     isProcessing={hook.isSyncing}
-                    onApplyDiscount={hook.discount?.amount ? handleRemoveDiscount : handleApplyDiscount}
                   />
-
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                      Ödeme Satırları
-                    </h4>
-                    {hook.payments.length === 0 ? (
-                      <div className="text-center py-6 text-text-muted">
-                        <Calculator className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                        <p className="text-xs">Henüz ödeme eklenmedi</p>
-                      </div>
+                  <div className="mt-3">
+                    {hook.discount?.amount ? (
+                      <Button
+                        variant="ghost"
+                        className="min-h-11 w-full text-danger-main"
+                        onClick={handleRemoveDiscount}
+                      >
+                        İndirimi Kaldır
+                      </Button>
                     ) : (
-                      hook.payments.map((payment, index) => (
-                        <PaymentLineItem
-                          key={payment.id}
-                          payment={payment}
-                          methodSequence={
-                            hook.payments
-                              .slice(0, index + 1)
-                              .filter((line) => line.method === payment.method).length
-                          }
-                          isActive={hook.activePaymentIndex === index}
-                          onActivate={() => hook.setActivePaymentIndex(index)}
-                          onRemove={() => hook.removePaymentLine(payment.id)}
-                          disabled={hook.isSyncing}
-                        />
-                      ))
+                      <Button
+                        variant="outline"
+                        className="min-h-11 w-full"
+                        onClick={handleApplyDiscount}
+                      >
+                        İndirim Uygula
+                      </Button>
                     )}
                   </div>
-                </div>
-              </div>
+                </section>
+              ) : null}
 
-              <div className="w-[60%] flex flex-col overflow-hidden bg-white">
+              <section className={`${isTablet ? 'w-[55%]' : 'w-[40%]'} flex min-h-0 flex-col border-r border-border-light bg-white`}>
                 <div className="flex-shrink-0">
                   <PaymentMethodsGrid
                     selectedMethod={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex]?.method : undefined}
@@ -339,7 +362,6 @@ export function PaymentModal({
                     disabled={hook.isSyncing}
                   />
                 </div>
-
                 <div className="flex-1 overflow-y-auto p-4">
                   <PaymentMethodDetails
                     activePayment={hook.activePaymentIndex !== null ? hook.payments[hook.activePaymentIndex] || null : null}
@@ -357,8 +379,57 @@ export function PaymentModal({
                     tipEnabled={tipSettings.enabled}
                   />
                 </div>
+                <div className="flex-shrink-0 border-t border-border-light bg-bg-surface p-4">
+                  <QuickNumPad
+                    value={hook.numericPadValue.display}
+                    onDigit={hook.appendDigit}
+                    onDelete={hook.deleteLastDigit}
+                    onFillFullAmount={hook.fillActivePaymentWithRemaining}
+                    canFillFullAmount={
+                      hook.remainingBalance > 0 &&
+                      hook.activePaymentIndex !== null &&
+                      hook.activePaymentIndex < hook.payments.length
+                    }
+                    fillButtonTitle={
+                      hook.remainingBalance > 0 ? 'Kalan tutarı doldur' : 'Kalan tutar yok'
+                    }
+                  />
+                </div>
+              </section>
 
-                <div className="flex-shrink-0 p-4 border-t border-border-light bg-bg-surface">
+              <section className={`${isTablet ? 'w-[45%]' : 'w-[35%]'} flex min-h-0 flex-col bg-slate-50`}>
+                <div className="flex-shrink-0 border-b border-border-light px-4 py-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                    Ödeme Satırları
+                  </h4>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {hook.payments.length === 0 ? (
+                    <div className="text-center py-6 text-text-muted">
+                      <Calculator className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                      <p className="text-xs">Henüz ödeme eklenmedi</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {hook.payments.map((payment, index) => (
+                        <PaymentLineItem
+                          key={payment.id}
+                          payment={payment}
+                          methodSequence={
+                            hook.payments
+                              .slice(0, index + 1)
+                              .filter((line) => line.method === payment.method).length
+                          }
+                          isActive={hook.activePaymentIndex === index}
+                          onActivate={() => hook.setActivePaymentIndex(index)}
+                          onRemove={() => hook.removePaymentLine(payment.id)}
+                          disabled={hook.isSyncing}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-shrink-0">
                   <PaymentModalFooter
                     canComplete={hook.canCompletePayment}
                     isProcessing={hook.isSyncing}
@@ -366,7 +437,51 @@ export function PaymentModal({
                     error={hook.error}
                   />
                 </div>
-              </div>
+              </section>
+
+              {isTablet && tabletSummaryExpanded ? (
+                <div className="absolute inset-0 z-40 bg-black/30 p-4">
+                  <button
+                    type="button"
+                    className="absolute inset-0"
+                    aria-label="Özet panelini kapat"
+                    onClick={() => setTabletSummaryExpanded(false)}
+                  />
+                  <div className="relative ml-auto mr-auto mt-2 max-w-xl rounded-sm border border-border-light bg-bg-surface p-4 shadow-xl">
+                    <PaymentSummaryCard
+                      subtotal={hook.serverOrderTotal || orderTotal}
+                      discount={hook.discount?.amount}
+                      discountType={hook.discount?.type as 'discount' | 'complimentary'}
+                      discountReason={hook.discount?.reason}
+                      finalTotal={hook.finalTotal}
+                      totalPaid={hook.totalPaid}
+                      remainingBalance={hook.remainingBalance}
+                      totalChange={hook.totalChange}
+                      isComplete={hook.canCompletePayment}
+                      isProcessing={hook.isSyncing}
+                    />
+                    <div className="mt-3">
+                      {hook.discount?.amount ? (
+                        <Button
+                          variant="ghost"
+                          className="min-h-11 w-full text-danger-main"
+                          onClick={handleRemoveDiscount}
+                        >
+                          İndirimi Kaldır
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="min-h-11 w-full"
+                          onClick={handleApplyDiscount}
+                        >
+                          İndirim Uygula
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

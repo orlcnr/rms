@@ -10,10 +10,13 @@ import {
   OrderType,
   CreateOrderInput,
   UpdateOrderStatusInput,
+  UpdateDeliveryStatusInput,
   UpdateOrderItemsInput,
   GetOrdersParams,
   PaginatedOrdersResponse,
   BatchUpdateOrderStatusResponse,
+  DeliveryStatus,
+  PickupType,
 } from './types'
 
 export interface GetOrdersOptions {
@@ -58,6 +61,7 @@ type RawOrderItemDto = {
   total_price?: number | string
   totalPrice?: number | string
   status?: OrderStatus
+  send_to_kitchen?: boolean
   notes?: string
   created_at?: string
   createdAt?: string
@@ -89,6 +93,12 @@ type RawOrderDto = {
     credit_limit_enabled?: boolean
   }
   type?: OrderType
+  pickup_type?: string | null
+  pickup_time?: string | null
+  delivery_status?: DeliveryStatus | null
+  delivery_address?: string | null
+  delivery_phone?: string | null
+  customer_name?: string | null
   source?: string
   status?: OrderStatus
   total_amount?: number | string
@@ -182,6 +192,7 @@ function parseOrderItemDto(
     unitPrice: resolvedUnitPrice,
     totalPrice: resolvedTotalPrice,
     status: (raw.status || OrderStatus.PENDING) as OrderStatus,
+    send_to_kitchen: raw.send_to_kitchen ?? true,
     notes: raw.notes,
     created_at: createdAt,
     updated_at: updatedAt,
@@ -191,6 +202,8 @@ function parseOrderItemDto(
 export function parseOrderDto(raw: RawOrderDto): Order {
   const createdAt = raw.created_at || raw.createdAt || new Date().toISOString()
   const updatedAt = raw.updated_at || raw.updatedAt || createdAt
+  const normalizedType =
+    raw.type === OrderType.TAKEAWAY ? OrderType.COUNTER : raw.type
 
   return {
     id: raw.id || '',
@@ -217,7 +230,13 @@ export function parseOrderDto(raw: RawOrderDto): Order {
           id: raw.customer.id || '',
         }
       : undefined,
-    type: (raw.type || OrderType.DINE_IN) as OrderType,
+    type: (normalizedType || OrderType.DINE_IN) as OrderType,
+    pickup_type: (raw.pickup_type as PickupType | null) || null,
+    pickup_time: raw.pickup_time || null,
+    delivery_status: raw.delivery_status || null,
+    delivery_address: raw.delivery_address || null,
+    delivery_phone: raw.delivery_phone || null,
+    customer_name: raw.customer_name || null,
     source: (raw.source || 'internal') as Order['source'],
     status: (raw.status || OrderStatus.PENDING) as OrderStatus,
     totalAmount: toNumber(raw.total_amount ?? raw.totalAmount),
@@ -336,6 +355,17 @@ export const ordersApi = {
    */
   updateOrderStatus: async (id: string, data: UpdateOrderStatusInput) => {
     const raw = await http.patch<RawOrderDto>(`/orders/${id}/status`, data)
+    return parseOrderDto(raw)
+  },
+
+  updateDeliveryStatus: async (
+    id: string,
+    data: UpdateDeliveryStatusInput,
+  ) => {
+    const raw = await http.patch<RawOrderDto>(
+      `/orders/${id}/delivery-status`,
+      data,
+    )
     return parseOrderDto(raw)
   },
 

@@ -53,6 +53,11 @@ export class CreateMenuItemDto {
   @IsOptional()
   track_inventory?: boolean;
 
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  requires_kitchen?: boolean;
+
   @ApiPropertyOptional({ type: [RecipeItemDto] })
   @IsOptional()
   recipes?: RecipeItemDto[];

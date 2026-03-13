@@ -82,6 +82,7 @@ export interface MenuItem extends BaseEntity {
     image_url?: string
     is_available: boolean
     track_inventory: boolean
+    requires_kitchen?: boolean
     category_id: string
     category?: Category
     recipes?: RecipeItem[]
@@ -110,6 +111,7 @@ export interface CreateMenuItemInput {
     image_url?: string
     is_available?: boolean
     track_inventory?: boolean
+    requires_kitchen?: boolean
     category_id: string
     total_cost?: number  // Toplam reçete maliyeti
     recipes?: Array<{

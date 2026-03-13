@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { CustomerSelector } from './CustomerSelector';
 import { Customer } from '@/modules/customers/services/customers.service';
+import { QuickNumPad } from './QuickNumPad';
 
 // ============================================
 // PAYMENT METHOD DETAILS - Dinamik İçerik Alanı
@@ -27,6 +28,12 @@ interface PaymentMethodDetailsProps {
   onOpenNewCustomerModal?: (initialName?: string) => void;
   commissionRate?: number;
   tipEnabled?: boolean;
+  showTouchNumpad?: boolean;
+  numericPadDisplay?: string;
+  onNumPadDigit?: (digit: string) => void;
+  onNumPadDelete?: () => void;
+  onNumPadFillFullAmount?: () => void;
+  canFillFullAmount?: boolean;
 }
 
 // Boş durum (Empty State)
@@ -75,6 +82,7 @@ function CashPaymentForm({
             type="text"
             value={localAmount}
             onChange={(e) => handleAmountChange(e.target.value)}
+            readOnly
             disabled={disabled}
             className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
               focus:outline-none focus:border-primary-main"
@@ -130,6 +138,7 @@ function OpenAccountForm({
             type="text"
             value={localAmount}
             onChange={(e) => handleAmountChange(e.target.value)}
+            readOnly
             disabled={disabled}
             className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
               focus:outline-none focus:border-primary-main"
@@ -200,6 +209,7 @@ function MealVoucherPaymentForm({
             type="text"
             value={localAmount}
             onChange={(e) => handleAmountChange(e.target.value)}
+            readOnly
             disabled={disabled}
             className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
               focus:outline-none focus:border-primary-main"
@@ -293,6 +303,7 @@ function CardPaymentForm({
             type="text"
             value={localAmount}
             onChange={(e) => handleAmountChange(e.target.value)}
+            readOnly
             disabled={disabled}
             className="flex-1 px-4 py-3 text-xl font-bold text-right bg-bg-muted border border-border-light rounded-sm
               focus:outline-none focus:border-primary-main"
@@ -362,6 +373,12 @@ export function PaymentMethodDetails({
   onOpenNewCustomerModal,
   commissionRate,
   tipEnabled,
+  showTouchNumpad = false,
+  numericPadDisplay = '0',
+  onNumPadDigit,
+  onNumPadDelete,
+  onNumPadFillFullAmount,
+  canFillFullAmount = true,
 }: PaymentMethodDetailsProps) {
   // Boş durum
   if (!method || !activePayment) {
@@ -431,6 +448,18 @@ export function PaymentMethodDetails({
           disabled={disabled}
         />
       )}
+
+      {showTouchNumpad && onNumPadDigit && onNumPadDelete && onNumPadFillFullAmount ? (
+        <div className="mt-4 border-t border-border-light pt-4">
+          <QuickNumPad
+            value={numericPadDisplay}
+            onDigit={onNumPadDigit}
+            onDelete={onNumPadDelete}
+            onFillFullAmount={onNumPadFillFullAmount}
+            canFillFullAmount={canFillFullAmount}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

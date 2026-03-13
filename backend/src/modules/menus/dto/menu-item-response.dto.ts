@@ -42,6 +42,9 @@ export class MenuItemResponseDto {
   track_inventory: boolean;
 
   @ApiProperty()
+  requires_kitchen: boolean;
+
+  @ApiProperty()
   category_id: string;
 
   @ApiProperty()
